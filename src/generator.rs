@@ -175,10 +175,10 @@ impl SiteGenerator {
     pub fn new(src_dir: &str, output_dir: &str, version: &str) -> Result<Self> {
         let mut tera = Tera::default();
 
-        let index_tmpl = include_str!("../templates/index.html");
-        let module_tmpl = include_str!("../templates/module.html");
-        let document_tmpl = include_str!("../templates/document.html");
-        let sidebar_tmpl = include_str!("../templates/sidebar.html"); // Load component
+        let index_tmpl = include_str!("../assets/index.html");
+        let module_tmpl = include_str!("../assets/module.html");
+        let document_tmpl = include_str!("../assets/document.html");
+        let sidebar_tmpl = include_str!("../assets/sidebar.html"); // Load component
 
         tera.add_raw_template("index.html", index_tmpl)
             .with_context(|| "Failed to load index.html template assets")?;
@@ -288,21 +288,22 @@ impl SiteGenerator {
         
         // Intercept standard Markdown image tags to validate/copy those as well
         let mapped_events = parser.map(|event| match event {
-            Event::Start(Tag::Image(link_type, dest_url, title)) => {
+            Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
                 if !dest_url.starts_with("http://") && !dest_url.starts_with("https://") {
                     match self.process_image_path(&dest_url) {
-                        Ok(new_path) => Event::Start(Tag::Image(
+                        Ok(new_path) => Event::Start(Tag::Image {
                             link_type,
-                            CowStr::Boxed(new_path.into_boxed_str()),
+                            dest_url: CowStr::Boxed(new_path.into_boxed_str()),
                             title,
-                        )),
+                            id,
+                        }),
                         Err(e) => {
                             eprintln!("\x1b[31;1mSmart Image Error in Markdown Tag:\x1b[0m {}", e);
                             Event::Text(CowStr::Boxed(format!("[⚠️ Image Error: {}]", e).into_boxed_str()))
                         }
                     }
                 } else {
-                    Event::Start(Tag::Image(link_type, dest_url, title))
+                    Event::Start(Tag::Image { link_type, dest_url, title, id })
                 }
             }
             other => other,
@@ -378,7 +379,7 @@ impl SiteGenerator {
 
         for module in package.modules.clone() {
             // Find the physical folder name from the module's filepath to read its prefix
-            let physical_folder_z_index = if let Some(ref clean_folder_name) = module.folder {
+            let physical_folder_z_index = if module.folder.is_some() {
                 let path = Path::new(&module.filepath);
                 let mut z_val = i32::MAX; // Default if no prefix is found
                 
@@ -483,11 +484,11 @@ impl SiteGenerator {
         fs::write(Path::new(&self.output_dir).join("search-index.js"), format!("const searchIndex = {};", search_index))?;
 
         // Output style.css
-        let css_content = include_str!("../templates/style.css");
+        let css_content = include_str!("../assets/style.css");
         fs::write(Path::new(&self.output_dir).join("style.css"), css_content)?;
 
         // Output app.js
-        let js_content = include_str!("../templates/app.js");
+        let js_content = include_str!("../assets/app.js");
         fs::write(Path::new(&self.output_dir).join("app.js"), js_content)?;
 
         Ok(())

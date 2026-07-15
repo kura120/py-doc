@@ -1,5 +1,4 @@
 document.addEventListener("DOMContentLoaded", () => {
-    // --- 1. Theme Manager ---
     const select = document.getElementById("theme-select");
     const savedTheme = localStorage.getItem("theme") || "dark";
     document.documentElement.setAttribute("data-theme", savedTheme);
@@ -12,7 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- 2. Keep Collapsed State Memory ---
     const detailsElements = document.querySelectorAll("details.nav-group");
     detailsElements.forEach(details => {
         const id = details.getAttribute("id");
@@ -26,7 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // --- 3. Live Client-Side Search Engine ---
     const searchInput = document.getElementById("search-input");
     const searchResults = document.getElementById("search-results");
     const resultsList = document.getElementById("results-list");
@@ -96,7 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
             link.classList.remove("active-item");
             const href = link.getAttribute("href");
 
-            // Match exact path + hash (or just path if there's no hash)
             const isMatch = currentHash 
                 ? href === `${currentPath}${currentHash}`
                 : href === currentPath;
@@ -104,7 +100,6 @@ document.addEventListener("DOMContentLoaded", () => {
             if (isMatch) {
                 link.classList.add("active-item");
                 
-                // Auto-expand the parent <details> folder if it's closed
                 const parentDetails = link.closest("details");
                 if (parentDetails) {
                     parentDetails.open = true;
@@ -113,7 +108,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Run immediately on load and whenever the hash changes
     updateActiveSidebarItem();
     window.addEventListener("hashchange", updateActiveSidebarItem);
 
@@ -121,7 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (trackedItems.length > 0) {
         const observerOptions = {
             root: null,
-            rootMargin: "-10% 0px -70% 0px", // Focus on items near the top third of viewport
+            rootMargin: "-10% 0px -70% 0px",
             threshold: 0
         };
 
@@ -131,10 +125,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     const id = entry.target.getAttribute("id");
                     const currentPath = window.location.pathname.split("/").pop() || "index.html";
                     
-                    // Temporarily update hash without triggering scroll jumps
                     history.replaceState(null, null, `#${id}`);
                     
-                    // Update the sidebar items to match the new hash
                     updateActiveSidebarItem();
                 }
             });
