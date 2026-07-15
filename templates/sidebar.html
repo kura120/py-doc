@@ -1,0 +1,87 @@
+<nav class="sidebar">
+    <div class="sidebar-header">
+        <h2><a href="index.html">{{ package.name }}</a></h2>
+        <div class="version-badge">v{{ version }}</div>
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="Filter / search symbols...">
+    </div>
+    
+    <div class="nav-tree">
+        {% for group in nav_groups %}
+            {% if group.name %}
+                <details class="nav-folder" style="margin-bottom: 8px;" open>
+                    <summary class="folder-header" style="font-weight: bold; cursor: pointer; padding: 4px 6px;">
+                        📁 {{ group.name }}
+                    </summary>
+                    <div class="folder-contents" style="padding-left: 12px; border-left: 1px solid rgba(255,255,255,0.1); margin-top: 4px; margin-left: 6px;">
+                        {% for mod in group.modules %}
+                            {% if not mod.classes and not mod.functions %}
+                                <div class="nav-group-flat {% if module and mod.name == module.name %}active-mod{% endif %}" id="nav-group-{{ mod.name }}" style="padding: 6px 10px; margin: 2px 0; border-radius: 4px;">
+                                    <a class="nav-item-link" href="{{ mod.name }}.html" style="color: inherit; text-decoration: none; font-weight: 500; display: block;">
+                                        📄 {{ mod.name }}
+                                    </a>
+                                </div>
+                            {% else %}
+                                <details class="nav-group" id="nav-group-{{ mod.name }}" {% if module and mod.name == module.name %}open{% endif %}>
+                                    <summary class="nav-header {% if module and mod.name == module.name %}active-mod{% endif %}">
+                                        <a href="{{ mod.name }}.html" style="color: inherit; text-decoration: none;">{{ mod.name }}</a>
+                                    </summary>
+                                    <ul>
+                                        {% if mod.classes %}
+                                            {% for class in mod.classes %}
+                                                <li><a class="nav-item-link" href="{{ mod.name }}.html#class.{{ class.name }}">class {{ class.name }}</a></li>
+                                            {% endfor %}
+                                        {% endif %}
+                                        {% if mod.functions %}
+                                            {% for func in mod.functions %}
+                                                <li><a class="nav-item-link" href="{{ mod.name }}.html#fn.{{ func.name }}">def {{ func.name }}</a></li>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </ul>
+                                </details>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </details>
+            {% else %}
+                {% for mod in group.modules %}
+                    {% if not mod.classes and not mod.functions %}
+                        <div class="nav-group-flat {% if module and mod.name == module.name %}active-mod{% endif %}" id="nav-group-{{ mod.name }}" style="padding: 6px 10px; margin: 2px 0; border-radius: 4px;">
+                            <a class="nav-item-link" href="{{ mod.name }}.html" style="color: inherit; text-decoration: none; font-weight: 500; display: block;">
+                                📄 {{ mod.name }}
+                            </a>
+                        </div>
+                    {% else %}
+                        <details class="nav-group" id="nav-group-{{ mod.name }}" {% if module and mod.name == module.name %}open{% endif %}>
+                            <summary class="nav-header {% if module and mod.name == module.name %}active-mod{% endif %}">
+                                <a href="{{ mod.name }}.html" style="color: inherit; text-decoration: none;">{{ mod.name }}</a>
+                            </summary>
+                            <ul>
+                                {% if mod.classes %}
+                                    {% for class in mod.classes %}
+                                        <li><a class="nav-item-link" href="{{ mod.name }}.html#class.{{ class.name }}">class {{ class.name }}</a></li>
+                                    {% endfor %}
+                                {% endif %}
+                                {% if mod.functions %}
+                                    {% for func in mod.functions %}
+                                        <li><a class="nav-item-link" href="{{ mod.name }}.html#fn.{{ func.name }}">def {{ func.name }}</a></li>
+                                    {% endfor %}
+                                {% endif %}
+                            </ul>
+                        </details>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="theme-selector">
+        <select id="theme-select">
+            <option value="dark">Theme: Dark (Default)</option>
+            <option value="light">Theme: Light</option>
+            <option value="slate">Theme: Slate</option>
+        </select>
+    </div>
+</nav>

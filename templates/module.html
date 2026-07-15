@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Module {{ module.name }} - {{ package.name }}</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    {% include "sidebar.html" %}
+
+    <main class="main-content">
+        <div id="search-results">
+            <h2>Search Results</h2>
+            <div id="results-list"></div>
+        </div>
+
+        <div id="page-content">
+            <div class="namespace-path" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div>
+                    <a href="index.html">{{ package.name }}</a> :: <span>{{ module.name }}</span>
+                </div>
+                <a href="index.html" style="text-decoration: none; color: var(--accent-blue); font-weight: 500; font-size: 0.9rem;">
+                    ← Back to Overview
+                </a>
+            </div>
+
+            <h1 class="module-title">Module <span class="entity-name">{{ module.name }}</span></h1>
+            
+            {% if module.docstring %}
+                <div class="docstring">{{ module.docstring | safe }}</div>
+            {% endif %}
+
+            {% if module.classes %}
+            <section class="item-section">
+                <h2>Classes</h2>
+                {% for class in module.classes %}
+                    <div class="item-card" id="class.{{ class.name }}">
+                        <div class="signature-box"><span class="keyword">class</span> <span class="entity-name">{{ class.name }}</span>:</div>
+                        {% if class.docstring %}
+                            <div class="docstring">{{ class.docstring | safe }}</div>
+                        {% endif %}
+                        
+                        {% if class.functions %}
+                            <div class="method-list">
+                                <h4>Methods</h4>
+                                {% for func in class.functions %}
+                                    <div class="method-item">
+                                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(attribute=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
+                                        {% if func.docstring %}
+                                            <div class="docstring">{{ func.docstring | safe }}</div>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if module.functions %}
+            <section class="item-section">
+                <h2>Functions</h2>
+                {% for func in module.functions %}
+                    <div class="item-card" id="fn.{{ func.name }}">
+                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(attribute=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
+                        {% if func.docstring %}
+                            <div class="docstring">{{ func.docstring | safe }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+        </div>
+    </main>
+
+    <script src="search-index.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ package.name }} - Documentation Index</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    {% include "sidebar.html" %}
+
+    <main class="main-content">
+        <div id="search-results">
+            <h2>Search Results</h2>
+            <div id="results-list"></div>
+        </div>
+
+        <div id="page-content">
+            <h1 class="package-title">{{ package.name }}</h1>
+            <div class="subtitle">Python Package Reference Documentation</div>
+            
+            <h2>Modules</h2>
+            <div class="module-grid">
+                {% for mod in package.modules %}
+                    <div class="module-card" onclick="location.href='{{ mod.name }}.html';">
+                        <h3>{{ mod.name }}</h3>
+                        <p>
+                            {% if mod.docstring %}
+                                {{ mod.docstring | striptags | truncate(length=140) }}
+                            {% else %}
+                                <em>No module description provided.</em>
+                            {% endif %}
+                        </p>
+
+                        {% if mod.classes or mod.functions %}
+                            <details class="module-details" onclick="event.stopPropagation();">
+                                {% set total_symbols = mod.classes | length + mod.functions | length %}
+                                <summary>Show symbols ({{ total_symbols }})</summary>
+                                <ul>
+                                    {% for class in mod.classes %}
+                                        <li><a href="{{ mod.name }}.html#class.{{ class.name }}">class <strong>{{ class.name }}</strong></a></li>
+                                    {% endfor %}
+                                    {% for func in mod.functions %}
+                                        <li><a href="{{ mod.name }}.html#fn.{{ func.name }}">def <strong>{{ func.name }}</strong>()</a></li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <script src="search-index.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

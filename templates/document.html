@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ module.name }} - {{ package.name }} Documentation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    {% include "sidebar.html" %}
+
+    <main class="main-content">
+        <div id="search-results">
+            <h2>Search Results</h2>
+            <div id="results-list"></div>
+        </div>
+
+        <div id="page-content">
+            <div class="namespace-path" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div>
+                    <a href="index.html">{{ package.name }}</a> :: <span>{{ module.name }}</span>
+                </div>
+                <a href="index.html" style="text-decoration: none; color: var(--accent-blue); font-weight: 500; font-size: 0.9rem;">
+                    ← Back to Overview
+                </a>
+            </div>
+
+            <article class="document-canvas">
+                <div class="markdown-body">
+                    {{ module.docstring | safe }}
+                </div>
+            </article>
+        </div>
+    </main>
+
+    <script src="search-index.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
