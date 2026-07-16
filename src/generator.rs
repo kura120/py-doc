@@ -1,17 +1,22 @@
 use anyhow::{Result, Context as AnyhowContext};
-use tera::{Tera, Context as TeraContext}; // Explicitly aliased to avoid any compiler namespace conflicts
+use tera::{Tera, Context as TeraContext, Kwargs, State}; 
 use std::fs;
 use std::path::Path;
 use std::collections::HashSet;
+use std::time::Instant;
+use std::thread;
 use pulldown_cmark::{Parser, html, Event, Tag, CowStr};
+use rayon::prelude::*; // Blazing-fast parallel processing!
 
 use crate::models::{PythonPackage, PythonModule};
 use crate::resolver::Resolver;
 
-/// Serialization helper to pass grouped folders and their modules into templates
+const BASE_URL: &str = "https://raw.githubusercontent.com/kura120/py-doc/refs/heads/master/assets";
+
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NavGroup {
-    pub name: Option<String>, // Some("guides") or None for root level
+    pub name: Option<String>,
     pub modules: Vec<PythonModule>,
 }
 
@@ -22,7 +27,6 @@ fn clean_docstring(docstring: &str) -> String {
         return String::new();
     }
 
-    // Find the minimum indentation level of non-empty lines (excluding the first line)
     let mut min_indent = usize::MAX;
     for line in lines.iter().skip(1) {
         if line.trim().is_empty() {
@@ -36,7 +40,6 @@ fn clean_docstring(docstring: &str) -> String {
 
     let min_indent = if min_indent == usize::MAX { 0 } else { min_indent };
 
-    // Rebuild the string, removing up to min_indent spaces from each line
     let mut cleaned = String::new();
     for (i, line) in lines.iter().enumerate() {
         if i == 0 {
@@ -58,7 +61,7 @@ fn clean_docstring(docstring: &str) -> String {
 
 /// Helper to parse and strip the `#pd-z-index` macro from a docstring
 fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
-    let mut z_index = i32::MAX; // Default to bottom
+    let mut z_index = i32::MAX;
     let mut cleaned_lines = Vec::new();
 
     for line in docstring.lines() {
@@ -68,12 +71,20 @@ fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
             if let Ok(parsed_val) = val_str.parse::<i32>() {
                 z_index = parsed_val;
             }
-            continue; // Skip appending this macro line to final markdown
+            continue;
         }
         cleaned_lines.push(line);
     }
 
     (z_index, cleaned_lines.join("\n"))
+}
+
+// Custom tera striptags filter
+fn striptags_filter(value: &str, _args: Kwargs, _state: &State) -> Result<String, tera::Error> {
+    let re = regex::Regex::new(r"<[^>]*>").map_err(|e| {
+        tera::Error::message(format!("Failed to compile regex: {}", e))
+    })?;
+    Ok(re.replace_all(value, "").into_owned())
 }
 
 enum AlertType {
@@ -83,7 +94,6 @@ enum AlertType {
 }
 
 impl AlertType {
-    /// Return standard CSS classes and titles for systematic styling
     fn to_html(&self, content: &str) -> String {
         let (class_name, icon, title) = match self {
             AlertType::Error => ("alert-error", "⚠️", "Error"),
@@ -98,7 +108,6 @@ impl AlertType {
     }
 }
 
-/// Systematic Representation of our custom Markdown Macros
 enum DocMacro<'a> {
     Image { path: &'a str },
     Note { text: &'a str },
@@ -108,7 +117,6 @@ enum DocMacro<'a> {
 }
 
 impl<'a> DocMacro<'a> {
-    /// Attempts to parse a single line into a known `DocMacro`
     fn parse(line: &'a str) -> Option<Self> {
         let trimmed = line.trim();
         
@@ -137,7 +145,6 @@ impl<'a> DocMacro<'a> {
         }
     }
 
-    /// Renders the individual macro into its markdown/HTML representation
     fn render(self, generator: &SiteGenerator) -> String {
         match self {
             DocMacro::Image { path } => {
@@ -171,23 +178,59 @@ pub struct SiteGenerator {
     pub version: String,
 }
 
+
 impl SiteGenerator {
     pub fn new(src_dir: &str, output_dir: &str, version: &str) -> Result<Self> {
+        println!("\x1b[36;1m[1/3]\x1b[0m Fetching remote theme assets in parallel...");
+        let fetch_start = Instant::now();
+        
+
+        // Spin up background threads to fetch all assets concurrently
+        let urls = vec![
+            ("sidebar", format!("{}/sidebar.html", BASE_URL)),
+            ("index", format!("{}/index.html", BASE_URL)),
+            ("module", format!("{}/module.html", BASE_URL)),
+            ("document", format!("{}/document.html", BASE_URL)),
+        ];
+
+        let mut handles = vec![];
+        for (name, url) in urls {
+            handles.push(thread::spawn(move || -> Result<(String, String)> {
+                let mut response = ureq::get(&url)
+                    .call()
+                    .with_context(|| format!("Failed to fetch {}", url))?;
+                let body = response
+                    .body_mut()
+                    .read_to_string()
+                    .with_context(|| format!("Failed to read {}", url))?;
+                Ok((name.to_string(), body))
+            }));
+        }
+
+        // Collect the results
+        let mut templates = std::collections::HashMap::new();
+        for handle in handles {
+            let (name, body) = handle.join().map_err(|_| anyhow::anyhow!("Thread panicked fetching asset"))??;
+            templates.insert(name, body);
+        }
+
+        println!("\x1b[32m✔ Loaded all templates in {:.2?}\x1b[0m", fetch_start.elapsed());
+
+        // Initialize Tera
         let mut tera = Tera::default();
 
-        let index_tmpl = include_str!("../assets/index.html");
-        let module_tmpl = include_str!("../assets/module.html");
-        let document_tmpl = include_str!("../assets/document.html");
-        let sidebar_tmpl = include_str!("../assets/sidebar.html"); // Load component
+        // CRITICAL FIX 1: Register custom filter BEFORE compiling templates
+        tera.register_filter("striptags", striptags_filter);
 
-        tera.add_raw_template("index.html", index_tmpl)
-            .with_context(|| "Failed to load index.html template assets")?;
-        tera.add_raw_template("module.html", module_tmpl)
-            .with_context(|| "Failed to load module.html template assets")?;
-        tera.add_raw_template("document.html", document_tmpl)
-            .with_context(|| "Failed to load document.html template assets")?;
-        tera.add_raw_template("sidebar.html", sidebar_tmpl) // Register component
+        // CRITICAL FIX 2: Register children/components (sidebar) BEFORE parent files (index)
+        tera.add_raw_template("sidebar.html", templates.get("sidebar").unwrap())
             .with_context(|| "Failed to load sidebar.html component")?;
+        tera.add_raw_template("index.html", templates.get("index").unwrap())
+            .with_context(|| "Failed to load index.html template assets")?;
+        tera.add_raw_template("module.html", templates.get("module").unwrap())
+            .with_context(|| "Failed to load module.html template assets")?;
+        tera.add_raw_template("document.html", templates.get("document").unwrap())
+            .with_context(|| "Failed to load document.html template assets")?;
 
         Ok(Self {
             tera,
@@ -199,7 +242,6 @@ impl SiteGenerator {
 
     fn process_image_path(&self, img_path: &str) -> Result<String> {
         let src_image_path = Path::new(&self.src_dir).join(img_path);
-
         if !src_image_path.exists() {
             return Err(anyhow::anyhow!(
                 "Image file not found at local path: '{}' (resolved as '{}')",
@@ -208,28 +250,21 @@ impl SiteGenerator {
             ));
         }
 
-        // Create the output asset folder
         let dest_dir = Path::new(&self.output_dir).join("assets");
         fs::create_dir_all(&dest_dir)?;
 
-        // Keep the original filename
         let file_name = src_image_path
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("Invalid image path filename"))?;
         let dest_image_path = dest_dir.join(file_name);
 
-        // Copy the file
         fs::copy(&src_image_path, &dest_image_path)?;
-
         Ok(format!("assets/{}", file_name.to_string_lossy()))
     }
 
-    /// Custom markdown processor that hooks into image rendering and extracts #pd references
-    fn render_markdown(&self, markdown: &str, _resolver: &Resolver) -> String {
-        // 1. Strip Python's block indentation
+    fn render_markdown(&self, markdown: &str) -> String {
         let dedented_md = clean_docstring(markdown);
 
-        // 2. Strip the `#pd-write` directive line so it doesn't leak into the final HTML
         let cleaned_md = if dedented_md.trim_start().starts_with("#pd-write") {
             dedented_md
                 .lines()
@@ -248,7 +283,6 @@ impl SiteGenerator {
         for line in cleaned_md.lines() {
             let trimmed = line.trim();
 
-            // Multi-line Code Block Hook (#pd-code ```lang)
             if in_custom_code {
                 if trimmed == "```" {
                     in_custom_code = false;
@@ -264,7 +298,6 @@ impl SiteGenerator {
                 continue;
             }
 
-            // Parse macro rules
             if let Some(mac) = DocMacro::parse(line) {
                 match mac {
                     DocMacro::CodeBlockStart { language } => {
@@ -283,10 +316,8 @@ impl SiteGenerator {
             processed_md.push_str("\n");
         }
 
-        // Parse markdown with pulldown-cmark
         let parser = Parser::new(&processed_md);
         
-        // Intercept standard Markdown image tags to validate/copy those as well
         let mapped_events = parser.map(|event| match event {
             Event::Start(Tag::Image { link_type, dest_url, title, id }) => {
                 if !dest_url.starts_with("http://") && !dest_url.starts_with("https://") {
@@ -314,57 +345,57 @@ impl SiteGenerator {
         html_output
     }
 
-    pub fn generate(&self, package: &mut PythonPackage, resolver: &Resolver) -> Result<()> {
+    pub fn generate(&self, package: &mut PythonPackage, _resolver: &Resolver) -> Result<()> {
+        println!("\x1b[36;1m[2/3]\x1b[0m Compiling and generating documentation...");
+        let compile_start = Instant::now();
+
         fs::create_dir_all(&self.output_dir)?;
 
-        let mut doc_only_modules = HashSet::new();
-
-        // Parse z-index first, strip it, and apply markdown compilation passes
-        for module in &mut package.modules {
+        // Parallelize markdown processing over all files using Rayon!
+        package.modules.par_iter_mut().for_each(|module| {
             let raw_doc = module.docstring.clone().unwrap_or_default();
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
             
-            // Set parsed z_index directly to our module representation
             module.z_index = z_val;
-            
             if module.docstring.is_some() {
                 module.docstring = Some(cleaned_doc);
             }
 
-            let has_code = !module.classes.is_empty() || !module.functions.is_empty();
-
             if let Some(ref doc) = module.docstring {
-                // Look for `#pd-write` macro to see if this module acts as a pure document
-                if doc.trim_start().starts_with("#pd-write") {
-                    if !has_code {
-                        doc_only_modules.insert(module.name.clone());
-                    } else {
-                        eprintln!(
-                            "\x1b[33mWarning:\x1b[0m Module '{}' has '#pd-write' macro but contains code execution items. Defaulting to standard layout.",
-                            module.name
-                        );
-                    }
-                }
-                module.docstring = Some(self.render_markdown(doc, resolver));
+                module.docstring = Some(self.render_markdown(doc));
             }
-            for class in &mut module.classes {
+
+            // Process classes & methods inside this module concurrently
+            module.classes.iter_mut().for_each(|class| {
                 if let Some(ref doc) = class.docstring {
-                    class.docstring = Some(self.render_markdown(doc, resolver));
+                    class.docstring = Some(self.render_markdown(doc));
                 }
-                for method in &mut class.functions {
+                class.functions.iter_mut().for_each(|method| {
                     if let Some(ref doc) = method.docstring {
-                        method.docstring = Some(self.render_markdown(doc, resolver));
+                        method.docstring = Some(self.render_markdown(doc));
                     }
-                }
-            }
-            for func in &mut module.functions {
+                });
+            });
+
+            module.functions.iter_mut().for_each(|func| {
                 if let Some(ref doc) = func.docstring {
-                    func.docstring = Some(self.render_markdown(doc, resolver));
+                    func.docstring = Some(self.render_markdown(doc));
+                }
+            });
+        });
+
+        // Determine pure documentation files (doc-only)
+        let mut doc_only_modules = HashSet::new();
+        for module in &package.modules {
+            let has_code = !module.classes.is_empty() || !module.functions.is_empty();
+            if let Some(ref doc) = module.docstring {
+                if doc.trim_start().starts_with("#pd-write") && !has_code {
+                    doc_only_modules.insert(module.name.clone());
                 }
             }
         }
 
-        // Sort modules first: prioritizes explicit z-index (ascending), then alphabetically
+        // Sort modules
         package.modules.sort_by(|a, b| {
             if a.z_index == b.z_index {
                 a.name.cmp(&b.name)
@@ -373,15 +404,12 @@ impl SiteGenerator {
             }
         });
 
-        // 1. Group modules into directories for folder generation
-        // We will store the folder's extracted z-index alongside its clean display name
+        // Group modules into directories
         let mut groups_map: std::collections::BTreeMap<Option<String>, (i32, Vec<PythonModule>)> = std::collections::BTreeMap::new();
-
         for module in package.modules.clone() {
-            // Find the physical folder name from the module's filepath to read its prefix
             let physical_folder_z_index = if module.folder.is_some() {
                 let path = Path::new(&module.filepath);
-                let mut z_val = i32::MAX; // Default if no prefix is found
+                let mut z_val = i32::MAX;
                 
                 if let Some(parent) = path.parent() {
                     if let Some(folder_dir_name) = parent.file_name().map(|f| f.to_string_lossy()) {
@@ -395,17 +423,16 @@ impl SiteGenerator {
                 }
                 z_val
             } else {
-                i32::MAX // Root files default
+                i32::MAX
             };
 
             let entry = groups_map.entry(module.folder.clone()).or_insert((physical_folder_z_index, Vec::new()));
             entry.1.push(module);
         }
 
-        // 2. Convert groups to NavGroups and sort internally/globally
+        // Convert and sort groups
         let mut nav_groups: Vec<(i32, NavGroup)> = Vec::new();
         for (folder_name, (folder_z, mut mods)) in groups_map {
-            // Sort files INSIDE this folder based on their internal z_index, then name
             mods.sort_by(|a, b| {
                 if a.z_index == b.z_index {
                     a.name.cmp(&b.name)
@@ -423,13 +450,9 @@ impl SiteGenerator {
             ));
         }
 
-        // 3. Sort the folders and root level files globally!
-        // Rules:
-        // - Root level files (where name is None) have their order dictated by their individual module z_index.
-        // - Folders (where name is Some) use their folder prefix z_index.
+        // Sort folders globally
         nav_groups.sort_by(|(z_a, group_a), (z_b, group_b)| {
             let actual_z_a = if group_a.name.is_none() {
-                // For root items, default to the first file's z-index or MAX
                 group_a.modules.first().map(|m| m.z_index).unwrap_or(i32::MAX)
             } else {
                 *z_a
@@ -448,7 +471,6 @@ impl SiteGenerator {
             }
         });
 
-        // Strip the sorting z-index wrapper back off so we just pass Vec<NavGroup> to Tera
         let final_nav_groups: Vec<NavGroup> = nav_groups.into_iter().map(|(_, g)| g).collect();
 
         // Render index page
@@ -459,7 +481,7 @@ impl SiteGenerator {
         let rendered_index = self.tera.render("index.html", &index_context)?;
         fs::write(Path::new(&self.output_dir).join("index.html"), rendered_index)?;
 
-        // Render dedicated individual module detail pages
+        // Render detailed individual module detail pages
         for module in &package.modules {
             let mut mod_context = TeraContext::new();
             mod_context.insert("package", &package);
@@ -467,7 +489,6 @@ impl SiteGenerator {
             mod_context.insert("module", module);
             mod_context.insert("version", &self.version);
 
-            // Select layout dynamically based on `#pd-write` status
             let template_name = if doc_only_modules.contains(&module.name) {
                 "document.html"
             } else {
@@ -479,17 +500,63 @@ impl SiteGenerator {
             fs::write(Path::new(&self.output_dir).join(file_name), rendered_mod)?;
         }
 
+        println!("\x1b[36;1m[3/3]\x1b[0m Generating search indexes & styles...");
+        
         // Render Search JS index
         let search_index = serde_json::to_string(&package)?;
         fs::write(Path::new(&self.output_dir).join("search-index.js"), format!("const searchIndex = {};", search_index))?;
 
-        // Output style.css
-        let css_content = include_str!("../assets/style.css");
-        fs::write(Path::new(&self.output_dir).join("style.css"), css_content)?;
+        // Define the base assets URL
+        let out_dir = self.output_dir.clone();
 
-        // Output app.js
-        let js_content = include_str!("../assets/app.js");
-        fs::write(Path::new(&self.output_dir).join("app.js"), js_content)?;
+        // Download and save style.css and app.js in parallel, catching any errors!
+        thread::scope(|s| {
+            s.spawn(|| {
+                let css_url = format!("{}/style.css", BASE_URL);
+                match ureq::get(&css_url).call() {
+                    Ok(mut response) => {
+                        match response.body_mut().read_to_string() {
+                            Ok(content) => {
+                                let dest = Path::new(&out_dir).join("style.css");
+                                if let Err(e) = fs::write(&dest, content) {
+                                    eprintln!("\x1b[31;1mError writing style.css:\x1b[0m {}", e);
+                                } else {
+                                    println!("\x1b[32m✔ Successfully wrote style.css to disk\x1b[0m");
+                                }
+                            }
+                            Err(e) => eprintln!("\x1b[31;1mError reading style.css body:\x1b[0m {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("\x1b[31;1mError downloading style.css:\x1b[0m {}", e),
+                }
+            });
+
+            s.spawn(|| {
+                let js_url = format!("{}/app.js", BASE_URL);
+                match ureq::get(&js_url).call() {
+                    Ok(mut response) => {
+                        match response.body_mut().read_to_string() {
+                            Ok(content) => {
+                                let dest = Path::new(&out_dir).join("app.js");
+                                if let Err(e) = fs::write(&dest, content) {
+                                    eprintln!("\x1b[31;1mError writing app.js:\x1b[0m {}", e);
+                                } else {
+                                    println!("\x1b[32m✔ Successfully wrote app.js to disk\x1b[0m");
+                                }
+                            }
+                            Err(e) => eprintln!("\x1b[31;1mError reading app.js body:\x1b[0m {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("\x1b[31;1mError downloading app.js:\x1b[0m {}", e),
+                }
+            });
+        });
+
+        println!(
+            "\x1b[32;1m✔ Successfully generated site for {} modules in {:.2?}\x1b[0m", 
+            package.modules.len(), 
+            compile_start.elapsed()
+        );
 
         Ok(())
     }

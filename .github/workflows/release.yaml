@@ -3,8 +3,7 @@ name: Release Binaries
 on:
   push:
     tags:
-      - 'v*' # Triggers when you push tags like v0.1.0
-
+      - 'v*'
 jobs:
   publish:
     name: Build and Upload (${{ matrix.target }})
