@@ -15,6 +15,7 @@ pub struct PythonModule {
     pub functions: Vec<PythonFunction>,
     pub z_index: i32,
     pub folder: Option<String>,
+    pub link_path: String,
 }
 
 #[derive(Debug, Serialize, Clone)]

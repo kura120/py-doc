@@ -1,7 +1,7 @@
 use anyhow::{Result, Context as AnyhowContext};
 use tera::{Tera, Context as TeraContext, Kwargs, State}; 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::collections::HashSet;
 use std::time::Instant;
 use std::thread;
@@ -12,7 +12,6 @@ use crate::models::{PythonPackage, PythonModule};
 use crate::resolver::Resolver;
 
 const BASE_URL: &str = "https://raw.githubusercontent.com/kura120/py-doc/refs/heads/master/assets";
-
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NavGroup {
@@ -159,11 +158,22 @@ impl<'a> DocMacro<'a> {
             DocMacro::Note { text } => AlertType::Note.to_html(text),
             DocMacro::Warning { text } => AlertType::Warning.to_html(text),
             DocMacro::DocLink { target } => {
-                let link_html = if let Some((mod_name, sym_name)) = target.split_once('.') {
-                    format!("<a href=\"{}.html#fn.{}\" class=\"doc-internal-link\"><code>{}</code></a>", mod_name, sym_name, target)
+                // Determine target module name and optional symbol
+                let (target_mod, sym_suffix) = if let Some((mod_name, sym_name)) = target.split_once('.') {
+                    (mod_name, format!("#fn.{}", sym_name))
                 } else {
-                    format!("<a href=\"{}.html\" class=\"doc-internal-link\"><code>{}</code></a>", target, target)
+                    (target, String::new())
                 };
+
+                // Convert dots to slashes to mirror physical directory structure
+                let physical_target = target_mod.replace('.', "/");
+                
+                // Note: To make this absolutely perfect, you would pass the current module's `root_path` 
+                // prefix into this render method so it can prepend it (e.g., "{{root_path}}dftpy/utils/math.html")
+                let link_html = format!(
+                    "<a href=\"{}.html{}\" class=\"doc-internal-link\"><code>{}</code></a>", 
+                    physical_target, sym_suffix, target
+                );
                 format!("\n\n<div class=\"doc-link-container\">🔗 See Reference: {}</div>\n\n", link_html)
             }
             DocMacro::CodeBlockStart { .. } => String::new(),
@@ -176,53 +186,119 @@ pub struct SiteGenerator {
     pub src_dir: String,
     pub output_dir: String,
     pub version: String,
+    pub template_dir: Option<PathBuf>,
 }
 
-
 impl SiteGenerator {
-    pub fn new(src_dir: &str, output_dir: &str, version: &str) -> Result<Self> {
-        println!("\x1b[36;1m[1/3]\x1b[0m Fetching remote theme assets in parallel...");
-        let fetch_start = Instant::now();
+    /// Robustly determines the relative path of a module source file compared to the input source directory
+    fn get_module_relative_path(&self, filepath: &str) -> PathBuf {
+        let path = Path::new(filepath);
+        let src = Path::new(&self.src_dir);
+
+        // 1. Try standard prefix stripping
+        if let Ok(rel) = path.strip_prefix(src) {
+            return rel.to_path_buf();
+        }
         
-
-        // Spin up background threads to fetch all assets concurrently
-        let urls = vec![
-            ("sidebar", format!("{}/sidebar.html", BASE_URL)),
-            ("index", format!("{}/index.html", BASE_URL)),
-            ("module", format!("{}/module.html", BASE_URL)),
-            ("document", format!("{}/document.html", BASE_URL)),
-        ];
-
-        let mut handles = vec![];
-        for (name, url) in urls {
-            handles.push(thread::spawn(move || -> Result<(String, String)> {
-                let mut response = ureq::get(&url)
-                    .call()
-                    .with_context(|| format!("Failed to fetch {}", url))?;
-                let body = response
-                    .body_mut()
-                    .read_to_string()
-                    .with_context(|| format!("Failed to read {}", url))?;
-                Ok((name.to_string(), body))
-            }));
+        // 2. Try canonicalizing both (resolves "." vs absolute path mismatches)
+        if let (Ok(c_path), Ok(c_src)) = (path.canonicalize(), src.canonicalize()) {
+            if let Ok(rel) = c_path.strip_prefix(&c_src) {
+                return rel.to_path_buf();
+            }
+        }
+        
+        // 3. String-based fallback (cleans up slash directions)
+        let path_str = filepath.replace('\\', "/");
+        let src_str = self.src_dir.replace('\\', "/").trim_end_matches('/').to_string();
+        
+        if path_str.starts_with(&src_str) {
+            let chopped = path_str[src_str.len()..].trim_start_matches('/');
+            return PathBuf::from(chopped);
         }
 
-        // Collect the results
+        // If all else fails, just return the filename to prevent a crash
+        PathBuf::from(path.file_name().unwrap_or_default())
+    }
+
+    /// Resolves nested directory output paths based purely on physical input file structure
+    fn get_module_output_path(&self, module: &PythonModule) -> PathBuf {
+        let mut rel_path = self.get_module_relative_path(&module.filepath);
+        
+        rel_path.set_extension(""); // Remove .py
+        
+        if rel_path.file_name().and_then(|n| n.to_str()) == Some("__init__") {
+            rel_path.set_file_name("index.html");
+        } else {
+            rel_path.set_extension("html");
+        }
+        
+        rel_path
+    }
+
+    /// Helper to get the depth offset to build relative asset paths `../`
+    fn get_root_prefix(&self, module: &PythonModule) -> String {
+        let out_path = self.get_module_output_path(module);
+        let count = out_path.components().count();
+        
+        let depth = if count <= 1 { 0 } else { count - 1 };
+        if depth == 0 {
+            "./".to_string()
+        } else {
+            "../".repeat(depth)
+        }
+    }
+
+    pub fn new(src_dir: &str, output_dir: &str, version: &str, template_dir: Option<&str>) -> Result<Self> {
         let mut templates = std::collections::HashMap::new();
-        for handle in handles {
-            let (name, body) = handle.join().map_err(|_| anyhow::anyhow!("Thread panicked fetching asset"))??;
-            templates.insert(name, body);
+        let template_dir_path = template_dir.map(PathBuf::from);
+
+        if let Some(ref local_dir) = template_dir_path {
+            println!("\x1b[36;1m[1/3]\x1b[0m Loading local custom templates...");
+            let start = Instant::now();
+            
+            let files = vec!["sidebar", "index", "module", "document"];
+            for name in files {
+                let path = local_dir.join(format!("{}.html", name));
+                let body = fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read custom template from {:?}", path))?;
+                templates.insert(name.to_string(), body);
+            }
+            println!("\x1b[32m✔ Loaded all custom templates in {:.2?}\x1b[0m", start.elapsed());
+        } else {
+            println!("\x1b[36;1m[1/3]\x1b[0m Fetching remote theme assets in parallel...");
+            let fetch_start = Instant::now();
+            
+            let urls = vec![
+                ("sidebar", format!("{}/sidebar.html", BASE_URL)),
+                ("index", format!("{}/index.html", BASE_URL)),
+                ("module", format!("{}/module.html", BASE_URL)),
+                ("document", format!("{}/document.html", BASE_URL)),
+            ];
+
+            let mut handles = vec![];
+            for (name, url) in urls {
+                handles.push(thread::spawn(move || -> Result<(String, String)> {
+                    let mut response = ureq::get(&url)
+                        .call()
+                        .with_context(|| format!("Failed to fetch {}", url))?;
+                    let body = response
+                        .body_mut()
+                        .read_to_string()
+                        .with_context(|| format!("Failed to read {}", url))?;
+                    Ok((name.to_string(), body))
+                }));
+            }
+
+            for handle in handles {
+                let (name, body) = handle.join().map_err(|_| anyhow::anyhow!("Thread panicked fetching asset"))??;
+                templates.insert(name, body);
+            }
+            println!("\x1b[32m✔ Loaded all remote templates in {:.2?}\x1b[0m", fetch_start.elapsed());
         }
 
-        println!("\x1b[32m✔ Loaded all templates in {:.2?}\x1b[0m", fetch_start.elapsed());
-
-        // Initialize Tera
         let mut tera = Tera::default();
-
-        // CRITICAL FIX 1: Register custom filter BEFORE compiling templates
         tera.register_filter("striptags", striptags_filter);
 
-        // CRITICAL FIX 2: Register children/components (sidebar) BEFORE parent files (index)
         tera.add_raw_template("sidebar.html", templates.get("sidebar").unwrap())
             .with_context(|| "Failed to load sidebar.html component")?;
         tera.add_raw_template("index.html", templates.get("index").unwrap())
@@ -237,6 +313,7 @@ impl SiteGenerator {
             src_dir: src_dir.to_string(),
             output_dir: output_dir.to_string(),
             version: version.to_string(),
+            template_dir: template_dir_path,
         })
     }
 
@@ -351,7 +428,6 @@ impl SiteGenerator {
 
         fs::create_dir_all(&self.output_dir)?;
 
-        // Parallelize markdown processing over all files using Rayon!
         package.modules.par_iter_mut().for_each(|module| {
             let raw_doc = module.docstring.clone().unwrap_or_default();
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
@@ -365,7 +441,6 @@ impl SiteGenerator {
                 module.docstring = Some(self.render_markdown(doc));
             }
 
-            // Process classes & methods inside this module concurrently
             module.classes.iter_mut().for_each(|class| {
                 if let Some(ref doc) = class.docstring {
                     class.docstring = Some(self.render_markdown(doc));
@@ -383,6 +458,12 @@ impl SiteGenerator {
                 }
             });
         });
+
+        // Compute the real output-relative link for every module before we render anything
+        for module in package.modules.iter_mut() {
+            let rel = self.get_module_output_path(module);
+            module.link_path = rel.to_string_lossy().replace('\\', "/");
+        }
 
         // Determine pure documentation files (doc-only)
         let mut doc_only_modules = HashSet::new();
@@ -407,6 +488,10 @@ impl SiteGenerator {
         // Group modules into directories
         let mut groups_map: std::collections::BTreeMap<Option<String>, (i32, Vec<PythonModule>)> = std::collections::BTreeMap::new();
         for module in package.modules.clone() {
+            // Keep the original module.name intact for mapping and URL generation!
+            // We can check if it is an init file dynamically in the template, 
+            // or pass an explicit boolean flag if your PythonModule struct has one.
+            
             let physical_folder_z_index = if module.folder.is_some() {
                 let path = Path::new(&module.filepath);
                 let mut z_val = i32::MAX;
@@ -478,16 +563,29 @@ impl SiteGenerator {
         index_context.insert("package", package);
         index_context.insert("nav_groups", &final_nav_groups);
         index_context.insert("version", &self.version);
+        index_context.insert("root_path", "./");
+        
         let rendered_index = self.tera.render("index.html", &index_context)?;
         fs::write(Path::new(&self.output_dir).join("index.html"), rendered_index)?;
 
         // Render detailed individual module detail pages
         for module in &package.modules {
+            let rel_output_path = self.get_module_output_path(module);
+            let absolute_output_path = Path::new(&self.output_dir).join(&rel_output_path);
+
+            if let Some(parent_dir) = absolute_output_path.parent() {
+                fs::create_dir_all(parent_dir)
+                    .with_context(|| format!("Failed to create output subdirectory structure: {:?}", parent_dir))?;
+            }
+
+            let root_prefix = self.get_root_prefix(module);
+
             let mut mod_context = TeraContext::new();
             mod_context.insert("package", &package);
             mod_context.insert("nav_groups", &final_nav_groups);
             mod_context.insert("module", module);
             mod_context.insert("version", &self.version);
+            mod_context.insert("root_path", &root_prefix);
 
             let template_name = if doc_only_modules.contains(&module.name) {
                 "document.html"
@@ -496,8 +594,8 @@ impl SiteGenerator {
             };
 
             let rendered_mod = self.tera.render(template_name, &mod_context)?;
-            let file_name = format!("{}.html", module.name);
-            fs::write(Path::new(&self.output_dir).join(file_name), rendered_mod)?;
+            fs::write(&absolute_output_path, rendered_mod)
+                .with_context(|| format!("Failed to write nested module file: {:?}", absolute_output_path))?;
         }
 
         println!("\x1b[36;1m[3/3]\x1b[0m Generating search indexes & styles...");
@@ -506,48 +604,80 @@ impl SiteGenerator {
         let search_index = serde_json::to_string(&package)?;
         fs::write(Path::new(&self.output_dir).join("search-index.js"), format!("const searchIndex = {};", search_index))?;
 
-        // Define the base assets URL
         let out_dir = self.output_dir.clone();
+        let local_template_dir = self.template_dir.clone();
 
-        // Download and save style.css and app.js in parallel, catching any errors!
+        // Handle copying/downloading static assets (style.css and app.js)
         thread::scope(|s| {
             s.spawn(|| {
-                let css_url = format!("{}/style.css", BASE_URL);
-                match ureq::get(&css_url).call() {
-                    Ok(mut response) => {
-                        match response.body_mut().read_to_string() {
-                            Ok(content) => {
-                                let dest = Path::new(&out_dir).join("style.css");
-                                if let Err(e) = fs::write(&dest, content) {
-                                    eprintln!("\x1b[31;1mError writing style.css:\x1b[0m {}", e);
-                                } else {
-                                    println!("\x1b[32m✔ Successfully wrote style.css to disk\x1b[0m");
-                                }
-                            }
-                            Err(e) => eprintln!("\x1b[31;1mError reading style.css body:\x1b[0m {}", e),
+                let dest = Path::new(&out_dir).join("style.css");
+                let mut copied_locally = false;
+                
+                if let Some(ref local_dir) = local_template_dir {
+                    let src_css = local_dir.join("style.css");
+                    if src_css.exists() {
+                        if let Err(e) = fs::copy(&src_css, &dest) {
+                            eprintln!("\x1b[31;1mError copying local style.css:\x1b[0m {}", e);
+                        } else {
+                            println!("\x1b[32m✔ Successfully copied local style.css to disk\x1b[0m");
+                            copied_locally = true;
                         }
                     }
-                    Err(e) => eprintln!("\x1b[31;1mError downloading style.css:\x1b[0m {}", e),
+                }
+
+                if !copied_locally {
+                    let css_url = format!("{}/style.css", BASE_URL);
+                    match ureq::get(&css_url).call() {
+                        Ok(mut response) => {
+                            match response.body_mut().read_to_string() {
+                                Ok(content) => {
+                                    if let Err(e) = fs::write(&dest, content) {
+                                        eprintln!("\x1b[31;1mError writing style.css:\x1b[0m {}", e);
+                                    } else {
+                                        println!("\x1b[32m✔ Successfully wrote remote style.css to disk\x1b[0m");
+                                    }
+                                }
+                                Err(e) => eprintln!("\x1b[31;1mError reading style.css body:\x1b[0m {}", e),
+                            }
+                        }
+                        Err(e) => eprintln!("\x1b[31;1mError downloading style.css:\x1b[0m {}", e),
+                    }
                 }
             });
 
             s.spawn(|| {
-                let js_url = format!("{}/app.js", BASE_URL);
-                match ureq::get(&js_url).call() {
-                    Ok(mut response) => {
-                        match response.body_mut().read_to_string() {
-                            Ok(content) => {
-                                let dest = Path::new(&out_dir).join("app.js");
-                                if let Err(e) = fs::write(&dest, content) {
-                                    eprintln!("\x1b[31;1mError writing app.js:\x1b[0m {}", e);
-                                } else {
-                                    println!("\x1b[32m✔ Successfully wrote app.js to disk\x1b[0m");
-                                }
-                            }
-                            Err(e) => eprintln!("\x1b[31;1mError reading app.js body:\x1b[0m {}", e),
+                let dest = Path::new(&out_dir).join("app.js");
+                let mut copied_locally = false;
+
+                if let Some(ref local_dir) = local_template_dir {
+                    let src_js = local_dir.join("app.js");
+                    if src_js.exists() {
+                        if let Err(e) = fs::copy(&src_js, &dest) {
+                            eprintln!("\x1b[31;1mError copying local app.js:\x1b[0m {}", e);
+                        } else {
+                            println!("\x1b[32m✔ Successfully copied local app.js to disk\x1b[0m");
+                            copied_locally = true;
                         }
                     }
-                    Err(e) => eprintln!("\x1b[31;1mError downloading app.js:\x1b[0m {}", e),
+                }
+
+                if !copied_locally {
+                    let js_url = format!("{}/app.js", BASE_URL);
+                    match ureq::get(&js_url).call() {
+                        Ok(mut response) => {
+                            match response.body_mut().read_to_string() {
+                                Ok(content) => {
+                                    if let Err(e) = fs::write(&dest, content) {
+                                        eprintln!("\x1b[31;1mError writing app.js:\x1b[0m {}", e);
+                                    } else {
+                                        println!("\x1b[32m✔ Successfully wrote remote app.js to disk\x1b[0m");
+                                    }
+                                }
+                                Err(e) => eprintln!("\x1b[31;1mError reading app.js body:\x1b[0m {}", e),
+                            }
+                        }
+                        Err(e) => eprintln!("\x1b[31;1mError downloading app.js:\x1b[0m {}", e),
+                    }
                 }
             });
         });

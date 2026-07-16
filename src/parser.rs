@@ -53,7 +53,8 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         classes: Vec::new(),
         functions: Vec::new(),
         z_index: i32::MAX,
-        folder, 
+        folder,
+        link_path: String::new(), // NEW field for the nav-link fix
     };
 
     let syntax_body = parsed.into_syntax().body;

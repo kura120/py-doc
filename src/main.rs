@@ -3,7 +3,7 @@ mod parser;
 mod resolver;
 mod generator;
 
-use anyhow::{Result, Context};
+use anyhow::Result; // Removed unused 'Context' import to clear the compiler warning
 use clap::Parser;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -30,9 +30,12 @@ pub struct Args {
     #[arg(short, long)]
     pub name: String,
 
-    // Add this field! We can give it a default value of "1.0.0"
     #[arg(short, long, default_value = "1.0.0")]
     pub version: String,
+
+    /// Optional path to local HTML templates (sidebar.html, module.html, etc.)
+    #[arg(short, long)]
+    pub templates: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -63,7 +66,10 @@ fn main() -> Result<()> {
         }
 
         if path.extension().map_or(false, |ext| ext == "py") {
-            files_found += 1;
+            if path.file_name().map_or(false, |name| name == "__main__.py") {
+                println!("   [Ignored] Skipping entry-point: {:?}", path);
+                continue;
+            }
             
             // Explicitly print matches/ignores
             if path.components().any(|c| c.as_os_str() == ".venv" || c.as_os_str() == "__pycache__") {
@@ -77,6 +83,7 @@ fn main() -> Result<()> {
                 Ok(module) => {
                     println!("   [Parsed Successfully] Module: {}", module.name);
                     package.modules.push(module);
+                    files_found += 1;
                 }
                 Err(e) => eprintln!("   [Parse Error] Failed to parse {}: {}", path.display(), e),
             }
@@ -89,8 +96,11 @@ fn main() -> Result<()> {
     let mut resolver = Resolver::new();
     resolver.build_index(&package);
 
-    let generator = SiteGenerator::new(&args.src, &args.out, &args.version)
-        .context("Failed to initialize documentation generator")?;
+    // Convert Option<String> to Option<&str> to match the expected signature
+    let template_dir = args.templates.as_deref();
+
+    // Call with all 4 arguments and handle the Result properly without trailing line syntax errors
+    let generator = SiteGenerator::new(&args.src, &args.out, &args.version, template_dir)?;
         
     generator.generate(&mut package, &resolver)?;
 
