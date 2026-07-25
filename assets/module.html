@@ -1,10 +1,14 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-layout="{{ layout }}" data-theme="{{ theme }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Module {{ module.name }} - {{ package.name }}</title>
-    <link rel="stylesheet" href="style.css">
+    {% set display_module_name = module.name %}
+    {% if module.name == "__init__" and module.folder %}
+        {% set display_module_name = module.folder %}
+    {% endif %}
+    <title>Module {{ display_module_name }} - {{ package.name }}</title>
+    <link rel="stylesheet" href="{{ root_path }}style.css">
 </head>
 <body>
     {% include "sidebar.html" %}
@@ -16,17 +20,20 @@
         </div>
 
         <div id="page-content">
-            <div class="namespace-path" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div class="namespace-path breadcrumb-row">
                 <div>
-                    <a href="index.html">{{ package.name }}</a> :: <span>{{ module.name }}</span>
+                    <a href="{{ root_path }}index.html">{{ package.name }}</a> :: <span>{{ display_module_name }}</span>
                 </div>
-                <a href="index.html" style="text-decoration: none; color: var(--accent-blue); font-weight: 500; font-size: 0.9rem;">
+                <a href="{{ root_path }}index.html" class="back-link">
                     ← Back to Overview
                 </a>
             </div>
 
-            <h1 class="module-title">Module <span class="entity-name">{{ module.name }}</span></h1>
-            
+            <h1 class="module-title">
+                {% if module.name == "__init__" %}Package{% else %}Module{% endif %}
+                <span class="entity-name">{{ display_module_name }}</span>
+            </h1>
+
             {% if module.docstring %}
                 <div class="docstring">{{ module.docstring | safe }}</div>
             {% endif %}
@@ -40,7 +47,7 @@
                         {% if class.docstring %}
                             <div class="docstring">{{ class.docstring | safe }}</div>
                         {% endif %}
-                        
+
                         {% if class.functions %}
                             <div class="method-list">
                                 <h4>Methods</h4>
@@ -74,8 +81,8 @@
             {% endif %}
         </div>
     </main>
-
-    <script src="search-index.js"></script>
-    <script src="app.js"></script>
+    <script src="{{ root_path }}nav-data.js" defer></script>
+    <script src="{{ root_path }}search-index.js" defer></script>
+    <script src="{{ root_path }}app.js" defer></script>
 </body>
 </html>

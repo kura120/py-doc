@@ -16,6 +16,15 @@ const BASE_URL: &str = "https://raw.githubusercontent.com/kura120/py-doc/refs/he
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NavGroup {
     pub name: Option<String>,
+    /// Link to this folder's own __init__.py page, if it has one.
+    pub link_path: Option<String>,
+    /// Docstring pulled from the folder's __init__.py (merged in, not shown as its own card).
+    pub docstring: Option<String>,
+    /// Classes defined directly in the folder's __init__.py.
+    pub classes: Vec<crate::models::PythonClass>,
+    /// Functions defined directly in the folder's __init__.py.
+    pub functions: Vec<crate::models::PythonFunction>,
+    /// Child modules of this folder, excluding its own __init__/__main__.
     pub modules: Vec<PythonModule>,
 }
 
@@ -187,6 +196,8 @@ pub struct SiteGenerator {
     pub output_dir: String,
     pub version: String,
     pub template_dir: Option<PathBuf>,
+    pub layout: String,
+    pub theme: String,
 }
 
 impl SiteGenerator {
@@ -248,7 +259,7 @@ impl SiteGenerator {
         }
     }
 
-    pub fn new(src_dir: &str, output_dir: &str, version: &str, template_dir: Option<&str>) -> Result<Self> {
+    pub fn new(src_dir: &str, output_dir: &str, version: &str, template_dir: Option<&str>, layout: &str, theme: &str) -> Result<Self> {
         let mut templates = std::collections::HashMap::new();
         let template_dir_path = template_dir.map(PathBuf::from);
 
@@ -526,10 +537,42 @@ impl SiteGenerator {
                 }
             });
 
+            // __main__ never reaches here in practice (main.rs skips it while
+            // scanning), but strip it defensively regardless of folder.
+            mods.retain(|m| m.name != "__main__");
+
+            let (folder_link_path, folder_docstring, folder_classes, folder_functions) =
+                if folder_name.is_some() {
+                    // A real folder: pull its __init__.py out and merge its
+                    // content into the folder itself instead of listing it
+                    // as its own separate module card.
+                    if let Some(pos) = mods.iter().position(|m| m.name == "__init__") {
+                        let init_mod = mods.remove(pos);
+                        (
+                            Some(init_mod.link_path),
+                            init_mod.docstring,
+                            init_mod.classes,
+                            init_mod.functions,
+                        )
+                    } else {
+                        (None, None, Vec::new(), Vec::new())
+                    }
+                } else {
+                    // Root-level "no folder" bucket: the package's own
+                    // __init__.py is already represented by the page title/
+                    // subtitle up top, so it doesn't need a card of its own.
+                    mods.retain(|m| m.name != "__init__");
+                    (None, None, Vec::new(), Vec::new())
+                };
+
             nav_groups.push((
                 folder_z,
                 NavGroup {
                     name: folder_name,
+                    link_path: folder_link_path,
+                    docstring: folder_docstring,
+                    classes: folder_classes,
+                    functions: folder_functions,
                     modules: mods,
                 },
             ));
@@ -598,11 +641,17 @@ impl SiteGenerator {
                 .with_context(|| format!("Failed to write nested module file: {:?}", absolute_output_path))?;
         }
 
-        println!("\x1b[36;1m[3/3]\x1b[0m Generating search indexes & styles...");
+        println!("\x1b[36;1m[3/3]\x1b[0m Generating search & nav indexes, styles...");
         
         // Render Search JS index
         let search_index = serde_json::to_string(&package)?;
         fs::write(Path::new(&self.output_dir).join("search-index.js"), format!("const searchIndex = {};", search_index))?;
+
+        // Render Nav JS index — the full folder/module/symbol tree, generated once
+        // and rendered into #nav-tree client-side by app.js, instead of being
+        // duplicated via {% include %} into every single output page.
+        let nav_index = serde_json::to_string(&final_nav_groups)?;
+        fs::write(Path::new(&self.output_dir).join("nav-data.js"), format!("const navData = {};", nav_index))?;
 
         let out_dir = self.output_dir.clone();
         let local_template_dir = self.template_dir.clone();
