@@ -43,17 +43,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
             searchIndex.modules.forEach(mod => {
                 if (mod.name.toLowerCase().includes(query)) {
-                    matches.push({ type: "Module", name: mod.name, link: `${mod.name}.html` });
+                    matches.push({ type: "Module", name: mod.name, link: mod.link_path });
                 }
                 if (mod.classes) {
                     mod.classes.forEach(cls => {
                         if (cls.name.toLowerCase().includes(query)) {
-                            matches.push({ type: "Class", name: `${mod.name}.${cls.name}`, link: `${mod.name}.html#class.${cls.name}` });
+                            matches.push({ type: "Class", name: `${mod.name}.${cls.name}`, link: `${mod.link_path}#class.${cls.name}` });
                         }
                         if (cls.functions) {
                             cls.functions.forEach(f => {
                                 if (f.name.toLowerCase().includes(query)) {
-                                    matches.push({ type: "Method", name: `${mod.name}.${cls.name}.${f.name}`, link: `${mod.name}.html#class.${cls.name}` });
+                                    matches.push({ type: "Method", name: `${mod.name}.${cls.name}.${f.name}`, link: `${mod.link_path}#class.${cls.name}` });
                                 }
                             });
                         }
@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (mod.functions) {
                     mod.functions.forEach(f => {
                         if (f.name.toLowerCase().includes(query)) {
-                            matches.push({ type: "Function", name: `${mod.name}.${f.name}`, link: `${mod.name}.html#fn.${f.name}` });
+                            matches.push({ type: "Function", name: `${mod.name}.${f.name}`, link: `${mod.link_path}#fn.${f.name}` });
                         }
                     });
                 }
@@ -93,13 +93,13 @@ document.addEventListener("DOMContentLoaded", () => {
             link.classList.remove("active-item");
             const href = link.getAttribute("href");
 
-            const isMatch = currentHash 
+            const isMatch = currentHash
                 ? href === `${currentPath}${currentHash}`
                 : href === currentPath;
 
             if (isMatch) {
                 link.classList.add("active-item");
-                
+
                 const parentDetails = link.closest("details");
                 if (parentDetails) {
                     parentDetails.open = true;
@@ -123,15 +123,42 @@ document.addEventListener("DOMContentLoaded", () => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     const id = entry.target.getAttribute("id");
-                    const currentPath = window.location.pathname.split("/").pop() || "index.html";
-                    
                     history.replaceState(null, null, `#${id}`);
-                    
                     updateActiveSidebarItem();
                 }
             });
         }, observerOptions);
 
         trackedItems.forEach(item => observer.observe(item));
+    }
+
+    const sidebar = document.querySelector('.sidebar');
+    const resizer = document.querySelector('.sidebar-resizer');
+
+    if (sidebar && resizer) {
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            e.preventDefault();
+            document.body.style.cursor = 'col-resize';
+            resizer.classList.add('is-resizing');
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            let newWidth = e.clientX;
+            if (newWidth >= 200 && newWidth <= 600) {
+                sidebar.style.width = `${newWidth}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = 'default';
+                resizer.classList.remove('is-resizing');
+            }
+        });
     }
 });
