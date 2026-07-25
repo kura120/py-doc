@@ -1,6 +1,6 @@
 [package]
 name = "py-doc"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 authors = ["Santiago Vasquez <kur4ise@example.com>"]
 description = "A zero-config, blazing fast Python auto-documentation generator."
@@ -37,3 +37,10 @@ pkg-fmt = "zip"
 
 [package.metadata.binstall.overrides.'cfg(not(target_os = "windows"))']
 pkg-fmt = "tgz" # uses .tar.gz
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
