@@ -325,6 +325,8 @@ impl SiteGenerator {
             output_dir: output_dir.to_string(),
             version: version.to_string(),
             template_dir: template_dir_path,
+            layout: layout.to_string(),
+            theme: theme.to_string(),
         })
     }
 
@@ -602,11 +604,23 @@ impl SiteGenerator {
         let final_nav_groups: Vec<NavGroup> = nav_groups.into_iter().map(|(_, g)| g).collect();
 
         // Render index page
+        // nav_groups is only inserted here, for index.html's own content grid.
+        // mod_context (below) intentionally omits it — module/document pages'
+        // sidebars are rendered client-side from nav-data.js instead, so
+        // duplicating the full tree into every single page's Tera context
+        // would just be wasted serialization work.
         let mut index_context = TeraContext::new();
         index_context.insert("package", package);
-        index_context.insert("nav_groups", &final_nav_groups);
         index_context.insert("version", &self.version);
         index_context.insert("root_path", "./");
+        index_context.insert("layout", &self.layout);
+        index_context.insert("theme", &self.theme);
+        // Unlike the sidebar (now rendered client-side from nav-data.js),
+        // index.html's own "Modules" folder-card grid is part of its main
+        // content and only rendered once — so it still needs the real data,
+        // and doing so here doesn't reintroduce the per-page duplication
+        // problem nav-data.js was meant to solve.
+        index_context.insert("nav_groups", &final_nav_groups);
         
         let rendered_index = self.tera.render("index.html", &index_context)?;
         fs::write(Path::new(&self.output_dir).join("index.html"), rendered_index)?;
@@ -625,10 +639,11 @@ impl SiteGenerator {
 
             let mut mod_context = TeraContext::new();
             mod_context.insert("package", &package);
-            mod_context.insert("nav_groups", &final_nav_groups);
             mod_context.insert("module", module);
             mod_context.insert("version", &self.version);
             mod_context.insert("root_path", &root_prefix);
+            mod_context.insert("layout", &self.layout);
+            mod_context.insert("theme", &self.theme);
 
             let template_name = if doc_only_modules.contains(&module.name) {
                 "document.html"
