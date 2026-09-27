@@ -599,7 +599,13 @@ impl SiteGenerator {
             };
 
             if actual_z_a == actual_z_b {
-                group_a.name.cmp(&group_b.name)
+                let size_a = group_a.modules.len() + group_a.classes.len() + group_a.functions.len();
+                let size_b = group_b.modules.len() + group_b.classes.len() + group_b.functions.len();
+                if size_a == size_b {
+                    group_a.name.cmp(&group_b.name)
+                } else {
+                    size_b.cmp(&size_a) // descending: bigger/busier folders surface first
+                }
             } else {
                 actual_z_a.cmp(&actual_z_b)
             }
@@ -607,12 +613,22 @@ impl SiteGenerator {
 
         let final_nav_groups: Vec<NavGroup> = nav_groups.into_iter().map(|(_, g)| g).collect();
 
+        // At-a-glance totals for the index page header
+        let total_modules = package.modules.iter()
+            .filter(|m| m.name != "__init__" && m.name != "__main__")
+            .count();
+        let total_classes: usize = package.modules.iter().map(|m| m.classes.len()).sum();
+        let total_functions: usize = package.modules.iter().map(|m| m.functions.len()).sum();
+
         // Render index page
         let mut index_context = TeraContext::new();
         index_context.insert("package", package);
         index_context.insert("nav_groups", &final_nav_groups);
         index_context.insert("version", &self.version);
         index_context.insert("root_path", "./");
+        index_context.insert("total_modules", &total_modules);
+        index_context.insert("total_classes", &total_classes);
+        index_context.insert("total_functions", &total_functions);
         
         let rendered_index = self.tera.render("index.html", &index_context)?;
         fs::write(Path::new(&self.output_dir).join("index.html"), rendered_index)?;

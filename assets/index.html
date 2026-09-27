@@ -18,6 +18,7 @@
         <div id="page-content">
             <h1 class="package-title">{{ package.name }}</h1>
             <div class="subtitle">Python Package Reference Documentation</div>
+            <p class="package-stats">{{ total_modules }} module{% if total_modules != 1 %}s{% endif %}, {{ total_classes }} class{% if total_classes != 1 %}es{% endif %}, {{ total_functions }} function{% if total_functions != 1 %}s{% endif %} in this build.</p>
 
             <h2>Modules</h2>
             <div class="module-grid">
