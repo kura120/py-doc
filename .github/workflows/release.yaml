@@ -26,6 +26,20 @@ jobs:
             asset_name: py-doc-x86_64-pc-windows-msvc.zip
 
     steps:
+      - name: Install UPX
+        if: matrix.os != 'windows-latest'
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo apt-get update && sudo apt-get install -y upx-ucl
+          else
+            brew install upx
+          fi
+
+      - name: Install UPX (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install upx -y
+        shell: pwsh
+
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
@@ -34,21 +48,28 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build Binary (Release Mode)
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Build Binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Build Binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: pwsh -File build.ps1
 
       - name: Archive Binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          cd target/${{ matrix.target }}/release
-          tar -czf ../../../${{ matrix.asset_name }} ${{ matrix.artifact_name }}
+          cd target/release
+          tar -czf ../../${{ matrix.asset_name }} ${{ matrix.artifact_name }}
           cd -
 
       - name: Archive Binary (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path target\${{ matrix.target }}\release\${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}
+          Compress-Archive -Path target\release\${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}
 
       - name: Create and Upload to GitHub Release
         uses: softprops/action-gh-release@v2
