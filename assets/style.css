@@ -185,17 +185,28 @@ a { color: inherit; }
     flex-direction: column;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
+    overflow-x: hidden;
 }
 
 .sidebar-resizer {
-    width: 10px;
+    width: 7px;
     cursor: col-resize;
-    position: absolute;
-    right: -5px;
-    top: 0;
-    bottom: 0;
+    position: relative;
     z-index: 100;
     transition: background-color 0.2s ease;
+}
+
+.sidebar-resizer::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: var(--border-color);
+    transform: translateX(-50%);
+    opacity: 0.4;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
 .sidebar-resizer::after {
@@ -203,13 +214,16 @@ a { color: inherit; }
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 3px;
-    height: 36px;
+    width: 16px;
+    height: 16px;
     background: var(--border-color);
-    border-radius: 3px;
+    border-radius: 50%;
     transform: translate(-50%, -50%);
-    opacity: 0.8;
-    transition: background-color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.6;
+    box-shadow: 
+        0 -24px 0 0 var(--border-color),
+        0 24px 0 0 var(--border-color);
+    transition: background-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
 }
 
 .sidebar-resizer:hover,
@@ -217,10 +231,19 @@ a { color: inherit; }
     background-color: color-mix(in srgb, var(--accent-blue) 12%, transparent);
 }
 
+.sidebar-resizer:hover::before,
+.sidebar-resizer.is-resizing::before {
+    opacity: 1;
+    background: var(--accent-blue);
+}
+
 .sidebar-resizer:hover::after,
 .sidebar-resizer.is-resizing::after {
     background: var(--accent-blue);
     opacity: 1;
+    box-shadow: 
+        0 -24px 0 0 var(--accent-blue),
+        0 24px 0 0 var(--accent-blue);
 }
 
 .sidebar-header {
