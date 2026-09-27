@@ -18,7 +18,12 @@ du -h "$BIN_PATH"
 if command -v upx >/dev/null 2>&1; then
     echo ""
     echo "Compressing with UPX..."
-    upx --best --lzma "$BIN_PATH"
+    # macOS requires --force-macos flag
+    if [ "$(uname)" = "Darwin" ]; then
+        upx --best --lzma --force-macos "$BIN_PATH"
+    else
+        upx --best --lzma "$BIN_PATH"
+    fi
     echo ""
     echo "Binary size after UPX:"
     du -h "$BIN_PATH"
