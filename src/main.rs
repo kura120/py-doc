@@ -164,8 +164,6 @@ fn run_generation(args: &Args) -> Result<()> {
         &args.out,
         &args.version,
         template_dir,
-        args.layout.as_str(),
-        args.theme.as_str(),
     )?;
 
     generator.generate(&mut package, &resolver)?;

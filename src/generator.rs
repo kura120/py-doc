@@ -101,16 +101,21 @@ enum AlertType {
     Warning,
 }
 
+const ICON_NOTE: &str = r#"<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.4"/><path d="M10 9v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="10" cy="6.75" r="0.9" fill="currentColor"/></svg>"#;
+const ICON_WARNING: &str = r#"<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M10 3.5 17.5 16h-15L10 3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M10 8.5v3.25" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="10" cy="13.75" r="0.9" fill="currentColor"/></svg>"#;
+const ICON_ERROR: &str = r#"<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.4"/><path d="M7.5 7.5l5 5M12.5 7.5l-5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>"#;
+const ICON_LINK: &str = r#"<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8.5 4.5H15.5V11.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.5 4.5 8 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11.5 6.5H5A1.5 1.5 0 0 0 3.5 8v6A1.5 1.5 0 0 0 5 15.5h6a1.5 1.5 0 0 0 1.5-1.5v-2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>"#;
+
 impl AlertType {
     fn to_html(&self, content: &str) -> String {
         let (class_name, icon, title) = match self {
-            AlertType::Error => ("alert-error", "⚠️", "Error"),
-            AlertType::Note => ("alert-note", "ℹ️", "Note"),
-            AlertType::Warning => ("alert-warning", "⚡", "Warning"),
+            AlertType::Error => ("alert-error", ICON_ERROR, "Error"),
+            AlertType::Note => ("alert-note", ICON_NOTE, "Note"),
+            AlertType::Warning => ("alert-warning", ICON_WARNING, "Warning"),
         };
 
         format!(
-            "\n\n<div class=\"alert {}\">\n  <strong>{} {}:</strong> {}\n</div>\n\n",
+            "\n\n<div class=\"alert {}\">\n  <strong><span class=\"alert-icon\">{}</span>{}:</strong> {}\n</div>\n\n",
             class_name, icon, title, content
         )
     }
@@ -183,7 +188,10 @@ impl<'a> DocMacro<'a> {
                     "<a href=\"{}.html{}\" class=\"doc-internal-link\"><code>{}</code></a>", 
                     physical_target, sym_suffix, target
                 );
-                format!("\n\n<div class=\"doc-link-container\">🔗 See Reference: {}</div>\n\n", link_html)
+                format!(
+                    "\n\n<div class=\"doc-link-container\"><span class=\"doc-link-icon\">{}</span>See Reference: {}</div>\n\n",
+                    ICON_LINK, link_html
+                )
             }
             DocMacro::CodeBlockStart { .. } => String::new(),
         }
@@ -196,8 +204,6 @@ pub struct SiteGenerator {
     pub output_dir: String,
     pub version: String,
     pub template_dir: Option<PathBuf>,
-    pub layout: String,
-    pub theme: String,
 }
 
 impl SiteGenerator {
@@ -259,7 +265,7 @@ impl SiteGenerator {
         }
     }
 
-    pub fn new(src_dir: &str, output_dir: &str, version: &str, template_dir: Option<&str>, layout: &str, theme: &str) -> Result<Self> {
+    pub fn new(src_dir: &str, output_dir: &str, version: &str, template_dir: Option<&str>) -> Result<Self> {
         let mut templates = std::collections::HashMap::new();
         let template_dir_path = template_dir.map(PathBuf::from);
 
@@ -325,8 +331,6 @@ impl SiteGenerator {
             output_dir: output_dir.to_string(),
             version: version.to_string(),
             template_dir: template_dir_path,
-            layout: layout.to_string(),
-            theme: theme.to_string(),
         })
     }
 
@@ -604,23 +608,11 @@ impl SiteGenerator {
         let final_nav_groups: Vec<NavGroup> = nav_groups.into_iter().map(|(_, g)| g).collect();
 
         // Render index page
-        // nav_groups is only inserted here, for index.html's own content grid.
-        // mod_context (below) intentionally omits it — module/document pages'
-        // sidebars are rendered client-side from nav-data.js instead, so
-        // duplicating the full tree into every single page's Tera context
-        // would just be wasted serialization work.
         let mut index_context = TeraContext::new();
         index_context.insert("package", package);
+        index_context.insert("nav_groups", &final_nav_groups);
         index_context.insert("version", &self.version);
         index_context.insert("root_path", "./");
-        index_context.insert("layout", &self.layout);
-        index_context.insert("theme", &self.theme);
-        // Unlike the sidebar (now rendered client-side from nav-data.js),
-        // index.html's own "Modules" folder-card grid is part of its main
-        // content and only rendered once — so it still needs the real data,
-        // and doing so here doesn't reintroduce the per-page duplication
-        // problem nav-data.js was meant to solve.
-        index_context.insert("nav_groups", &final_nav_groups);
         
         let rendered_index = self.tera.render("index.html", &index_context)?;
         fs::write(Path::new(&self.output_dir).join("index.html"), rendered_index)?;
@@ -639,11 +631,10 @@ impl SiteGenerator {
 
             let mut mod_context = TeraContext::new();
             mod_context.insert("package", &package);
+            mod_context.insert("nav_groups", &final_nav_groups);
             mod_context.insert("module", module);
             mod_context.insert("version", &self.version);
             mod_context.insert("root_path", &root_prefix);
-            mod_context.insert("layout", &self.layout);
-            mod_context.insert("theme", &self.theme);
 
             let template_name = if doc_only_modules.contains(&module.name) {
                 "document.html"
@@ -656,17 +647,11 @@ impl SiteGenerator {
                 .with_context(|| format!("Failed to write nested module file: {:?}", absolute_output_path))?;
         }
 
-        println!("\x1b[36;1m[3/3]\x1b[0m Generating search & nav indexes, styles...");
+        println!("\x1b[36;1m[3/3]\x1b[0m Generating search indexes & styles...");
         
         // Render Search JS index
         let search_index = serde_json::to_string(&package)?;
         fs::write(Path::new(&self.output_dir).join("search-index.js"), format!("const searchIndex = {};", search_index))?;
-
-        // Render Nav JS index — the full folder/module/symbol tree, generated once
-        // and rendered into #nav-tree client-side by app.js, instead of being
-        // duplicated via {% include %} into every single output page.
-        let nav_index = serde_json::to_string(&final_nav_groups)?;
-        fs::write(Path::new(&self.output_dir).join("nav-data.js"), format!("const navData = {};", nav_index))?;
 
         let out_dir = self.output_dir.clone();
         let local_template_dir = self.template_dir.clone();

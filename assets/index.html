@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-layout="{{ layout }}" data-theme="{{ theme }}">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,7 +30,7 @@
                         {% set contents_count = symbol_count + submodule_count %}
 
                         <div class="module-card folder-card" {% if group.link_path %}onclick="location.href='{{ group.link_path }}';"{% endif %}>
-                            <h3><span class="card-icon">📁</span>{{ group.name }}</h3>
+                            <h3><span class="card-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 5.5C2.5 4.67 3.17 4 4 4h3.5L9 5.5h7c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5H4c-.83 0-1.5-.67-1.5-1.5v-8.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>{{ group.name }}</h3>
                             <p>
                                 {% if group.docstring %}
                                     {{ group.docstring | striptags | truncate(length=140) }}

@@ -91,7 +91,10 @@
     --font-body: "Segoe UI", Roboto, sans-serif;
     --font-mono: Consolas, Monaco, "Andale Mono", monospace;
     --content-max-width: 1200px;
-    --show-nav-icons: none;
+    --show-nav-icons: inline-flex;
+    --nav-icon-stroke: 1.1;
+    --nav-icon-opacity: 0.5;
+    --nav-icon-size: 13px;
 }
 
 /* --- Modern: Stripe/Mintlify lineage. Airy, soft-shadowed, indigo. --- */
@@ -117,7 +120,15 @@
     --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: "SF Mono", Consolas, Monaco, monospace;
     --content-max-width: 1360px;
-    --show-nav-icons: none;
+    --show-nav-icons: inline-flex;
+    --nav-icon-color: var(--accent-blue);
+}
+
+:root[data-layout="modern"] .nav-icon {
+    background: var(--sidebar-hover);
+    border-radius: 6px;
+    padding: 3px;
+    margin-right: 2px;
 }
 
 /* =========================================
@@ -268,10 +279,8 @@ a { color: inherit; }
     user-select: none;
 }
 /* Setting display:flex above already suppresses the browser's native
-   disclosure marker (it only renders for display:list-item), so we
-   only need to supply our own arrow via ::after, same as nav-header. */
-.folder-header::after { content: "▾"; font-size: 0.8rem; color: var(--muted-color); flex-shrink: 0; }
-.nav-folder:not([open]) > .folder-header::after { content: "▸"; }
+   disclosure marker (it only renders for display:list-item); the open/
+   closed indicator is the rotating .nav-chevron SVG instead. */
 .folder-header:hover { background-color: var(--sidebar-hover); }
 .folder-header a, .folder-header > span {
     display: inline-flex;
@@ -291,7 +300,51 @@ a { color: inherit; }
     margin-left: 6px;
 }
 
-.nav-icon { display: var(--show-nav-icons); flex-shrink: 0; }
+.nav-icon {
+    display: var(--show-nav-icons, inline-flex);
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--nav-icon-color, var(--muted-color));
+    opacity: var(--nav-icon-opacity, 1);
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+.nav-icon svg {
+    display: block;
+    width: var(--nav-icon-size, 14px);
+    height: var(--nav-icon-size, 14px);
+    stroke-width: var(--nav-icon-stroke, 1.4);
+}
+a:hover > .nav-icon,
+.nav-group-flat a:hover .nav-icon,
+.nav-header:hover .nav-icon,
+.folder-header:hover .nav-icon {
+    color: var(--accent-blue);
+    opacity: 1;
+}
+
+/* Chevron replacing the old ▾/▸ text glyphs */
+.nav-chevron {
+    display: inline-flex;
+    align-items: center;
+    color: var(--muted-color);
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+.nav-chevron svg { display: block; width: 10px; height: 10px; }
+details[open] > summary .nav-chevron { transform: rotate(90deg); }
+
+/* Search icon inside the filter box */
+.search-box { position: relative; }
+.search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted-color);
+    pointer-events: none;
+}
+.search-icon svg { display: block; width: 14px; height: 14px; }
+.search-box input { padding-left: 32px; }
 
 .nav-js-required {
     padding: 12px 8px;
@@ -314,8 +367,6 @@ summary.nav-header {
     align-items: center;
     user-select: none;
 }
-summary.nav-header::after { content: "▸"; font-size: 0.8rem; color: var(--muted-color); }
-details[open] summary.nav-header::after { content: "▾"; }
 summary.nav-header:hover { background-color: var(--sidebar-hover); }
 summary.nav-header a {
     display: inline-flex;
@@ -434,7 +485,8 @@ details[open] summary.active-mod, .nav-header.active-mod a {
 
 /* Folder cards on the index page (merged __init__.py content) */
 .folder-card h3 { display: flex; align-items: center; gap: 8px; }
-.card-icon { flex-shrink: 0; }
+.card-icon { flex-shrink: 0; color: var(--accent-blue); }
+.card-icon svg { display: block; width: 18px; height: 18px; }
 
 .folder-section-label {
     margin-top: 14px;
@@ -593,7 +645,12 @@ h1.module-title, h1.package-title {
     font-size: 0.92rem;
     line-height: 1.5;
 }
-.alert strong { font-family: var(--font-heading); }
+.alert strong { font-family: var(--font-heading); display: inline-flex; align-items: center; gap: 6px; }
+.alert-icon { display: inline-flex; }
+.alert-icon svg { display: block; width: 15px; height: 15px; }
+.alert-note .alert-icon { color: var(--accent-blue); }
+.alert-warning .alert-icon { color: #e3a008; }
+.alert-error .alert-icon { color: var(--accent-red); }
 .alert-note { border-left-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, var(--code-bg)); }
 .alert-warning { border-left-color: #e3a008; background: color-mix(in srgb, #e3a008 10%, var(--code-bg)); }
 .alert-error { border-left-color: var(--accent-red); background: color-mix(in srgb, var(--accent-red) 10%, var(--code-bg)); }
@@ -606,7 +663,12 @@ h1.module-title, h1.package-title {
     border-radius: var(--radius-sm);
     background: var(--code-bg);
     font-size: 0.92rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
+.doc-link-icon { display: inline-flex; color: var(--accent-blue); flex-shrink: 0; }
+.doc-link-icon svg { display: block; width: 15px; height: 15px; }
 .doc-internal-link {
     text-decoration: none;
     color: var(--accent-blue);
