@@ -78,7 +78,8 @@ Run `py-doc` with no arguments in a terminal to use the interactive setup wizard
 | `-e`, `--exclude <NAME>` | Skip a file or directory, by name or by path relative to `--src`. Repeatable. |
 | `--source-url <URL>` | Base URL of a browsable copy of the sources. Turns each symbol's `file:line` reference into a link. |
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
-| `--strict` | Exit with an error if a file fails to parse, or an image or doc-link cannot be resolved. Useful in CI. |
+| `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
+| `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
 | `-V`, `--version` | Print the py-doc version. |
 | `-h`, `--help` | Print help. |
 
@@ -94,6 +95,10 @@ Every `.py` file under `--src` is documented, except:
 * anything named with `--exclude`.
 
 Files with syntax errors are reported and skipped; the rest of the site is still generated.
+
+### Keeping the output folder tidy
+
+Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything py-doc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
 
 ### Linking to source
 
@@ -114,11 +119,11 @@ Put a macro on its own line inside any docstring.
 
 | Macro | Effect |
 | --- | --- |
-| `#pd-note: text` | A highlighted note box. |
-| `#pd-warning: text` | A highlighted warning box. |
+| `#pd-note: text` | A highlighted note box. The text may use inline Markdown. |
+| `#pd-warning: text` | A highlighted warning box. The text may use inline Markdown. |
 | `#pd-doc-link: target` | A "See Reference" link to a module, class, function or method. |
 | `#pd-image: path` | An image. The path is relative to `--src` and must stay inside it. |
-| `#pd-code lang` | Starts a code block that ends at the next line containing only ```` ``` ````. |
+| `#pd-code` | Starts a Python code block that ends at the next line containing only ```` ``` ````. For another language, name it: `#pd-code json`. |
 | `#pd-write` | As the first line of a module docstring, in a module with no classes or functions: renders the module as a plain document page. |
 | `#pd-z-index: N` | In a module docstring: sort position in the navigation. Lower numbers come first. |
 
@@ -132,7 +137,7 @@ Put a macro on its own line inside any docstring.
 #pd-doc-link: Engine                      a bare name, if only one module defines it
 ```
 
-A target that cannot be found is shown as "(not found)" and reported as a warning.
+A target that cannot be found is shown as "(not found)" and reported as a warning. So are a misspelled macro, a missing image and a `#pd-code` block that is never closed. Macro-looking lines inside an ordinary fenced code block are left as text.
 
 ### A documentation-only page
 

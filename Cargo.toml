@@ -1,6 +1,6 @@
 [package]
 name = "py-doc"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 authors = ["Santiago Vasquez <kur4ise@gmail.com>"]
 description = "A zero-config, blazing fast Python auto-documentation generator."

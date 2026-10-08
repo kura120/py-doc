@@ -1,10 +1,11 @@
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use rayon::prelude::*;
+use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 use tera::{Context as TeraContext, Kwargs, State, Tera};
 
@@ -25,6 +26,9 @@ const EMBEDDED_ASSETS: [(&str, &str); 6] = [
 ];
 const TEMPLATE_NAMES: [&str; 4] = ["sidebar.html", "index.html", "module.html", "document.html"];
 const STATIC_NAMES: [&str; 2] = ["style.css", "app.js"];
+/// Lists every file a run wrote, so a later `--clean` run can remove the
+/// ones that are no longer produced without touching anything else.
+const MANIFEST_NAME: &str = ".py-doc-manifest";
 
 static TAG_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"<[^>]*>").expect("valid regex"));
@@ -169,7 +173,18 @@ impl<'a> DocMacro<'a> {
                 target: target.trim(),
             })
         } else if let Some(lang_part) = trimmed.strip_prefix("#pd-code") {
-            let language = lang_part.trim().trim_matches('`').to_string();
+            // Accepts "#pd-code", "#pd-code python", "#pd-code: python" and
+            // "#pd-code ```python". With no language the block is Python.
+            let language = lang_part
+                .trim()
+                .trim_start_matches(':')
+                .trim()
+                .trim_matches('`');
+            let language = if language.is_empty() {
+                "python".to_string()
+            } else {
+                language.to_string()
+            };
             Some(DocMacro::CodeBlockStart { language })
         } else {
             None
@@ -199,6 +214,8 @@ pub struct SiteGenerator {
     /// Base URL of a browsable copy of the source tree, for "source" links.
     pub source_url: Option<String>,
     warnings: AtomicUsize,
+    /// Site-relative paths of every file written in this run.
+    written: Mutex<BTreeSet<String>>,
 }
 
 /// Where a module's page is written, relative to the site root.
@@ -284,12 +301,74 @@ impl SiteGenerator {
             theme: theme.map(str::to_string),
             source_url: source_url.map(|url| url.trim_end_matches('/').to_string()),
             warnings: AtomicUsize::new(0),
+            written: Mutex::new(BTreeSet::new()),
         })
     }
 
     /// Number of non-fatal problems found (missing images, unresolved doc-links).
     pub fn warning_count(&self) -> usize {
         self.warnings.load(Ordering::Relaxed)
+    }
+
+    fn record(&self, site_path: &str) {
+        self.written
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(site_path.to_string());
+    }
+
+    /// Writes the manifest for this run. With `clean`, first deletes files
+    /// that an earlier run listed and this run no longer produces. Only
+    /// files named in a manifest are ever removed, so anything else kept in
+    /// the output folder (a CNAME, hand-written pages) is safe.
+    fn update_manifest(&self, clean: bool) -> Result<usize> {
+        let out = Path::new(&self.output_dir);
+        let manifest_path = out.join(MANIFEST_NAME);
+        let written = self
+            .written
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let previous = fs::read_to_string(&manifest_path).ok();
+        if clean && previous.is_none() {
+            println!(
+                "  --clean: this folder has no {} from an earlier run, so nothing was removed.",
+                MANIFEST_NAME
+            );
+        }
+
+        // Files earlier runs wrote that this run did not.
+        let leftovers: Vec<&str> = previous
+            .as_deref()
+            .unwrap_or_default()
+            .lines()
+            .map(str::trim)
+            .filter(|site_path| {
+                !site_path.is_empty()
+                    && !written.contains(*site_path)
+                    && is_safe_site_path(site_path)
+                    && out.join(site_path).is_file()
+            })
+            .collect();
+
+        let mut listed: BTreeSet<&str> = written.iter().map(String::as_str).collect();
+        let mut removed = 0;
+        for site_path in leftovers {
+            let stale = out.join(site_path);
+            if clean && fs::remove_file(&stale).is_ok() {
+                removed += 1;
+                remove_empty_parents(out, &stale);
+            } else {
+                // Still on disk: keep it listed so a later --clean can remove it.
+                listed.insert(site_path);
+            }
+        }
+
+        let mut body = listed.into_iter().collect::<Vec<_>>().join("\n");
+        body.push('\n');
+        fs::write(&manifest_path, body)
+            .with_context(|| format!("Failed to write {:?}", manifest_path))?;
+        Ok(removed)
     }
 
     fn warn(&self, origin: &str, message: &str) {
@@ -309,17 +388,29 @@ impl SiteGenerator {
             .strip_prefix(&self.src_root)
             .map_err(|_| anyhow!("Image path '{}' is outside the source directory", img_path))?;
 
-        let dest = Path::new(&self.output_dir).join("assets").join(relative);
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::copy(&resolved, &dest)?;
-
         let url_path = relative
             .components()
             .map(|c| c.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
+        let site_path = format!("assets/{}", url_path);
+
+        // Modules render in parallel and often share an image. Copy each
+        // one once, under the lock, so two threads never write the same file.
+        let mut written = self
+            .written
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !written.contains(&site_path) {
+            let dest = Path::new(&self.output_dir).join("assets").join(relative);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&resolved, &dest)?;
+            written.insert(site_path);
+        }
+        drop(written);
+
         Ok(format!("{}assets/{}", ctx.root_prefix, url_path))
     }
 
@@ -332,8 +423,8 @@ impl SiteGenerator {
                     AlertType::Error.to_html(&escape_html(&e.to_string()))
                 }
             },
-            DocMacro::Note { text } => AlertType::Note.to_html(text),
-            DocMacro::Warning { text } => AlertType::Warning.to_html(text),
+            DocMacro::Note { text } => AlertType::Note.to_html(&render_inline(text)),
+            DocMacro::Warning { text } => AlertType::Warning.to_html(&render_inline(text)),
             DocMacro::DocLink { target } => {
                 let label = format!("<code>{}</code>", escape_html(target));
                 let link_html = match ctx.resolver.resolve(target) {
@@ -436,11 +527,36 @@ impl SiteGenerator {
                 continue;
             }
 
+            if trimmed.starts_with("#pd-") {
+                let name = trimmed.split([':', ' ']).next().unwrap_or(trimmed);
+                let hint = if name == "#pd-z-index" {
+                    " (it only applies in a module docstring)"
+                } else {
+                    ""
+                };
+                self.warn(
+                    ctx.origin,
+                    &format!("'{}' is not a macro that works here{}", name, hint),
+                );
+            }
+
             processed_md.push_str(line);
             processed_md.push('\n');
         }
         if doctest_indent.is_some() {
             processed_md.push_str("```\n");
+        }
+        if in_custom_code {
+            // Never drop content: an unterminated block runs to the end of the docstring.
+            self.warn(
+                ctx.origin,
+                "#pd-code block is not closed with a line containing only ```",
+            );
+            processed_md.push_str(&format!(
+                "\n\n```{}\n{}\n```\n\n",
+                code_language,
+                code_accumulator.trim_end()
+            ));
         }
 
         let options =
@@ -665,7 +781,7 @@ impl SiteGenerator {
         context
     }
 
-    pub fn generate(&self, package: &mut PythonPackage) -> Result<()> {
+    pub fn generate(&self, package: &mut PythonPackage, clean: bool) -> Result<()> {
         let compile_start = Instant::now();
 
         fs::create_dir_all(&self.output_dir)?;
@@ -720,6 +836,7 @@ impl SiteGenerator {
             Path::new(&self.output_dir).join("index.html"),
             rendered_index,
         )?;
+        self.record("index.html");
 
         // Render detailed individual module detail pages
         for module in &package.modules {
@@ -747,6 +864,7 @@ impl SiteGenerator {
                 .with_context(|| format!("Failed to render {}", module.source_path))?;
             fs::write(&absolute_output_path, rendered_mod)
                 .with_context(|| format!("Failed to write {:?}", absolute_output_path))?;
+            self.record(&module.link_path);
         }
 
         println!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
@@ -759,11 +877,23 @@ impl SiteGenerator {
             Path::new(&self.output_dir).join("nav-data.js"),
             format!("const navData = {};", nav_data_json(&nav_groups)),
         )?;
+        self.record("search-index.js");
+        self.record("nav-data.js");
 
         for name in STATIC_NAMES {
             let (body, _) = load_asset(self.template_dir.as_deref(), name)?;
             fs::write(Path::new(&self.output_dir).join(name), body)
                 .with_context(|| format!("Failed to write {}", name))?;
+            self.record(name);
+        }
+
+        let removed = self.update_manifest(clean)?;
+        if removed > 0 {
+            println!(
+                "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
+                removed,
+                if removed == 1 { "" } else { "s" }
+            );
         }
 
         println!(
@@ -793,6 +923,43 @@ fn load_asset(template_dir: Option<&Path>, name: &str) -> Result<(String, bool)>
         .map(|(_, body)| *body)
         .ok_or_else(|| anyhow!("Unknown bundled asset '{}'", name))?;
     Ok((body.to_string(), false))
+}
+
+/// Renders one line of Markdown without the surrounding paragraph, for
+/// macro text such as `#pd-note: use **care**`.
+fn render_inline(text: &str) -> String {
+    let mut rendered = String::new();
+    html::push_html(
+        &mut rendered,
+        Parser::new_ext(text, Options::ENABLE_STRIKETHROUGH),
+    );
+    let rendered = rendered.trim();
+    rendered
+        .strip_prefix("<p>")
+        .and_then(|inner| inner.strip_suffix("</p>"))
+        .unwrap_or(rendered)
+        .to_string()
+}
+
+/// True for a plain relative path with no "..", drive or root component.
+fn is_safe_site_path(site_path: &str) -> bool {
+    !site_path.contains('\\')
+        && !site_path.contains(':')
+        && Path::new(site_path)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+}
+
+/// Removes directories left empty by a deleted file, stopping at the site root.
+fn remove_empty_parents(root: &Path, removed_file: &Path) {
+    let mut current = removed_file.parent();
+    while let Some(dir) = current {
+        // remove_dir refuses non-empty directories, which ends the walk.
+        if dir == root || !dir.starts_with(root) || fs::remove_dir(dir).is_err() {
+            break;
+        }
+        current = dir.parent();
+    }
 }
 
 fn render_code_block(language: &str, code: &str) -> String {
@@ -893,6 +1060,23 @@ mod tests {
         assert_eq!(output_path_for("index.py"), "index.module.html");
         assert_eq!(output_path_for("01_core/__init__.py"), "01_core/index.html");
         assert_eq!(output_path_for("01_core/engine.py"), "01_core/engine.html");
+    }
+
+    #[test]
+    fn manifest_paths_cannot_leave_the_output_folder() {
+        assert!(is_safe_site_path("01_core/engine.html"));
+        assert!(!is_safe_site_path("../secrets.txt"));
+        assert!(!is_safe_site_path("/etc/passwd"));
+        assert!(!is_safe_site_path("C:\\Windows\\win.ini"));
+        assert!(!is_safe_site_path("a/../../b"));
+    }
+
+    #[test]
+    fn macro_text_renders_inline_markdown() {
+        assert_eq!(
+            render_inline("use **care** with `x`"),
+            "use <strong>care</strong> with <code>x</code>"
+        );
     }
 
     #[test]
