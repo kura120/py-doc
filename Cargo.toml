@@ -2,7 +2,7 @@
 name = "py-doc"
 version = "0.5.0"
 edition = "2024"
-authors = ["Santiago Vasquez <kur4ise@example.com>"]
+authors = ["Santiago Vasquez <kur4ise@gmail.com>"]
 description = "A zero-config, blazing fast Python auto-documentation generator."
 repository = "https://github.com/kura120/py-doc"
 license = "MIT"
