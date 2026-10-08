@@ -123,7 +123,7 @@ Put a macro on its own line inside any docstring.
 | `#pd-warning: text` | A highlighted warning box. The text may use inline Markdown. |
 | `#pd-doc-link: target` | A "See Reference" link to a module, class, function or method. |
 | `#pd-image: path` | An image. The path is relative to `--src` and must stay inside it. |
-| `#pd-code lang` | Starts a code block that ends at the next line containing only ```` ``` ````. |
+| `#pd-code` | Starts a Python code block that ends at the next line containing only ```` ``` ````. For another language, name it: `#pd-code json`. |
 | `#pd-write` | As the first line of a module docstring, in a module with no classes or functions: renders the module as a plain document page. |
 | `#pd-z-index: N` | In a module docstring: sort position in the navigation. Lower numbers come first. |
 

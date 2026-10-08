@@ -173,13 +173,18 @@ impl<'a> DocMacro<'a> {
                 target: target.trim(),
             })
         } else if let Some(lang_part) = trimmed.strip_prefix("#pd-code") {
-            // Accepts "#pd-code python", "#pd-code: python" and "#pd-code ```python".
+            // Accepts "#pd-code", "#pd-code python", "#pd-code: python" and
+            // "#pd-code ```python". With no language the block is Python.
             let language = lang_part
                 .trim()
                 .trim_start_matches(':')
                 .trim()
-                .trim_matches('`')
-                .to_string();
+                .trim_matches('`');
+            let language = if language.is_empty() {
+                "python".to_string()
+            } else {
+                language.to_string()
+            };
             Some(DocMacro::CodeBlockStart { language })
         } else {
             None

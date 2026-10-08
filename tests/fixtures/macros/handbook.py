@@ -13,6 +13,14 @@ def hello():
 x = 1
 ```
 
+#pd-code
+y = None
+```
+
+#pd-code text
+plain <output>
+```
+
 A fenced block keeps macro-looking lines literal:
 
 ```text

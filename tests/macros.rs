@@ -96,6 +96,14 @@ fn code_macro_accepts_both_spellings_and_highlights_python() {
         handbook
             .contains("<pre><code class=\"language-python\">x = <span class=\"tok-num\">1</span>")
     );
+    // Bare "#pd-code" is Python.
+    assert!(
+        handbook.contains(
+            "<pre><code class=\"language-python\">y = <span class=\"tok-kw\">None</span>"
+        )
+    );
+    // Another language can still be named, and is left unhighlighted.
+    assert!(handbook.contains("<pre><code class=\"language-text\">plain &lt;output&gt;\n</code>"));
     assert!(!handbook.contains("#pd-code"));
 }
 
