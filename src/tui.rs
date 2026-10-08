@@ -298,6 +298,7 @@ impl App {
             exclude: Vec::new(),
             source_url: None,
             strict: false,
+            clean: false,
         }
     }
 }

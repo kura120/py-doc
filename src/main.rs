@@ -114,6 +114,11 @@ pub struct Args {
     /// Exit with an error if any file fails to parse, or an image or doc-link cannot be resolved
     #[arg(long)]
     pub strict: bool,
+
+    /// Remove files that an earlier run wrote to --out and this run no longer
+    /// produces. Files py-doc did not write are never touched.
+    #[arg(long)]
+    pub clean: bool,
 }
 
 fn is_excluded(entry: &DirEntry, root: &Path, user_excludes: &[String]) -> bool {
@@ -240,7 +245,7 @@ fn run_generation(args: &Args) -> Result<()> {
         args.source_url.as_deref(),
     )?;
 
-    generator.generate(&mut package)?;
+    generator.generate(&mut package, args.clean)?;
 
     println!(
         "\n\x1b[32;1m✔ Documentation generated at {}/index.html\x1b[0m",
