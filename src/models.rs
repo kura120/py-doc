@@ -16,6 +16,8 @@ pub struct PythonModule {
     pub z_index: i32,
     pub folder: Option<String>,
     pub link_path: String,
+    /// True for doc-only modules (`#pd-write` docstring, no code), rendered with document.html.
+    pub is_document: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]

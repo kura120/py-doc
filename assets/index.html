@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if layout %} data-layout="{{ layout }}"{% endif %}{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,6 +18,12 @@
         <div id="page-content">
             <h1 class="package-title">{{ package.name }}</h1>
             <div class="subtitle">Python Package Reference Documentation</div>
+            {% if package_docstring %}
+                <div class="docstring">{{ package_docstring | safe }}</div>
+            {% endif %}
+            {% if package_link_path %}
+                <p><a href="{{ package_link_path }}">Package-level classes and functions</a></p>
+            {% endif %}
             <p class="package-stats">{{ total_modules }} module{% if total_modules != 1 %}s{% endif %}, {{ total_classes }} class{% if total_classes != 1 %}es{% endif %}, {{ total_functions }} function{% if total_functions != 1 %}s{% endif %} in this build.</p>
 
             <h2>Modules</h2>

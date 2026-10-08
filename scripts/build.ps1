@@ -1,9 +1,16 @@
+# Optional: a Rust target triple (e.g. x86_64-pc-windows-msvc).
+param([string]$Target = "")
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "Building optimized release binary (opt-level=z, LTO, single codegen unit)..."
-cargo build --release
-
-$BinPath = "target\release\py-doc.exe"
+if ($Target) {
+    cargo build --release --target $Target
+    $BinPath = "target\$Target\release\py-doc.exe"
+} else {
+    cargo build --release
+    $BinPath = "target\release\py-doc.exe"
+}
 
 if (!(Test-Path $BinPath)) {
     Write-Error "Build failed: binary not found at $BinPath"

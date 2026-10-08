@@ -1,11 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if layout %} data-layout="{{ layout }}"{% endif %}{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% set display_module_name = module.name %}
-    {% if module.name == "__init__" and module.folder %}
-        {% set display_module_name = module.folder %}
+    {% if module.name == "__init__" %}
+        {% if module.folder %}
+            {% set display_module_name = module.folder %}
+        {% else %}
+            {% set display_module_name = package.name %}
+        {% endif %}
     {% endif %}
     <title>Module {{ display_module_name }} - {{ package.name }}</title>
     <link rel="stylesheet" href="{{ root_path }}style.css">
@@ -53,7 +57,7 @@
                                 <h4>Methods</h4>
                                 {% for func in class.functions %}
                                     <div class="method-item">
-                                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(attribute=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
+                                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
                                         {% if func.docstring %}
                                             <div class="docstring">{{ func.docstring | safe }}</div>
                                         {% endif %}
@@ -71,7 +75,7 @@
                 <h2>Functions</h2>
                 {% for func in module.functions %}
                     <div class="item-card" id="fn.{{ func.name }}">
-                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(attribute=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
+                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
                         {% if func.docstring %}
                             <div class="docstring">{{ func.docstring | safe }}</div>
                         {% endif %}

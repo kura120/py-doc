@@ -1,11 +1,15 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme }}">
+<html lang="en"{% if layout %} data-layout="{{ layout }}"{% endif %}{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% set display_module_name = module.name %}
-    {% if module.name == "__init__" and module.folder %}
-        {% set display_module_name = module.folder %}
+    {% if module.name == "__init__" %}
+        {% if module.folder %}
+            {% set display_module_name = module.folder %}
+        {% else %}
+            {% set display_module_name = package.name %}
+        {% endif %}
     {% endif %}
     <title>{{ display_module_name }} - {{ package.name }} Documentation</title>
     <link rel="stylesheet" href="{{ root_path }}style.css">

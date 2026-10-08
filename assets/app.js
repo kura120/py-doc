@@ -165,6 +165,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const resultsList = document.getElementById("results-list");
     const pageContent = document.getElementById("page-content");
 
+    // link_path values are relative to the site root, not the current page.
+    const searchRootPath = (navContainer && navContainer.dataset.rootPath) || "./";
+
     if (searchInput && typeof searchIndex !== 'undefined') {
         searchInput.addEventListener("input", (e) => {
             const query = e.target.value.toLowerCase().trim();
@@ -208,7 +211,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 matches.forEach(item => {
                     const itemDiv = document.createElement("div");
                     itemDiv.className = "search-item";
-                    itemDiv.innerHTML = `<small style="color: var(--muted-color); text-transform: uppercase; font-size: 0.75rem;">[${item.type}]</small><br><a href="${item.link}">${item.name}</a>`;
+                    itemDiv.innerHTML = `<small style="color: var(--muted-color); text-transform: uppercase; font-size: 0.75rem;">[${item.type}]</small><br><a href="${searchRootPath}${item.link}">${item.name}</a>`;
                     resultsList.appendChild(itemDiv);
                 });
             } else {

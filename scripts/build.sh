@@ -2,9 +2,16 @@
 set -e
 
 echo "Building optimized release binary (opt-level=z, LTO, single codegen unit)..."
-cargo build --release
+# Optional first argument: a Rust target triple (e.g. x86_64-apple-darwin).
+TARGET="${1:-}"
 
-BIN_PATH="target/release/py-doc"
+if [ -n "$TARGET" ]; then
+    cargo build --release --target "$TARGET"
+    BIN_PATH="target/$TARGET/release/py-doc"
+else
+    cargo build --release
+    BIN_PATH="target/release/py-doc"
+fi
 
 if [ ! -f "$BIN_PATH" ]; then
     echo "Build failed: binary not found at $BIN_PATH"

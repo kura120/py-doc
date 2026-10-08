@@ -25,14 +25,14 @@ You do not need Cargo or Rust installed for this. Run the installer script for y
 
 * **macOS / Linux (Bash/Zsh):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kura120/py-doc/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/kura120/py-doc/master/scripts/install.sh | sh
 
 ```
 
 
-* **Windows (PowerShell - Run as Administrator):**
+* **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/yourusername/py-doc/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/kura120/py-doc/master/scripts/install.ps1 | iex
 
 ```
 
@@ -49,7 +49,7 @@ If you have Cargo but want to avoid long compile times and dependency conflicts,
 cargo install cargo-binstall
 
 # Install py-doc quickly
-cargo binstall py-doc
+cargo binstall --git https://github.com/kura120/py-doc py-doc
 
 ```
 

@@ -1,6 +1,7 @@
 use anyhow::{Result, Context};
 use ruff_python_parser::parse_module;
 use ruff_python_ast::{self as ast, Stmt, Expr};
+use ruff_text_size::Ranged;
 use std::fs;
 use std::path::Path;
 
@@ -55,6 +56,7 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         z_index: i32::MAX,
         folder,
         link_path: String::new(), // NEW field for the nav-link fix
+        is_document: false,
     };
 
     let syntax_body = parsed.into_syntax().body;
@@ -67,10 +69,10 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
     for stmt in &syntax_body {
         match stmt {
             Stmt::FunctionDef(func) => {
-                module.functions.push(extract_function(func));
+                module.functions.push(extract_function(func, &source_code));
             }
             Stmt::ClassDef(class_def) => {
-                module.classes.push(extract_class(class_def));
+                module.classes.push(extract_class(class_def, &source_code));
             }
             _ => {}
         }
@@ -79,21 +81,52 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
     Ok(module)
 }
 
-fn expr_to_string(expr: &Expr) -> String {
+/// Renders an expression exactly as written in the source, with any
+/// line breaks and indentation collapsed to single spaces.
+fn expr_source(expr: &Expr, source: &str) -> String {
+    let range = expr.range();
+    let text = source
+        .get(range.start().to_usize()..range.end().to_usize())
+        .unwrap_or("Any");
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Annotations are shown as written, except quoted forward references
+/// ("Engine"), which read better without their quotes.
+fn annotation_to_string(expr: &Expr, source: &str) -> String {
     match expr {
-        Expr::Name(name) => name.id.to_string(),
-        Expr::Subscript(subscript) => {
-            let value_str = expr_to_string(&subscript.value);
-            let slice_str = expr_to_string(&subscript.slice);
-            format!("{}[{}]", value_str, slice_str)
-        }
-        Expr::NoneLiteral(_) => "None".to_string(),
         Expr::StringLiteral(s) => s.value.to_string(),
-        _ => "Any".to_string(),
+        _ => expr_source(expr, source),
     }
 }
 
-fn extract_function(func: &ast::StmtFunctionDef) -> PythonFunction {
+fn format_parameter(
+    prefix: &str,
+    parameter: &ast::Parameter,
+    default: Option<&Expr>,
+    source: &str,
+) -> String {
+    let mut out = format!("{}{}", prefix, parameter.name);
+    match (&parameter.annotation, default) {
+        (Some(annotation), Some(default)) => {
+            out.push_str(&format!(
+                ": {} = {}",
+                annotation_to_string(annotation, source),
+                expr_source(default, source)
+            ));
+        }
+        (Some(annotation), None) => {
+            out.push_str(&format!(": {}", annotation_to_string(annotation, source)));
+        }
+        (None, Some(default)) => {
+            out.push_str(&format!("={}", expr_source(default, source)));
+        }
+        (None, None) => {}
+    }
+    out
+}
+
+fn extract_function(func: &ast::StmtFunctionDef, source: &str) -> PythonFunction {
     let mut docstring = None;
     if let Some(Stmt::Expr(expr)) = func.body.first() {
         if let Expr::StringLiteral(string_lit) = &*expr.value {
@@ -101,16 +134,31 @@ fn extract_function(func: &ast::StmtFunctionDef) -> PythonFunction {
         }
     }
 
-    let args = func.parameters.args.iter().map(|arg| {
-        let name = arg.parameter.name.to_string();
-        if let Some(ref annotation) = arg.parameter.annotation {
-            format!("{}: {}", name, expr_to_string(annotation))
-        } else {
-            name
-        }
-    }).collect();
+    let params = &func.parameters;
+    let mut args: Vec<String> = Vec::new();
 
-    let return_type = func.returns.as_ref().map(|ret_expr| expr_to_string(ret_expr));
+    for arg in params.posonlyargs.iter() {
+        args.push(format_parameter("", &arg.parameter, arg.default.as_deref(), source));
+    }
+    if !params.posonlyargs.is_empty() {
+        args.push("/".to_string());
+    }
+    for arg in params.args.iter() {
+        args.push(format_parameter("", &arg.parameter, arg.default.as_deref(), source));
+    }
+    if let Some(vararg) = &params.vararg {
+        args.push(format_parameter("*", vararg, None, source));
+    } else if !params.kwonlyargs.is_empty() {
+        args.push("*".to_string());
+    }
+    for arg in params.kwonlyargs.iter() {
+        args.push(format_parameter("", &arg.parameter, arg.default.as_deref(), source));
+    }
+    if let Some(kwarg) = &params.kwarg {
+        args.push(format_parameter("**", kwarg, None, source));
+    }
+
+    let return_type = func.returns.as_ref().map(|ret_expr| annotation_to_string(ret_expr, source));
 
     PythonFunction {
         name: func.name.to_string(),
@@ -120,7 +168,7 @@ fn extract_function(func: &ast::StmtFunctionDef) -> PythonFunction {
     }
 }
 
-fn extract_class(class_def: &ast::StmtClassDef) -> PythonClass {
+fn extract_class(class_def: &ast::StmtClassDef, source: &str) -> PythonClass {
     let mut functions = Vec::new(); // Standardized to matches PythonClass
     let mut docstring = None;
 
@@ -132,7 +180,7 @@ fn extract_class(class_def: &ast::StmtClassDef) -> PythonClass {
                 }
             }
             Stmt::FunctionDef(func) => {
-                functions.push(extract_function(func));
+                functions.push(extract_function(func, source));
             }
             _ => {}
         }

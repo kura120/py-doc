@@ -2,7 +2,6 @@ use anyhow::{Result, Context as AnyhowContext};
 use tera::{Tera, Context as TeraContext, Kwargs, State}; 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
 use std::time::Instant;
 use std::thread;
 use pulldown_cmark::{Parser, html, Event, Tag, CowStr};
@@ -204,6 +203,8 @@ pub struct SiteGenerator {
     pub output_dir: String,
     pub version: String,
     pub template_dir: Option<PathBuf>,
+    pub layout: String,
+    pub theme: String,
 }
 
 impl SiteGenerator {
@@ -244,7 +245,10 @@ impl SiteGenerator {
         rel_path.set_extension(""); // Remove .py
         
         if rel_path.file_name().and_then(|n| n.to_str()) == Some("__init__") {
-            rel_path.set_file_name("index.html");
+            // The root package's __init__.py must not claim index.html: that
+            // is the site's landing page.
+            let is_root = rel_path.parent().map_or(true, |p| p.as_os_str().is_empty());
+            rel_path.set_file_name(if is_root { "__init__.html" } else { "index.html" });
         } else {
             rel_path.set_extension("html");
         }
@@ -265,7 +269,14 @@ impl SiteGenerator {
         }
     }
 
-    pub fn new(src_dir: &str, output_dir: &str, version: &str, template_dir: Option<&str>) -> Result<Self> {
+    pub fn new(
+        src_dir: &str,
+        output_dir: &str,
+        version: &str,
+        template_dir: Option<&str>,
+        layout: &str,
+        theme: &str,
+    ) -> Result<Self> {
         let mut templates = std::collections::HashMap::new();
         let template_dir_path = template_dir.map(PathBuf::from);
 
@@ -331,6 +342,8 @@ impl SiteGenerator {
             output_dir: output_dir.to_string(),
             version: version.to_string(),
             template_dir: template_dir_path,
+            layout: layout.to_string(),
+            theme: theme.to_string(),
         })
     }
 
@@ -450,6 +463,10 @@ impl SiteGenerator {
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
             
             module.z_index = z_val;
+            // Must be decided on the raw docstring: render_markdown strips the marker.
+            module.is_document = cleaned_doc.trim_start().starts_with("#pd-write")
+                && module.classes.is_empty()
+                && module.functions.is_empty();
             if module.docstring.is_some() {
                 module.docstring = Some(cleaned_doc);
             }
@@ -480,17 +497,6 @@ impl SiteGenerator {
         for module in package.modules.iter_mut() {
             let rel = self.get_module_output_path(module);
             module.link_path = rel.to_string_lossy().replace('\\', "/");
-        }
-
-        // Determine pure documentation files (doc-only)
-        let mut doc_only_modules = HashSet::new();
-        for module in &package.modules {
-            let has_code = !module.classes.is_empty() || !module.functions.is_empty();
-            if let Some(ref doc) = module.docstring {
-                if doc.trim_start().starts_with("#pd-write") && !has_code {
-                    doc_only_modules.insert(module.name.clone());
-                }
-            }
         }
 
         // Sort modules
@@ -620,12 +626,25 @@ impl SiteGenerator {
         let total_classes: usize = package.modules.iter().map(|m| m.classes.len()).sum();
         let total_functions: usize = package.modules.iter().map(|m| m.functions.len()).sum();
 
+        // The root package's own __init__.py feeds the landing page header.
+        let root_init = package.modules.iter().find(|m| m.link_path == "__init__.html");
+
         // Render index page
         let mut index_context = TeraContext::new();
         index_context.insert("package", package);
         index_context.insert("nav_groups", &final_nav_groups);
         index_context.insert("version", &self.version);
         index_context.insert("root_path", "./");
+        index_context.insert("layout", &self.layout);
+        index_context.insert("theme", &self.theme);
+        if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
+            index_context.insert("package_docstring", doc);
+        }
+        if let Some(root) = root_init {
+            if !root.classes.is_empty() || !root.functions.is_empty() {
+                index_context.insert("package_link_path", &root.link_path);
+            }
+        }
         index_context.insert("total_modules", &total_modules);
         index_context.insert("total_classes", &total_classes);
         index_context.insert("total_functions", &total_functions);
@@ -651,8 +670,10 @@ impl SiteGenerator {
             mod_context.insert("module", module);
             mod_context.insert("version", &self.version);
             mod_context.insert("root_path", &root_prefix);
+            mod_context.insert("layout", &self.layout);
+            mod_context.insert("theme", &self.theme);
 
-            let template_name = if doc_only_modules.contains(&module.name) {
+            let template_name = if module.is_document {
                 "document.html"
             } else {
                 "module.html"
@@ -668,6 +689,10 @@ impl SiteGenerator {
         // Render Search JS index
         let search_index = serde_json::to_string(&package)?;
         fs::write(Path::new(&self.output_dir).join("search-index.js"), format!("const searchIndex = {};", search_index))?;
+
+        // Sidebar tree payload consumed by app.js
+        let nav_data = serde_json::to_string(&final_nav_groups)?;
+        fs::write(Path::new(&self.output_dir).join("nav-data.js"), format!("const navData = {};", nav_data))?;
 
         let out_dir = self.output_dir.clone();
         let local_template_dir = self.template_dir.clone();
