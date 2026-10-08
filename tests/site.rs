@@ -110,6 +110,26 @@ fn classes_show_bases_badges_anchors_and_source_lines() {
 }
 
 #[test]
+fn doctests_render_as_code_blocks() {
+    let out = generate_sample("doctests", &[]);
+    let engine = read(&out, "01_core/engine.html");
+    assert!(engine.contains("<p>Example:</p>"));
+    assert!(engine.contains("<pre><code class=\"language-pycon\">&gt;&gt;&gt; Engine().speed\n"));
+}
+
+#[test]
+fn module_pages_carry_breadcrumb_description_and_resizer() {
+    let out = generate_sample("page_chrome", &[]);
+    let page = read(&out, "01_core/sub/engine.html");
+    assert!(page.contains("<span>core.sub.engine</span>"));
+    assert!(page.contains(
+        "<meta name=\"description\" content=\"A second module that is also named engine.\">"
+    ));
+    assert!(page.contains("<div class=\"sidebar-resizer\"></div>"));
+    assert!(page.contains("rel=\"icon\""));
+}
+
+#[test]
 fn source_url_turns_line_references_into_links() {
     let out = generate_sample(
         "source_url",

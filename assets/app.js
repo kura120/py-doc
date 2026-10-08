@@ -42,8 +42,8 @@ function renderModuleEntry(mod, rootPath, currentPath) {
     const hasChildren = (mod.classes && mod.classes.length) || (mod.functions && mod.functions.length);
 
     if (!hasChildren) {
-        return `<div class="nav-group-flat ${isActive ? "active-mod" : ""}" id="nav-group-${slug}">
-            <a class="nav-item-link" href="${targetUrl}"><span class="nav-icon">${ICONS.file}</span>${escapeHtml(mod.name)}</a>
+        return `<div class="nav-group-flat nav-module ${isActive ? "active-mod" : ""}" id="nav-group-${slug}">
+            <a class="nav-module-link" href="${targetUrl}"><span class="nav-icon">${ICONS.file}</span>${escapeHtml(mod.name)}</a>
         </div>`;
     }
 
@@ -252,11 +252,15 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Marks the sidebar link for the symbol in the URL hash. Links are
+    // Marks the sidebar and outline links for the symbol being read: the
+    // one the scroll spy reports, or else the one in the URL hash. Links are
     // compared as resolved URLs, so the "../" prefix on nested pages is irrelevant.
+    let spiedId = null;
+
     function updateActiveSidebarItem() {
-        const here = window.location.pathname + decodeURIComponent(window.location.hash);
-        document.querySelectorAll(".nav-item-link").forEach(link => {
+        const hash = spiedId ? `#${spiedId}` : decodeURIComponent(window.location.hash);
+        const here = window.location.pathname + hash;
+        document.querySelectorAll(".nav-item-link, .page-outline a").forEach(link => {
             const target = link.pathname + decodeURIComponent(link.hash);
             const isMatch = !!link.hash && target === here;
             link.classList.toggle("active-item", isMatch);
@@ -268,7 +272,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     renderNav();
-    window.addEventListener("hashchange", updateActiveSidebarItem);
+    window.addEventListener("hashchange", () => {
+        spiedId = null;
+        updateActiveSidebarItem();
+    });
 
     if (layoutSelect) {
         layoutSelect.value = savedLayout;
@@ -397,7 +404,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- Scroll spy: keep the URL hash in step with the item being read ---
+    // --- Scroll spy: highlight the item being read. The URL is left alone,
+    // so scrolling never rewrites the address bar.
     const trackedItems = document.querySelectorAll(".item-card[id]");
     if (trackedItems.length > 0) {
         const observerOptions = {
@@ -409,8 +417,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    const id = entry.target.getAttribute("id");
-                    history.replaceState(null, null, `#${id}`);
+                    spiedId = entry.target.getAttribute("id");
                     updateActiveSidebarItem();
                 }
             });
@@ -449,8 +456,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const sidebar = document.querySelector('.sidebar');
     const resizer = document.querySelector('.sidebar-resizer');
 
+    // Small screens: the tree and settings collapse behind a Menu button.
+    const navToggle = document.getElementById("nav-toggle");
+    if (sidebar && navToggle) {
+        navToggle.addEventListener("click", () => {
+            const open = sidebar.classList.toggle("nav-open");
+            navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+    }
+
     if (sidebar && resizer) {
         let isResizing = false;
+
+        const savedWidth = parseInt(stored("sidebar-width"), 10);
+        if (savedWidth >= 200 && savedWidth <= 600) {
+            sidebar.style.width = `${savedWidth}px`;
+        }
 
         resizer.addEventListener('mousedown', (e) => {
             isResizing = true;
@@ -472,6 +493,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 isResizing = false;
                 document.body.style.cursor = 'default';
                 resizer.classList.remove('is-resizing');
+                store("sidebar-width", String(Math.round(sidebar.getBoundingClientRect().width)));
             }
         });
     }

@@ -367,6 +367,20 @@ a { color: inherit; }
     cursor: pointer;
     transition: color 0.15s ease, background-color 0.15s ease;
 }
+.nav-toggle {
+    display: none;
+    flex-shrink: 0;
+    height: 30px;
+    padding: 0 10px;
+    margin-left: auto;
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    background: transparent;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
 .theme-toggle:hover { color: var(--accent-blue); background-color: var(--sidebar-hover); }
 .theme-toggle svg { display: block; width: 16px; height: 16px; }
 /* Show the icon for the theme a click switches to. */
@@ -609,6 +623,16 @@ details[open] summary.active-mod, .nav-header.active-mod a {
     margin: 2px 0;
     border-radius: var(--radius-sm);
 }
+/* A module with no symbols: styled like the expandable module rows. */
+.nav-group-flat.nav-module { padding: 6px 8px; font-weight: 600; font-size: 0.95rem; }
+.nav-group-flat.nav-module:hover { background-color: var(--sidebar-hover); }
+.nav-group-flat.nav-module a { color: inherit; max-width: 100%; }
+.nav-group-flat.nav-module.active-mod {
+    background-color: var(--sidebar-hover);
+    color: var(--accent-blue);
+}
+.page-outline a.active-item { color: var(--accent-blue); background-color: var(--sidebar-hover); }
+
 .nav-group-flat a {
     font-weight: 500;
     display: inline-flex;
@@ -1135,10 +1159,18 @@ a.source-ref:hover { color: var(--accent-blue); text-decoration: underline; }
         width: 100% !important;
         max-width: none;
         height: auto;
-        max-height: 45vh;
+        max-height: 80vh;
         border-right: none;
         border-bottom: 1px solid var(--border-color);
+        padding-bottom: 5px;
     }
+    /* Header and search stay visible; the tree and the layout/theme
+       controls open from the Menu button. */
+    .nav-toggle { display: inline-block; }
+    .sidebar:not(.nav-open) .nav-tree,
+    .sidebar:not(.nav-open) .theme-selector { display: none; }
+    .sidebar.nav-open { padding-bottom: 20px; }
+    .sidebar-header { margin-bottom: 10px; padding-bottom: 10px; }
     .sidebar-resizer { display: none; }
     .main-content { padding: 20px; }
     .module-grid { grid-template-columns: 1fr; }

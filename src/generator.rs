@@ -367,6 +367,9 @@ impl SiteGenerator {
         let mut in_custom_code = false;
         let mut code_language = String::new();
         let mut code_accumulator = String::new();
+        let mut in_fence = false;
+        // Indentation of the doctest session being collected, if any.
+        let mut doctest_indent: Option<usize> = None;
 
         for line in dedented_md.lines() {
             let trimmed = line.trim();
@@ -383,6 +386,37 @@ impl SiteGenerator {
                     code_accumulator.push_str(line);
                     code_accumulator.push('\n');
                 }
+                continue;
+            }
+
+            // Inside an ordinary fenced block everything is literal.
+            if trimmed.starts_with("```") {
+                in_fence = !in_fence;
+            }
+            if in_fence || trimmed.starts_with("```") {
+                processed_md.push_str(line);
+                processed_md.push('\n');
+                continue;
+            }
+
+            // A doctest session (">>> ..." up to the next blank line) becomes
+            // a code block instead of being folded into the paragraph above.
+            if let Some(indent) = doctest_indent {
+                if trimmed.is_empty() {
+                    doctest_indent = None;
+                    processed_md.push_str("```\n\n");
+                } else {
+                    let unindented = line.get(indent..).unwrap_or(trimmed);
+                    processed_md.push_str(unindented);
+                    processed_md.push('\n');
+                }
+                continue;
+            }
+            if trimmed.starts_with(">>>") {
+                doctest_indent = Some(line.len() - line.trim_start().len());
+                processed_md.push_str("\n```pycon\n");
+                processed_md.push_str(trimmed);
+                processed_md.push('\n');
                 continue;
             }
 
@@ -404,6 +438,9 @@ impl SiteGenerator {
 
             processed_md.push_str(line);
             processed_md.push('\n');
+        }
+        if doctest_indent.is_some() {
+            processed_md.push_str("```\n");
         }
 
         let options =

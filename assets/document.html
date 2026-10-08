@@ -12,11 +12,14 @@
         {% endif %}
     {% endif %}
     <title>{{ display_module_name }} - {{ package.name }} Documentation</title>
+    <meta name="description" content="{% if module.summary %}{{ module.summary }}{% else %}{{ display_module_name }} - {{ package.name }} documentation{% endif %}">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e8944a'/%3E%3Cpath d='M9 8h9l5 5v11H9z' fill='none' stroke='%2314171c' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h6M13 20h6' stroke='%2314171c' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ root_path }}style.css">
     <script>(function(){try{var d=document.documentElement,l=localStorage.getItem("layout"),t=localStorage.getItem("theme")||d.getAttribute("data-theme")||"auto";if(l)d.setAttribute("data-layout",l);d.setAttribute("data-theme-pref",t);if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body>
     {% include "sidebar.html" %}
+    <div class="sidebar-resizer"></div>
 
     <main class="main-content">
         <div id="search-results" role="listbox" aria-label="Search results">
@@ -26,7 +29,7 @@
         <div id="page-content">
             <div class="namespace-path breadcrumb-row">
                 <div>
-                    <a href="{{ root_path }}index.html">{{ package.name }}</a> :: <span>{{ display_module_name }}</span>
+                    <a href="{{ root_path }}index.html">{{ package.name }}</a> :: <span>{% if module.qualname %}{{ module.qualname }}{% else %}{{ display_module_name }}{% endif %}</span>
                 </div>
                 <a href="{{ root_path }}index.html" class="back-link">
                     ← Back to Overview

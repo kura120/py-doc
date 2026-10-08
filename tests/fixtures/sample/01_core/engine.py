@@ -11,7 +11,12 @@ class Base:
 
 
 class Engine(Base):
-    """The main engine."""
+    """The main engine.
+
+    Example:
+        >>> Engine().speed
+        3
+    """
 
     speed: int = 3
 
