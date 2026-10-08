@@ -13,13 +13,13 @@
     {% endif %}
     <title>{{ display_module_name }} - {{ package.name }} Documentation</title>
     <link rel="stylesheet" href="{{ root_path }}style.css">
+    <script>(function(){try{var d=document.documentElement,l=localStorage.getItem("layout"),t=localStorage.getItem("theme")||d.getAttribute("data-theme")||"auto";if(l)d.setAttribute("data-layout",l);d.setAttribute("data-theme-pref",t);if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body>
     {% include "sidebar.html" %}
 
     <main class="main-content">
-        <div id="search-results">
-            <h2>Search Results</h2>
+        <div id="search-results" role="listbox" aria-label="Search results">
             <div id="results-list"></div>
         </div>
 

@@ -1,6 +1,13 @@
 /* =========================================
-   1. COLOR THEMES (apply within the "classic" layout)
+   1. COLOR THEMES
+   These are the Classic layout's palettes. Minimal and Modern
+   define their own light and dark pairs in section 2.
+   app.js resolves the reader's preference (system / light /
+   dark / slate) into data-theme. Without JavaScript there is
+   no data-theme, so plain :root carries the dark palette and
+   the media query below swaps in the light one.
 ========================================= */
+:root,
 :root[data-theme="dark"] {
     --bg-color: #0d0f12;
     --sidebar-bg: #14171c;
@@ -46,12 +53,29 @@
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 }
 
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+        --bg-color: #ffffff;
+        --sidebar-bg: #f8f9fa;
+        --text-color: #24292e;
+        --muted-color: #586069;
+        --code-bg: #f6f8fa;
+        --accent-red: #a83e33;
+        --accent-blue: #b5651d;
+        --border-color: #e1e4e8;
+        --sidebar-hover: #eaf2fc;
+        --card-border: #e1e4e8;
+        --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+        --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+    }
+}
+
 /* =========================================
    2. LAYOUT TOKENS
    Non-color tokens (radius, shadow, type, spacing) plus,
-   for the two fixed-palette layouts, their own complete
-   color set (these ignore data-theme entirely by design —
-   each is a single considered look, not a dark/light pair).
+   for Minimal and Modern, their own color sets: a light
+   palette by default and a dark one under data-theme="dark"
+   (Slate is a Classic palette; elsewhere it reads as dark).
 ========================================= */
 
 /* --- Classic: reuses the theme colors above, boxy dev-tool feel --- */
@@ -123,6 +147,71 @@
     --content-max-width: 1360px;
     --show-nav-icons: inline-flex;
     --nav-icon-color: var(--accent-blue);
+}
+
+:root[data-layout="minimal"][data-theme="dark"],
+:root[data-layout="minimal"][data-theme="slate"] {
+    --bg-color: #161615;
+    --sidebar-bg: #1c1c1a;
+    --text-color: #e6e6e1;
+    --muted-color: #9a9a90;
+    --code-bg: #222220;
+    --accent-red: #ef6b62;
+    --accent-blue: #3fb8ad;
+    --border-color: #33332f;
+    --sidebar-hover: #272724;
+    --card-border: #33332f;
+    --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+}
+
+:root[data-layout="modern"][data-theme="dark"],
+:root[data-layout="modern"][data-theme="slate"] {
+    --bg-color: #0f1020;
+    --sidebar-bg: #15162a;
+    --text-color: #e8e8f5;
+    --muted-color: #9a9ab8;
+    --code-bg: #1b1c33;
+    --accent-red: #ff6b70;
+    --accent-blue: #8d91f0;
+    --border-color: #2a2b48;
+    --sidebar-hover: #20213c;
+    --card-border: #2a2b48;
+    --scrollbar-thumb: rgba(141, 145, 240, 0.25);
+    --scrollbar-thumb-hover: rgba(141, 145, 240, 0.45);
+    --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-layout="minimal"]:not([data-theme]) {
+        --bg-color: #161615;
+        --sidebar-bg: #1c1c1a;
+        --text-color: #e6e6e1;
+        --muted-color: #9a9a90;
+        --code-bg: #222220;
+        --accent-red: #ef6b62;
+        --accent-blue: #3fb8ad;
+        --border-color: #33332f;
+        --sidebar-hover: #272724;
+        --card-border: #33332f;
+        --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+        --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+    }
+    :root[data-layout="modern"]:not([data-theme]) {
+        --bg-color: #0f1020;
+        --sidebar-bg: #15162a;
+        --text-color: #e8e8f5;
+        --muted-color: #9a9ab8;
+        --code-bg: #1b1c33;
+        --accent-red: #ff6b70;
+        --accent-blue: #8d91f0;
+        --border-color: #2a2b48;
+        --sidebar-hover: #20213c;
+        --card-border: #2a2b48;
+        --scrollbar-thumb: rgba(141, 145, 240, 0.25);
+        --scrollbar-thumb-hover: rgba(141, 145, 240, 0.45);
+        --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
 }
 
 :root[data-layout="modern"] .nav-icon {
@@ -252,8 +341,40 @@ a { color: inherit; }
     margin-bottom: 15px;
 }
 
-.sidebar-header h2 { font-size: 1.25rem; margin: 0; font-family: var(--font-heading); }
-.sidebar-header h2 a { color: var(--text-color); text-decoration: none; }
+.sidebar-header h2,
+.sidebar-title { font-size: 1.25rem; font-weight: 700; margin: 0; font-family: var(--font-heading); min-width: 0; overflow-wrap: anywhere; }
+.sidebar-header h2 a,
+.sidebar-title a { color: var(--text-color); text-decoration: none; }
+
+.sidebar-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.theme-toggle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    color: var(--muted-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+.theme-toggle:hover { color: var(--accent-blue); background-color: var(--sidebar-hover); }
+.theme-toggle svg { display: block; width: 16px; height: 16px; }
+/* Show the icon for the theme a click switches to. */
+.theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun,
+:root[data-theme="slate"] .theme-toggle .icon-sun { display: block; }
+:root[data-theme="dark"] .theme-toggle .icon-moon,
+:root[data-theme="slate"] .theme-toggle .icon-moon { display: none; }
 
 .version-badge {
     font-size: 0.8rem;
@@ -368,9 +489,79 @@ details[open] > summary .nav-chevron { transform: rotate(90deg); }
     pointer-events: none;
 }
 .search-icon svg { display: block; width: 14px; height: 14px; }
-.search-box input { padding-left: 32px; }
+.search-box input { padding-left: 32px; padding-right: 30px; }
+.search-box input::-webkit-search-cancel-button { display: none; }
+.search-hint {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 3px 6px;
+    color: var(--muted-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    pointer-events: none;
+}
+.search-box input:focus ~ .search-hint { display: none; }
 
-#search-results { display: none; }
+/* Results panel: floats under the search box (positioned by app.js) and
+   leaves the page underneath untouched. */
+#search-results {
+    display: none;
+    position: fixed;
+    z-index: 300;
+    overflow-y: auto;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    padding: 6px;
+}
+#search-results.is-open { display: block; }
+.search-item {
+    display: grid;
+    grid-template-columns: 5.2rem minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 2px;
+    align-items: baseline;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--text-color);
+}
+.search-item:hover,
+.search-item.is-active { background-color: var(--sidebar-hover); }
+.search-item.is-active { box-shadow: inset 2px 0 0 var(--accent-blue); }
+.search-item-type {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted-color);
+}
+.search-item-name {
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    overflow-wrap: anywhere;
+}
+.search-item-summary {
+    grid-column: 2;
+    font-size: 0.82rem;
+    color: var(--muted-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.search-item mark {
+    background: color-mix(in srgb, var(--accent-blue) 28%, transparent);
+    color: inherit;
+    border-radius: 2px;
+}
+.search-empty { margin: 0; padding: 10px; font-size: 0.85rem; color: var(--muted-color); }
+
+.nav-fallback { padding-left: 0 !important; }
 
 .nav-js-required {
     padding: 12px 8px;
@@ -483,6 +674,15 @@ details[open] summary.active-mod, .nav-header.active-mod a {
 }
 .module-card h3 { margin: 0 0 8px 0; font-family: var(--font-mono); font-size: 1.05rem; }
 .module-card h3 a { color: var(--accent-blue); text-decoration: none; }
+/* The heading link is the card's real target; its ::after stretches the
+   hit area over the whole card so the card stays clickable. */
+.module-card .card-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
+.module-card:focus-within { background-color: var(--sidebar-hover); }
 .module-card p {
     margin: 0;
     color: var(--muted-color);
@@ -793,8 +993,115 @@ pre code { background-color: transparent; padding: 0; border-radius: 0; }
     border-radius: var(--radius-sm);
 }
 .method-list { margin-top: 16px; padding-left: 20px; border-left: 2px solid var(--border-color); }
-.method-list h4 { margin: 0 0 10px 0; color: var(--muted-color); font-family: var(--font-heading); }
+.method-list h4,
+.method-list-title { margin: 0 0 10px 0; font-size: 1rem; color: var(--muted-color); font-family: var(--font-heading); }
 .method-item { margin-bottom: 16px; }
+
+/* Signature row: code on the left, badges and source reference on the right */
+.signature-box:has(.signature-meta) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 16px;
+}
+.signature-code { min-width: 0; overflow-wrap: anywhere; }
+.signature-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    font-family: var(--font-body);
+}
+.badge {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: var(--accent-blue);
+    border: 1px solid color-mix(in srgb, var(--accent-blue) 45%, transparent);
+    background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+}
+.source-ref {
+    font-size: 0.75rem;
+    color: var(--muted-color);
+    text-decoration: none;
+    white-space: nowrap;
+}
+a.source-ref:hover { color: var(--accent-blue); text-decoration: underline; }
+.item-card, .method-item { scroll-margin-top: 16px; }
+.item-card:target > .signature-box,
+.method-item:target > .signature-box { border-color: var(--accent-blue); }
+
+/* Build-time Python highlighting (see src/highlight.rs) */
+.tok-kw { color: var(--accent-red); font-weight: 600; }
+.tok-fn, .tok-dec { color: var(--accent-blue); }
+.tok-str { color: color-mix(in srgb, #2e9e5b 78%, var(--text-color)); }
+.tok-num { color: color-mix(in srgb, #a06bd6 78%, var(--text-color)); }
+.tok-com { color: var(--muted-color); font-style: italic; }
+
+.code-block { position: relative; }
+.copy-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 3px 9px;
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    color: var(--muted-color);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+.code-block:hover .copy-button,
+.copy-button:focus-visible { opacity: 1; }
+.copy-button:hover { color: var(--accent-blue); }
+
+/* "On this page" outline, shown beside module pages on wide screens */
+.page-outline {
+    display: none;
+    width: 230px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 44px 20px 24px 4px;
+    font-size: 0.85rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+.outline-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted-color);
+    margin-bottom: 10px;
+    font-family: var(--font-heading);
+}
+.page-outline ul { list-style: none; margin: 0; padding: 0; }
+.page-outline ul ul { padding-left: 12px; margin: 2px 0 6px; border-left: 1px solid var(--border-color); }
+.page-outline a {
+    display: block;
+    padding: 3px 8px;
+    color: var(--muted-color);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.page-outline > ul > li > a { color: var(--text-color); }
+.page-outline a:hover { color: var(--accent-blue); background-color: var(--sidebar-hover); }
+@media (min-width: 1280px) {
+    .page-outline { display: block; }
+}
 
 /* =========================================
    8. THEME / LAYOUT SELECTORS

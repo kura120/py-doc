@@ -1,25 +1,26 @@
 use anyhow::Result;
 use crossterm::{
+    cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame, Terminal,
 };
 use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
-use tui_input::{backend::crossterm::EventHandler, Input};
+use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{Args, LayoutKind, ThemeKind};
 
 const LAYOUT_OPTIONS: [&str; 3] = ["Classic", "Minimal", "Modern"];
-const THEME_OPTIONS: [&str; 3] = ["Dark", "Light", "Slate"];
+const THEME_OPTIONS: [&str; 4] = ["Auto", "Dark", "Light", "Slate"];
 
 // How many entries the folder dropdown shows before scrolling, and the
 // resulting box height (+2 for its own top/bottom border).
@@ -246,7 +247,10 @@ impl App {
 
         let templates_val = self.templates.row.input.value().trim().to_string();
         if !templates_val.is_empty() && !Path::new(&templates_val).is_dir() {
-            self.error = Some(format!("Templates directory '{}' does not exist.", templates_val));
+            self.error = Some(format!(
+                "Templates directory '{}' does not exist.",
+                templates_val
+            ));
             self.focus = F_TEMPLATES;
             return false;
         }
@@ -277,8 +281,9 @@ impl App {
             _ => LayoutKind::Modern,
         };
         let theme = match self.theme_idx {
-            0 => ThemeKind::Dark,
-            1 => ThemeKind::Light,
+            0 => ThemeKind::Auto,
+            1 => ThemeKind::Dark,
+            2 => ThemeKind::Light,
             _ => ThemeKind::Slate,
         };
 
@@ -286,28 +291,49 @@ impl App {
             src: self.src.row.input.value().trim().to_string(),
             out: self.out.row.input.value().trim().to_string(),
             name: self.name.input.value().trim().to_string(),
-            version,
+            doc_version: version,
             templates,
             layout,
             theme,
+            exclude: Vec::new(),
+            source_url: None,
+            strict: false,
         }
     }
 }
 
+fn restore_terminal() {
+    let _ = disable_raw_mode();
+    let _ = execute!(io::stdout(), LeaveAlternateScreen, Show);
+}
+
+/// Puts the terminal back to normal on every way out of the wizard,
+/// including early returns on I/O errors.
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        restore_terminal();
+    }
+}
+
 pub fn run_tui() -> Result<Option<Args>> {
+    // The release profile aborts on panic, which skips destructors, so the
+    // panic hook has to restore the terminal as well.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        restore_terminal();
+        default_hook(info);
+    }));
+
     enable_raw_mode()?;
+    let _guard = TerminalGuard;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_app(&mut terminal);
-
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
-    result
+    run_app(&mut terminal)
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<Option<Args>> {
@@ -339,25 +365,23 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<Option<A
                 // Up/Down: browse the folder dropdown if one's showing,
                 // otherwise fall back to moving focus between fields.
                 KeyCode::Down => {
-                    if is_path_field(app.focus) {
-                        if let Some(field) = app.active_path_field_mut() {
-                            if !field.entries.is_empty() {
-                                field.move_highlight(1);
-                                continue;
-                            }
-                        }
+                    if is_path_field(app.focus)
+                        && let Some(field) = app.active_path_field_mut()
+                        && !field.entries.is_empty()
+                    {
+                        field.move_highlight(1);
+                        continue;
                     }
                     app.focus = (app.focus + 1) % FIELD_COUNT;
                     app.error = None;
                 }
                 KeyCode::Up => {
-                    if is_path_field(app.focus) {
-                        if let Some(field) = app.active_path_field_mut() {
-                            if !field.entries.is_empty() {
-                                field.move_highlight(-1);
-                                continue;
-                            }
-                        }
+                    if is_path_field(app.focus)
+                        && let Some(field) = app.active_path_field_mut()
+                        && !field.entries.is_empty()
+                    {
+                        field.move_highlight(-1);
+                        continue;
                     }
                     app.focus = (app.focus + FIELD_COUNT - 1) % FIELD_COUNT;
                     app.error = None;
@@ -377,8 +401,14 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<Option<A
                     _ => {}
                 },
                 KeyCode::Left => match app.focus {
-                    F_LAYOUT => app.layout_idx = (app.layout_idx + LAYOUT_OPTIONS.len() - 1) % LAYOUT_OPTIONS.len(),
-                    F_THEME => app.theme_idx = (app.theme_idx + THEME_OPTIONS.len() - 1) % THEME_OPTIONS.len(),
+                    F_LAYOUT => {
+                        app.layout_idx =
+                            (app.layout_idx + LAYOUT_OPTIONS.len() - 1) % LAYOUT_OPTIONS.len()
+                    }
+                    F_THEME => {
+                        app.theme_idx =
+                            (app.theme_idx + THEME_OPTIONS.len() - 1) % THEME_OPTIONS.len()
+                    }
                     f if is_path_field(f) => {
                         if let Some(field) = app.active_path_field_mut() {
                             field.ascend();
@@ -435,13 +465,20 @@ fn ui(f: &mut Frame, app: &App) {
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Min(10), Constraint::Length(2)])
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(10),
+            Constraint::Length(2),
+        ])
         .split(area);
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
             " py-doc ",
-            Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  Documentation Generator — Setup"),
     ]));
@@ -472,53 +509,115 @@ fn ui(f: &mut Frame, app: &App) {
     constraints.push(Constraint::Length(3)); // theme
     constraints.push(Constraint::Length(3)); // generate button
 
-    let rows = Layout::default().direction(Direction::Vertical).constraints(constraints).split(outer[1]);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(outer[1]);
 
     let mut i = 0;
-    render_path_field(f, rows[i], "Source directory", &app.src, app.focus == F_SRC, true);
+    render_path_field(
+        f,
+        rows[i],
+        "Source directory",
+        &app.src,
+        app.focus == F_SRC,
+        true,
+    );
     i += 1;
     if src_dropdown {
         render_dropdown(f, rows[i], &app.src);
         i += 1;
     }
 
-    render_path_field(f, rows[i], "Output directory", &app.out, app.focus == F_OUT, true);
+    render_path_field(
+        f,
+        rows[i],
+        "Output directory",
+        &app.out,
+        app.focus == F_OUT,
+        true,
+    );
     i += 1;
     if out_dropdown {
         render_dropdown(f, rows[i], &app.out);
         i += 1;
     }
 
-    render_text_row(f, rows[i], "Package name", &app.name, app.focus == F_NAME, true);
+    render_text_row(
+        f,
+        rows[i],
+        "Package name",
+        &app.name,
+        app.focus == F_NAME,
+        true,
+    );
     i += 1;
-    render_text_row(f, rows[i], "Version", &app.version, app.focus == F_VERSION, false);
+    render_text_row(
+        f,
+        rows[i],
+        "Version",
+        &app.version,
+        app.focus == F_VERSION,
+        false,
+    );
     i += 1;
 
-    render_path_field(f, rows[i], "Templates directory", &app.templates, app.focus == F_TEMPLATES, false);
+    render_path_field(
+        f,
+        rows[i],
+        "Templates directory",
+        &app.templates,
+        app.focus == F_TEMPLATES,
+        false,
+    );
     i += 1;
     if templates_dropdown {
         render_dropdown(f, rows[i], &app.templates);
         i += 1;
     }
 
-    render_select_row(f, rows[i], "Layout", &LAYOUT_OPTIONS, app.layout_idx, app.focus == F_LAYOUT);
+    render_select_row(
+        f,
+        rows[i],
+        "Layout",
+        &LAYOUT_OPTIONS,
+        app.layout_idx,
+        app.focus == F_LAYOUT,
+    );
     i += 1;
-    render_select_row(f, rows[i], "Color theme", &THEME_OPTIONS, app.theme_idx, app.focus == F_THEME);
+    render_select_row(
+        f,
+        rows[i],
+        "Color theme",
+        &THEME_OPTIONS,
+        app.theme_idx,
+        app.focus == F_THEME,
+    );
     i += 1;
 
     let generate_focused = app.focus == F_GENERATE;
     let generate_style = if generate_focused {
-        Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Green)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Green)
     };
-    let generate_btn = Paragraph::new(Line::from(Span::styled("  ▶ Generate Documentation  ", generate_style)))
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(if generate_focused {
-            Style::default().fg(Color::Green)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        }));
+    let generate_btn = Paragraph::new(Line::from(Span::styled(
+        "  ▶ Generate Documentation  ",
+        generate_style,
+    )))
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(if generate_focused {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            }),
+    );
     f.render_widget(generate_btn, rows[i]);
 
     let footer_line = if let Some(err) = &app.error {
@@ -541,7 +640,14 @@ fn ui(f: &mut Frame, app: &App) {
     f.render_widget(footer, outer[2]);
 }
 
-fn render_text_row(f: &mut Frame, area: Rect, label: &str, row: &TextRow, focused: bool, required: bool) {
+fn render_text_row(
+    f: &mut Frame,
+    area: Rect,
+    label: &str,
+    row: &TextRow,
+    focused: bool,
+    required: bool,
+) {
     let (title, text_style, cursor) = field_visuals(label, required, focused, row);
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -549,8 +655,15 @@ fn render_text_row(f: &mut Frame, area: Rect, label: &str, row: &TextRow, focuse
         Style::default().fg(Color::DarkGray)
     };
 
-    let block = Block::default().borders(Borders::ALL).border_style(border_style).title(title);
-    let display_text = if row.input.value().is_empty() { row.hint.to_string() } else { row.input.value().to_string() };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(title);
+    let display_text = if row.input.value().is_empty() {
+        row.hint.to_string()
+    } else {
+        row.input.value().to_string()
+    };
     let paragraph = Paragraph::new(display_text).style(text_style).block(block);
     f.render_widget(paragraph, area);
 
@@ -559,7 +672,14 @@ fn render_text_row(f: &mut Frame, area: Rect, label: &str, row: &TextRow, focuse
     }
 }
 
-fn render_path_field(f: &mut Frame, area: Rect, label: &str, field: &PathField, focused: bool, required: bool) {
+fn render_path_field(
+    f: &mut Frame,
+    area: Rect,
+    label: &str,
+    field: &PathField,
+    focused: bool,
+    required: bool,
+) {
     let (title, text_style, cursor) = field_visuals(label, required, focused, &field.row);
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -567,7 +687,10 @@ fn render_path_field(f: &mut Frame, area: Rect, label: &str, field: &PathField, 
         Style::default().fg(Color::DarkGray)
     };
 
-    let block = Block::default().borders(Borders::ALL).border_style(border_style).title(title);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .title(title);
     let display_text = if field.row.input.value().is_empty() {
         field.row.hint.to_string()
     } else {
@@ -583,7 +706,12 @@ fn render_path_field(f: &mut Frame, area: Rect, label: &str, field: &PathField, 
 
 /// Shared title/style/cursor-offset logic for both plain text rows and path
 /// fields, so the two always look and behave the same way.
-fn field_visuals(label: &str, required: bool, focused: bool, row: &TextRow) -> (Span<'static>, Style, Option<(u16, u16)>) {
+fn field_visuals(
+    label: &str,
+    required: bool,
+    focused: bool,
+    row: &TextRow,
+) -> (Span<'static>, Style, Option<(u16, u16)>) {
     let marker = if required { " *" } else { "" };
     let title_style = if required {
         Style::default().fg(Color::Yellow)
@@ -612,7 +740,10 @@ fn render_dropdown(f: &mut Frame, area: Rect, field: &PathField) {
     let (start, end) = if field.entries.len() <= capacity {
         (0, field.entries.len())
     } else {
-        let start = field.highlighted.saturating_sub(capacity - 1).min(field.entries.len() - capacity);
+        let start = field
+            .highlighted
+            .saturating_sub(capacity - 1)
+            .min(field.entries.len() - capacity);
         (start, start + capacity)
     };
 
@@ -628,7 +759,10 @@ fn render_dropdown(f: &mut Frame, area: Rect, field: &PathField) {
                 format!("📁 {}", entry)
             };
             let style = if real_idx == field.highlighted {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else if is_up {
                 Style::default().fg(Color::DarkGray)
             } else {
@@ -654,7 +788,14 @@ fn render_dropdown(f: &mut Frame, area: Rect, field: &PathField) {
     f.render_widget(paragraph, area);
 }
 
-fn render_select_row(f: &mut Frame, area: Rect, label: &str, options: &[&str], selected: usize, focused: bool) {
+fn render_select_row(
+    f: &mut Frame,
+    area: Rect,
+    label: &str,
+    options: &[&str],
+    selected: usize,
+    focused: bool,
+) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
     } else {
@@ -666,10 +807,16 @@ fn render_select_row(f: &mut Frame, area: Rect, label: &str, options: &[&str], s
         if i == selected {
             spans.push(Span::styled(
                 format!(" {} ", opt),
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
-            spans.push(Span::styled(format!(" {} ", opt), Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                format!(" {} ", opt),
+                Style::default().fg(Color::DarkGray),
+            ));
         }
         if i != options.len() - 1 {
             spans.push(Span::raw("  "));
@@ -679,7 +826,10 @@ fn render_select_row(f: &mut Frame, area: Rect, label: &str, options: &[&str], s
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
-        .title(Span::styled(format!(" {} (optional) ", label), Style::default().fg(Color::Gray)));
+        .title(Span::styled(
+            format!(" {} (optional) ", label),
+            Style::default().fg(Color::Gray),
+        ));
 
     let paragraph = Paragraph::new(Line::from(spans)).block(block);
     f.render_widget(paragraph, area);
