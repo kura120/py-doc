@@ -20,18 +20,43 @@ if (!$Tag) {
 
 $AssetName = "${BinaryName}-x86_64-pc-windows-msvc.zip"
 $Url = "https://github.com/$Repo/releases/download/$Tag/$AssetName"
-$ZipPath = Join-Path $env:TEMP $AssetName
 
-Write-Host "Downloading $BinaryName $Tag..."
-Invoke-WebRequest -Uri $Url -OutFile $ZipPath
+# Work in a private temporary directory, removed on any exit.
+$WorkDir = Join-Path $env:TEMP ("py-doc-install-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $WorkDir | Out-Null
+$ZipPath = Join-Path $WorkDir $AssetName
 
-Write-Host "Extracting..."
-Expand-Archive -Path $ZipPath -DestinationPath $env:TEMP -Force
+try {
+    Write-Host "Downloading $BinaryName $Tag..."
+    Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
 
-Write-Host "Installing to $InstallDir..."
-Move-Item -Path "$env:TEMP\${BinaryName}.exe" -Destination "$InstallDir\${BinaryName}.exe" -Force
+    # Verify the download against the checksum published with the release.
+    $ChecksumPath = "$ZipPath.sha256"
+    $HasChecksum = $true
+    try {
+        Invoke-WebRequest -Uri "$Url.sha256" -OutFile $ChecksumPath -UseBasicParsing
+    } catch {
+        $HasChecksum = $false
+    }
 
-# Clean up
-Remove-Item -Path $ZipPath -Force
+    if ($HasChecksum) {
+        $Expected = ((Get-Content $ChecksumPath -Raw).Trim() -split '\s+')[0]
+        $Actual = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash
+        if ($Expected -ne $Actual) {
+            Write-Error "Checksum mismatch for ${AssetName}: expected $Expected, got $Actual."
+        }
+        Write-Host "Checksum verified."
+    } else {
+        Write-Warning "Release $Tag publishes no checksum for $AssetName; skipping verification."
+    }
 
-Write-Host "Successfully installed $BinaryName!" -ForegroundColor Green
+    Write-Host "Extracting..."
+    Expand-Archive -Path $ZipPath -DestinationPath $WorkDir -Force
+
+    Write-Host "Installing to $InstallDir..."
+    Move-Item -Path (Join-Path $WorkDir "${BinaryName}.exe") -Destination "$InstallDir\${BinaryName}.exe" -Force
+} finally {
+    Remove-Item -Path $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Host "Successfully installed $BinaryName $Tag!" -ForegroundColor Green

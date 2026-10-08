@@ -1,28 +1,35 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if layout %} data-layout="{{ layout }}"{% endif %}{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% set display_module_name = module.name %}
-    {% if module.name == "__init__" and module.folder %}
-        {% set display_module_name = module.folder %}
+    {% if module.name == "__init__" %}
+        {% if module.folder %}
+            {% set display_module_name = module.folder %}
+        {% else %}
+            {% set display_module_name = package.name %}
+        {% endif %}
     {% endif %}
     <title>Module {{ display_module_name }} - {{ package.name }}</title>
+    <meta name="description" content="{% if module.summary %}{{ module.summary }}{% else %}{{ display_module_name }} - {{ package.name }} documentation{% endif %}">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e8944a'/%3E%3Cpath d='M9 8h9l5 5v11H9z' fill='none' stroke='%2314171c' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h6M13 20h6' stroke='%2314171c' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ root_path }}style.css">
+    <script>(function(){try{var d=document.documentElement,l=localStorage.getItem("layout"),t=localStorage.getItem("theme")||d.getAttribute("data-theme")||"auto";if(l)d.setAttribute("data-layout",l);d.setAttribute("data-theme-pref",t);if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body>
     {% include "sidebar.html" %}
+    <div class="sidebar-resizer"></div>
 
     <main class="main-content">
-        <div id="search-results">
-            <h2>Search Results</h2>
+        <div id="search-results" role="listbox" aria-label="Search results">
             <div id="results-list"></div>
         </div>
 
         <div id="page-content">
             <div class="namespace-path breadcrumb-row">
                 <div>
-                    <a href="{{ root_path }}index.html">{{ package.name }}</a> :: <span>{{ display_module_name }}</span>
+                    <a href="{{ root_path }}index.html">{{ package.name }}</a> :: <span>{% if module.qualname %}{{ module.qualname }}{% else %}{{ display_module_name }}{% endif %}</span>
                 </div>
                 <a href="{{ root_path }}index.html" class="back-link">
                     ← Back to Overview
@@ -43,17 +50,23 @@
                 <h2>Classes</h2>
                 {% for class in module.classes %}
                     <div class="item-card" id="class.{{ class.name }}">
-                        <div class="signature-box"><span class="keyword">class</span> <span class="entity-name">{{ class.name }}</span>:</div>
+                        <div class="signature-box">
+                            <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ class.name }}</span>{% if class.bases %}({{ class.bases | join(sep=", ") }}){% endif %}:</span>
+                            <span class="signature-meta">{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ class.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ class.line }}</span>{% endif %}</span>
+                        </div>
                         {% if class.docstring %}
                             <div class="docstring">{{ class.docstring | safe }}</div>
                         {% endif %}
 
                         {% if class.functions %}
                             <div class="method-list">
-                                <h4>Methods</h4>
+                                <h3 class="method-list-title">Methods</h3>
                                 {% for func in class.functions %}
-                                    <div class="method-item">
-                                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(attribute=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
+                                    <div class="method-item" id="method.{{ class.name }}.{{ func.name }}">
+                                        <div class="signature-box">
+                                            <span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span>
+                                            <span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span>
+                                        </div>
                                         {% if func.docstring %}
                                             <div class="docstring">{{ func.docstring | safe }}</div>
                                         {% endif %}
@@ -71,7 +84,10 @@
                 <h2>Functions</h2>
                 {% for func in module.functions %}
                     <div class="item-card" id="fn.{{ func.name }}">
-                        <div class="signature-box"><span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(attribute=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</div>
+                        <div class="signature-box">
+                            <span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span>
+                            <span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ func.line }}</span>{% endif %}</span>
+                        </div>
                         {% if func.docstring %}
                             <div class="docstring">{{ func.docstring | safe }}</div>
                         {% endif %}
@@ -81,6 +97,30 @@
             {% endif %}
         </div>
     </main>
+
+    {% if module.classes or module.functions %}
+    <aside class="page-outline" aria-label="On this page">
+        <div class="outline-title">On this page</div>
+        <ul>
+            {% for class in module.classes %}
+                <li>
+                    <a href="#class.{{ class.name }}">{{ class.name }}</a>
+                    {% if class.functions %}
+                        <ul>
+                            {% for func in class.functions %}
+                                <li><a href="#method.{{ class.name }}.{{ func.name }}">{{ func.name }}</a></li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                </li>
+            {% endfor %}
+            {% for func in module.functions %}
+                <li><a href="#fn.{{ func.name }}">{{ func.name }}</a></li>
+            {% endfor %}
+        </ul>
+    </aside>
+    {% endif %}
+
     <script src="{{ root_path }}nav-data.js" defer></script>
     <script src="{{ root_path }}search-index.js" defer></script>
     <script src="{{ root_path }}app.js" defer></script>

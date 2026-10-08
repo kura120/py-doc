@@ -1,23 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if layout %} data-layout="{{ layout }}"{% endif %}{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ package.name }} - Documentation Index</title>
+    <meta name="description" content="{{ package.name }} {{ version }} reference documentation: {{ total_modules }} modules, {{ total_classes }} classes, {{ total_functions }} functions.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e8944a'/%3E%3Cpath d='M9 8h9l5 5v11H9z' fill='none' stroke='%2314171c' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h6M13 20h6' stroke='%2314171c' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ root_path }}style.css">
+    <script>(function(){try{var d=document.documentElement,l=localStorage.getItem("layout"),t=localStorage.getItem("theme")||d.getAttribute("data-theme")||"auto";if(l)d.setAttribute("data-layout",l);d.setAttribute("data-theme-pref",t);if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",t);}catch(e){}})();</script>
 </head>
 <body style="display: flex;">
     {% include "sidebar.html" %}
     <div class="sidebar-resizer"></div>
     <main class="main-content">
-        <div id="search-results">
-            <h2>Search Results</h2>
+        <div id="search-results" role="listbox" aria-label="Search results">
             <div id="results-list"></div>
         </div>
 
         <div id="page-content">
             <h1 class="package-title">{{ package.name }}</h1>
             <div class="subtitle">Python Package Reference Documentation</div>
+            {% if package_docstring %}
+                <div class="docstring">{{ package_docstring | safe }}</div>
+            {% endif %}
+            {% if package_link_path %}
+                <p><a href="{{ package_link_path }}">Package-level classes and functions</a></p>
+            {% endif %}
             <p class="package-stats">{{ total_modules }} module{% if total_modules != 1 %}s{% endif %}, {{ total_classes }} class{% if total_classes != 1 %}es{% endif %}, {{ total_functions }} function{% if total_functions != 1 %}s{% endif %} in this build.</p>
 
             <h2>Modules</h2>
@@ -30,8 +38,8 @@
                         {% set submodule_count = group.modules | length %}
                         {% set contents_count = symbol_count + submodule_count %}
 
-                        <div class="module-card folder-card" {% if group.link_path %}onclick="location.href='{{ group.link_path }}';"{% endif %}>
-                            <h3><span class="card-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 5.5C2.5 4.67 3.17 4 4 4h3.5L9 5.5h7c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5H4c-.83 0-1.5-.67-1.5-1.5v-8.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>{{ group.name }}</h3>
+                        <div class="module-card folder-card">
+                            <h3><span class="card-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 5.5C2.5 4.67 3.17 4 4 4h3.5L9 5.5h7c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5H4c-.83 0-1.5-.67-1.5-1.5v-8.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>{% if group.link_path %}<a class="card-link" href="{{ group.link_path }}">{{ group.name }}</a>{% else %}{{ group.name }}{% endif %}</h3>
                             <p>
                                 {% if group.docstring %}
                                     {{ group.docstring | striptags | truncate(length=140) }}
@@ -43,7 +51,7 @@
                             </p>
 
                             {% if contents_count > 0 %}
-                                <details class="module-details" onclick="event.stopPropagation();">
+                                <details class="module-details">
                                     <summary>Show contents ({{ contents_count }})</summary>
 
                                     {% if symbol_count > 0 %}
@@ -68,7 +76,7 @@
                                                 <li>
                                                     <a href="{{ mod.link_path }}">{{ mod.name }}</a>
                                                     {% if mod_symbol_count > 0 %}
-                                                        <details class="nested-details" onclick="event.stopPropagation();">
+                                                        <details class="nested-details">
                                                             <summary>{{ mod_symbol_count }} symbol{% if mod_symbol_count != 1 %}s{% endif %}</summary>
                                                             <ul>
                                                                 {% for class in mod.classes %}
@@ -92,8 +100,8 @@
                             {% set mod_class_count = mod.classes | length %}
                             {% set mod_func_count = mod.functions | length %}
                             {% set mod_symbol_count = mod_class_count + mod_func_count %}
-                            <div class="module-card" onclick="location.href='{{ mod.link_path }}';">
-                                <h3>{{ mod.name }}</h3>
+                            <div class="module-card">
+                                <h3><a class="card-link" href="{{ mod.link_path }}">{{ mod.name }}</a></h3>
                                 <p>
                                     {% if mod.docstring %}
                                         {{ mod.docstring | striptags | truncate(length=140) }}
@@ -103,7 +111,7 @@
                                 </p>
 
                                 {% if mod_symbol_count > 0 %}
-                                    <details class="module-details" onclick="event.stopPropagation();">
+                                    <details class="module-details">
                                         <summary>Show symbols ({{ mod_symbol_count }})</summary>
                                         <ul>
                                             {% for class in mod.classes %}

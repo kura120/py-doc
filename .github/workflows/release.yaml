@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
+
 jobs:
   publish:
     name: Build and Upload (${{ matrix.target }})
@@ -20,26 +24,16 @@ jobs:
             target: x86_64-apple-darwin
             artifact_name: py-doc
             asset_name: py-doc-x86_64-apple-darwin.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: py-doc
+            asset_name: py-doc-aarch64-apple-darwin.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: py-doc.exe
             asset_name: py-doc-x86_64-pc-windows-msvc.zip
 
     steps:
-      - name: Install UPX
-        if: matrix.os != 'windows-latest'
-        run: |
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-            sudo apt-get update && sudo apt-get install -y upx-ucl
-          else
-            brew install upx
-          fi
-
-      - name: Install UPX (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install upx -y
-        shell: pwsh
-
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
@@ -48,32 +42,55 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Check tag matches Cargo.toml version
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $version"
+            exit 1
+          fi
+
+      # Release binaries are not UPX-packed: the archives are already
+      # compressed, and packed executables are unsupported on macOS and
+      # frequently flagged by antivirus tools on Windows.
       - name: Build Binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
           chmod +x ./scripts/build.sh
-          ./scripts/build.sh
+          ./scripts/build.sh ${{ matrix.target }}
 
       - name: Build Binary (Windows)
         if: matrix.os == 'windows-latest'
-        run: pwsh -File ./scripts/build.ps1
+        run: pwsh -File ./scripts/build.ps1 -Target ${{ matrix.target }}
 
       - name: Archive Binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          cd target/release
-          tar -czf ../../${{ matrix.asset_name }} ${{ matrix.artifact_name }}
-          cd -
+          tar -czf ${{ matrix.asset_name }} -C target/${{ matrix.target }}/release ${{ matrix.artifact_name }}
 
       - name: Archive Binary (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path target\release\${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}
+          Compress-Archive -Path target\${{ matrix.target }}\release\${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}
+
+      # "<hash>  <file>", the format sha256sum/shasum -c and the installers read.
+      - name: Write SHA-256 checksum
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          else
+            shasum -a 256 ${{ matrix.asset_name }} > ${{ matrix.asset_name }}.sha256
+          fi
+          cat ${{ matrix.asset_name }}.sha256
 
       - name: Create and Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.asset_name }}
+          files: |
+            ${{ matrix.asset_name }}
+            ${{ matrix.asset_name }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
