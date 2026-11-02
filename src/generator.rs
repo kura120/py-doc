@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
-use tera::{Context as TeraContext, Kwargs, State, Tera};
+use tera::{Context as TeraContext, Kwargs, State, Tera, Value};
 
 use crate::highlight::highlight_python;
 use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage};
@@ -766,9 +766,13 @@ impl SiteGenerator {
         nav_groups.into_iter().map(|(_, group)| group).collect()
     }
 
-    fn base_context(&self, package: &PythonPackage, root_path: &str) -> TeraContext {
+    /// `package` and `nav_groups` are serialized once by the caller: Tera
+    /// values are reference-counted, so every page shares one copy instead of
+    /// re-serializing the whole package (all rendered docstrings) per page.
+    fn base_context(&self, package: &Value, nav_groups: &Value, root_path: &str) -> TeraContext {
         let mut context = TeraContext::new();
-        context.insert("package", package);
+        context.insert_value("package", package.clone());
+        context.insert_value("nav_groups", nav_groups.clone());
         context.insert("version", &self.version);
         context.insert("root_path", root_path);
         context.insert("layout", &self.layout);
@@ -816,9 +820,11 @@ impl SiteGenerator {
             .iter()
             .find(|m| m.link_path == "__init__.html");
 
+        let package_value = Value::from_serializable(&*package);
+        let nav_value = Value::from_serializable(&nav_groups);
+
         // Render index page
-        let mut index_context = self.base_context(package, "./");
-        index_context.insert("nav_groups", &nav_groups);
+        let mut index_context = self.base_context(&package_value, &nav_value, "./");
         index_context.insert("total_modules", &total_modules);
         index_context.insert("total_classes", &total_classes);
         index_context.insert("total_functions", &total_functions);
@@ -838,34 +844,41 @@ impl SiteGenerator {
         )?;
         self.record("index.html");
 
-        // Render detailed individual module detail pages
-        for module in &package.modules {
-            let absolute_output_path = Path::new(&self.output_dir).join(&module.link_path);
+        // Render detailed individual module detail pages, in parallel.
+        package
+            .modules
+            .par_iter()
+            .try_for_each(|module| -> Result<()> {
+                let absolute_output_path = Path::new(&self.output_dir).join(&module.link_path);
 
-            if let Some(parent_dir) = absolute_output_path.parent() {
-                fs::create_dir_all(parent_dir).with_context(|| {
-                    format!("Failed to create output directory {:?}", parent_dir)
-                })?;
-            }
+                if let Some(parent_dir) = absolute_output_path.parent() {
+                    fs::create_dir_all(parent_dir).with_context(|| {
+                        format!("Failed to create output directory {:?}", parent_dir)
+                    })?;
+                }
 
-            let mut mod_context = self.base_context(package, &root_prefix_for(&module.link_path));
-            mod_context.insert("nav_groups", &nav_groups);
-            mod_context.insert("module", module);
+                let mut mod_context = self.base_context(
+                    &package_value,
+                    &nav_value,
+                    &root_prefix_for(&module.link_path),
+                );
+                mod_context.insert("module", module);
 
-            let template_name = if module.is_document {
-                "document.html"
-            } else {
-                "module.html"
-            };
+                let template_name = if module.is_document {
+                    "document.html"
+                } else {
+                    "module.html"
+                };
 
-            let rendered_mod = self
-                .tera
-                .render(template_name, &mod_context)
-                .with_context(|| format!("Failed to render {}", module.source_path))?;
-            fs::write(&absolute_output_path, rendered_mod)
-                .with_context(|| format!("Failed to write {:?}", absolute_output_path))?;
-            self.record(&module.link_path);
-        }
+                let rendered_mod = self
+                    .tera
+                    .render(template_name, &mod_context)
+                    .with_context(|| format!("Failed to render {}", module.source_path))?;
+                fs::write(&absolute_output_path, rendered_mod)
+                    .with_context(|| format!("Failed to write {:?}", absolute_output_path))?;
+                self.record(&module.link_path);
+                Ok(())
+            })?;
 
         println!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
