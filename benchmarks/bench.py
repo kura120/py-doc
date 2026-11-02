@@ -21,6 +21,7 @@ import os
 import pathlib
 import platform
 import shutil
+import statistics
 import subprocess
 import sys
 import textwrap
@@ -142,6 +143,16 @@ EOF
     }
 
 
+def median_seconds(report: pathlib.Path) -> float:
+    """Median wall time from a hyperfine JSON export (1.x or 2.x schema)."""
+    result = json.loads(report.read_text())["results"][0]
+    if "times" in result:
+        times = result["times"]
+    else:
+        times = [m["time_wall_clock"]["value"] for m in result["measurements"]]
+    return statistics.median(times)
+
+
 def main() -> None:
     if not PY_DOC.exists():
         sys.exit("build py-doc first: cargo build --release")
@@ -159,7 +170,7 @@ def main() -> None:
             runs = RUNS.get((tool, pkg), RUNS.get(tool, RUNS["default"]))
             report = WORK / f"{tool}-{pkg}.json"
             sh("hyperfine", "-N", "-w", "1", "-r", str(runs), "--export-json", str(report), str(cmd))
-            times[tool] = json.loads(report.read_text())["results"][0]["median"]
+            times[tool] = median_seconds(report)
         corpora.append({
             "name": f"{pkg} {CORPORA[pkg].split('==')[1]}",
             "detail": f"{len(files)} files, {lines:,} lines of Python",
