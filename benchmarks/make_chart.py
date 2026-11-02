@@ -82,8 +82,13 @@ for corpus in RESULTS["corpora"]:
     )
     y = row_y + PANEL_GAP
 
-height = y - PANEL_GAP + 34
-foot = esc(RESULTS["machine"])
+height = y - PANEL_GAP + 50
+# Footer on two lines: the method, then how to reproduce.
+method, _, reproduce = RESULTS["machine"].partition(" Reproduce: ")
+foot = (
+    f'<text class="f" x="{LEFT}" y="{height - 28}">{esc(method)}</text>'
+    f'<text class="f" x="{LEFT}" y="{height - 11}">Reproduce: {esc(reproduce)}</text>'
+)
 
 svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{height}" viewBox="0 0 {WIDTH} {height}" role="img" aria-labelledby="t d">
 <title id="t">Time to generate HTML API docs: py-doc vs pydoc, pdoc3, pdoc and Sphinx</title>
@@ -107,7 +112,7 @@ svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{heigh
 </style>
 <text class="t" x="{LEFT}" y="26">Time to generate HTML API docs (lower is better)</text>
 {chr(10).join(parts)}
-<text class="f" x="{LEFT}" y="{height - 12}">{foot}</text>
+{foot}
 </svg>
 """
 OUT.parent.mkdir(parents=True, exist_ok=True)
