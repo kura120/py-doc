@@ -266,6 +266,157 @@ fn custom_templates_override_only_the_files_they_provide() {
     assert!(read(&out, "app.js").contains("renderNavTree"));
 }
 
+/// Pages of the sample fixture, as site-relative paths, sorted.
+fn html_pages(out: &Path) -> Vec<String> {
+    fn walk(dir: &Path, root: &Path, found: &mut Vec<String>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, root, found);
+            } else if path.extension().is_some_and(|ext| ext == "html") {
+                let rel = path.strip_prefix(root).unwrap();
+                found.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(out, out, &mut found);
+    found.sort();
+    found
+}
+
+/// Collapses every run of whitespace to one space, so template
+/// indentation can change without touching the snapshots.
+fn normalize_whitespace(html: &str) -> String {
+    html.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Compares every page of a generated sample site with the snapshots in
+/// `tests/snapshots/sample`. Set `PY_DOC_UPDATE_SNAPSHOTS=1` to rewrite them
+/// after an intended change to the default theme.
+fn assert_matches_sample_snapshots(out: &Path) {
+    let snapshots = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("snapshots")
+        .join("sample");
+    let pages = html_pages(out);
+    if std::env::var_os("PY_DOC_UPDATE_SNAPSHOTS").is_some() {
+        let _ = fs::remove_dir_all(&snapshots);
+        for page in &pages {
+            let target = snapshots.join(page);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(&target, normalize_whitespace(&read(out, page)) + "\n").unwrap();
+        }
+        return;
+    }
+    assert_eq!(pages, html_pages(&snapshots), "the set of pages changed");
+    for page in &pages {
+        let expected = fs::read_to_string(snapshots.join(page)).unwrap();
+        assert_eq!(
+            normalize_whitespace(&read(out, page)),
+            expected.trim_end(),
+            "{} differs from tests/snapshots/sample/{}",
+            page,
+            page
+        );
+    }
+}
+
+#[test]
+fn default_output_matches_the_snapshots() {
+    let out = generate_sample("default_snapshots", &[]);
+    assert_matches_sample_snapshots(&out);
+}
+
+#[test]
+fn whole_file_template_overrides_still_work() {
+    // Copies of the theme from before it used template inheritance: each
+    // file is a complete page and must keep rendering the same site.
+    let templates = fixture("templates").join("legacy");
+    let out = out_dir("legacy_templates");
+    let output = run(
+        &fixture("sample"),
+        &out,
+        &["--templates", templates.to_str().unwrap()],
+    );
+    assert!(
+        output.status.success(),
+        "py-doc failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("document.html, index.html, module.html, sidebar.html"),
+        "the custom templates were not used:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_matches_sample_snapshots(&out);
+
+    // A standalone page that shares nothing with the bundled theme.
+    let templates = out_dir("standalone_templates_src");
+    fs::create_dir_all(&templates).unwrap();
+    fs::write(
+        templates.join("module.html"),
+        "<p class=\"standalone\">{{ display_module_name }} in {{ package.name }}</p>",
+    )
+    .unwrap();
+    let out = generate_sample(
+        "standalone_templates",
+        &["--templates", templates.to_str().unwrap()],
+    );
+    assert_eq!(
+        read(&out, "utils/helpers.html"),
+        "<p class=\"standalone\">helpers in demo</p>"
+    );
+    assert!(read(&out, "index.html").contains("module-grid"));
+}
+
+#[test]
+fn a_custom_template_can_extend_the_bundled_one_and_override_a_block() {
+    let templates = fixture("templates").join("blocks");
+    let out = generate_sample(
+        "block_templates",
+        &["--templates", templates.to_str().unwrap()],
+    );
+    let page = read(&out, "utils/helpers.html");
+    // The overridden block...
+    assert!(page.contains("<h1 class=\"custom-header\">API: helpers</h1>"));
+    assert!(!page.contains("breadcrumb-row"));
+    // ...while every other block keeps the bundled default.
+    assert!(page.contains("<title>Module helpers - demo</title>"));
+    assert!(page.contains("class=\"sidebar\""));
+    assert!(page.contains("id=\"fn.slugify\""));
+    assert!(page.contains("class=\"page-outline\""));
+    // super() keeps the bundled scripts and appends one.
+    let app = page.find("app.js").expect("bundled scripts kept");
+    let extra = page.find("extra.js").expect("extra script added");
+    assert!(app < extra);
+    // A user partial included from a user template.
+    assert!(page.contains("<footer class=\"custom-footer\">Docs for demo"));
+
+    // Pages built from templates the directory does not provide are unchanged.
+    assert!(!read(&out, "guide.html").contains("custom-footer"));
+    assert!(read(&out, "index.html").contains("module-grid"));
+}
+
+#[test]
+fn a_custom_base_template_reaches_every_page() {
+    let templates = fixture("templates").join("base-footer");
+    let out = generate_sample(
+        "base_template",
+        &["--templates", templates.to_str().unwrap()],
+    );
+    for page in ["index.html", "utils/helpers.html", "guide.html"] {
+        let html = read(&out, page);
+        assert!(
+            html.contains("<footer class=\"site-footer\">Every page</footer>"),
+            "{} lacks the custom footer",
+            page
+        );
+        assert!(html.contains("app.js"), "{} lost the bundled scripts", page);
+    }
+}
+
 #[test]
 fn version_flag_reports_the_tool_version() {
     let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
