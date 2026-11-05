@@ -16,7 +16,8 @@ use crate::resolver::Resolver;
 
 /// The bundled theme. Compiled into the binary so generation works offline
 /// and a binary always pairs with the templates it was built with.
-const EMBEDDED_ASSETS: [(&str, &str); 6] = [
+const EMBEDDED_ASSETS: [(&str, &str); 7] = [
+    ("base.html", include_str!("../assets/base.html")),
     ("sidebar.html", include_str!("../assets/sidebar.html")),
     ("index.html", include_str!("../assets/index.html")),
     ("module.html", include_str!("../assets/module.html")),
@@ -24,7 +25,17 @@ const EMBEDDED_ASSETS: [(&str, &str); 6] = [
     ("style.css", include_str!("../assets/style.css")),
     ("app.js", include_str!("../assets/app.js")),
 ];
-const TEMPLATE_NAMES: [&str; 4] = ["sidebar.html", "index.html", "module.html", "document.html"];
+const TEMPLATE_NAMES: [&str; 5] = [
+    "base.html",
+    "sidebar.html",
+    "index.html",
+    "module.html",
+    "document.html",
+];
+/// The bundled templates are registered under this prefix, so a custom
+/// template can extend the one it replaces (`{% extends "py-doc/module.html" %}`).
+/// Tera falls back to it for any name the custom directory does not provide.
+const BUNDLED_PREFIX: &str = "py-doc/";
 const STATIC_NAMES: [&str; 2] = ["style.css", "app.js"];
 /// Lists every file a run wrote, so a later `--clean` run can remove the
 /// ones that are no longer produced without touching anything else.
@@ -234,6 +245,18 @@ fn output_path_for(source_path: &str) -> String {
     }
 }
 
+/// The name a page shows for its module: a package's `__init__` is shown
+/// under its folder's name, or the package name at the top level.
+fn display_module_name<'a>(module: &'a PythonModule, package_name: &'a str) -> &'a str {
+    if module.name != "__init__" {
+        return &module.name;
+    }
+    match module.folder.as_deref() {
+        Some(folder) if !folder.is_empty() => folder,
+        _ => package_name,
+    }
+}
+
 /// Relative prefix that takes a page back to the site root.
 fn root_prefix_for(link_path: &str) -> String {
     match link_path.matches('/').count() {
@@ -260,26 +283,38 @@ impl SiteGenerator {
         source_url: Option<&str>,
     ) -> Result<Self> {
         let template_dir = template_dir.map(PathBuf::from);
-        let mut overridden = Vec::new();
 
         let mut tera = Tera::default();
         tera.register_filter("striptags", striptags_filter);
-        for name in TEMPLATE_NAMES {
-            let (body, is_custom) = load_asset(template_dir.as_deref(), name)?;
-            if is_custom {
-                overridden.push(name);
-            }
-            tera.add_raw_template(name, &body)
-                .with_context(|| format!("Failed to load template {}", name))?;
-        }
+        tera.set_fallback_prefixes([BUNDLED_PREFIX])
+            .context("Failed to configure the template engine")?;
+
+        let custom = match &template_dir {
+            Some(dir) => custom_templates(dir)?,
+            None => Vec::new(),
+        };
+        let mut templates: Vec<(String, String)> = TEMPLATE_NAMES
+            .iter()
+            .map(|name| {
+                Ok((
+                    format!("{BUNDLED_PREFIX}{name}"),
+                    bundled_asset(name)?.to_string(),
+                ))
+            })
+            .collect::<Result<_>>()?;
+        templates.extend(custom.iter().cloned());
+        tera.add_raw_templates(templates)
+            .context("Failed to load templates")?;
+
         if let Some(dir) = &template_dir {
+            let names: Vec<&str> = custom.iter().map(|(name, _)| name.as_str()).collect();
             println!(
                 "  Using custom templates from '{}': {}",
                 dir.display(),
-                if overridden.is_empty() {
+                if names.is_empty() {
                     "none found, using the bundled theme".to_string()
                 } else {
-                    overridden.join(", ")
+                    names.join(", ")
                 }
             );
         }
@@ -863,6 +898,10 @@ impl SiteGenerator {
                     &root_prefix_for(&module.link_path),
                 );
                 mod_context.insert("module", module);
+                mod_context.insert(
+                    "display_module_name",
+                    display_module_name(module, &package.name),
+                );
 
                 let template_name = if module.is_document {
                     "document.html"
@@ -930,12 +969,59 @@ fn load_asset(template_dir: Option<&Path>, name: &str) -> Result<(String, bool)>
             return Ok((body, true));
         }
     }
-    let body = EMBEDDED_ASSETS
+    Ok((bundled_asset(name)?.to_string(), false))
+}
+
+fn bundled_asset(name: &str) -> Result<&'static str> {
+    EMBEDDED_ASSETS
         .iter()
         .find(|(asset_name, _)| *asset_name == name)
         .map(|(_, body)| *body)
-        .ok_or_else(|| anyhow!("Unknown bundled asset '{}'", name))?;
-    Ok((body.to_string(), false))
+        .ok_or_else(|| anyhow!("Unknown bundled asset '{}'", name))
+}
+
+/// Every `*.html` file under the custom template directory, named by its
+/// path relative to it with `/` separators (`partials/footer.html`). A file
+/// with a bundled name replaces that template; the rest are extra templates
+/// and partials for custom templates to extend or include. Hidden files and
+/// folders are skipped.
+fn custom_templates(dir: &Path) -> Result<Vec<(String, String)>> {
+    fn walk(dir: &Path, prefix: &str, found: &mut Vec<(String, String)>) -> Result<()> {
+        let entries = fs::read_dir(dir)
+            .with_context(|| format!("Failed to read template directory {:?}", dir))?;
+        for entry in entries {
+            let path = entry?.path();
+            let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if file_name.starts_with('.') {
+                continue;
+            }
+            let name = format!("{prefix}{file_name}");
+            if path.is_dir() {
+                walk(&path, &format!("{name}/"), found)?;
+            } else if file_name.ends_with(".html") {
+                if name.starts_with(BUNDLED_PREFIX) {
+                    eprintln!(
+                        "  \x1b[33m⚠\x1b[0m {}: skipped, the '{}' folder is reserved for the bundled theme",
+                        name, BUNDLED_PREFIX
+                    );
+                    continue;
+                }
+                let body = fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read custom template {:?}", path))?;
+                found.push((name, body));
+            }
+        }
+        Ok(())
+    }
+
+    let mut found = Vec::new();
+    if dir.is_dir() {
+        walk(dir, "", &mut found)?;
+    }
+    found.sort();
+    Ok(found)
 }
 
 /// Renders one line of Markdown without the surrounding paragraph, for
