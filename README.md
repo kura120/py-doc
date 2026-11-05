@@ -4,6 +4,10 @@ A lightweight and fast documentation tool for Python codebases, powered by Rust.
 
 py-doc reads your `.py` files, never imports or runs them, and writes a static site: one page per module, a searchable index, and three switchable layouts. The theme is built into the binary, so generation works offline.
 
+<p align="center"><img src="benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 20 ms, pydoc 305 ms, pdoc3 868 ms, pdoc 1.50 s, Sphinx 4.27 s. rich: py-doc 44 ms, pydoc 571 ms, pdoc3 1.95 s, pdoc 3.88 s, Sphinx 10.8 s. SQLAlchemy: py-doc 344 ms, pdoc3 15.5 s, pydoc 15.9 s, pdoc 39.7 s, Sphinx 62.6 s." width="820"></p>
+
+py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 45x faster than `pydoc` and `pdoc3`, 115x faster than `pdoc`, and 180x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
+
 ## Table of Contents
 
 * [Installation](#installation)
@@ -11,6 +15,7 @@ py-doc reads your `.py` files, never imports or runs them, and writes a static s
 * [Writing docs](#writing-docs)
 * [The generated site](#the-generated-site)
 * [Custom templates](#custom-templates)
+* [Benchmarks](#benchmarks)
 * [Development](#development)
 * [Troubleshooting](#troubleshooting)
 
@@ -181,6 +186,27 @@ index.html  module.html  document.html  sidebar.html  style.css  app.js
 ```
 
 The HTML files are [Tera](https://keats.github.io/tera/) templates. The bundled versions in [`assets/`](assets) are the reference for the variables available.
+
+---
+
+## Benchmarks
+
+Each tool generated HTML API docs for three packages from PyPI. Every run started from an empty output folder, and the figure is the median of 3 to 20 runs measured with [hyperfine](https://github.com/sharkdp/hyperfine) on a 4-core Linux machine.
+
+| Package | Size | py-doc | pydoc | pdoc3 | pdoc | Sphinx + autodoc |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| requests 2.34.2 | 19 files, 6.4k lines | **20 ms** | 305 ms | 868 ms | 1.50 s | 4.27 s |
+| rich 15.0.0 | 100 files, 38.5k lines | **44 ms** | 571 ms | 1.95 s | 3.88 s | 10.8 s |
+| SQLAlchemy 2.1.6 | 258 files, 254k lines | **344 ms** | 15.9 s | 15.5 s | 39.7 s | 62.6 s |
+| SQLAlchemy, peak memory | | **94 MB** | 146 MB | 133 MB | 1,077 MB | 523 MB |
+
+**Why the gap is so large.** pydoc, pdoc, pdoc3 and Sphinx's autodoc all *import* your package and inspect the live objects, so they pay for Python startup, every import side effect and runtime introspection. py-doc parses the source with Ruff's Rust parser instead and renders pages in parallel on every core.
+
+**What that trade-off costs.** Import-based tools see things a parser cannot, such as attributes created at runtime, members inherited from other packages, and docstrings assigned with `__doc__ = ...`. Because py-doc never imports, it also works without your dependencies installed and never runs your code.
+
+**Fairness.** Every tool used the same Python and the same package versions. Sphinx ran with `-j auto`, so it used all cores the same way py-doc does. Import-based tools were given only modules that import cleanly on the test machine; py-doc parsed every file, so it did slightly more work.
+
+To reproduce, run `cargo build --release && python3 benchmarks/bench.py`, then `python3 benchmarks/make_chart.py` to redraw the chart. Raw numbers are in [`benchmarks/results.json`](benchmarks/results.json).
 
 ---
 

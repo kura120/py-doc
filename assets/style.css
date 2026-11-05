@@ -248,8 +248,14 @@ a { color: inherit; }
     outline-offset: 2px;
 }
 
+/* Long module names in page titles wrap on narrow screens. */
+.main-content h1 { overflow-wrap: anywhere; }
+
 .main-content {
     flex: 1;
+    /* Without this a flex item never shrinks below its widest child, so one
+       long code block widened the whole page instead of scrolling itself. */
+    min-width: 0;
     padding: 40px;
     max-width: var(--content-max-width);
     box-sizing: border-box;
@@ -835,10 +841,13 @@ details[open] summary.active-mod, .nav-header.active-mod a {
 ========================================= */
 .breadcrumb-row {
     display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 15px;
 }
+.breadcrumb-row > :first-child { min-width: 0; overflow-wrap: anywhere; }
 .back-link {
     text-decoration: none;
     color: var(--accent-blue);
@@ -870,6 +879,8 @@ h1.module-title, h1.package-title {
     margin: 20px 0;
     line-height: 1.6;
     font-size: 0.98rem;
+    /* Long URLs and identifiers wrap instead of widening the page. */
+    overflow-wrap: break-word;
 }
 .docstring h1, .markdown-body h1,
 .docstring h2, .markdown-body h2,

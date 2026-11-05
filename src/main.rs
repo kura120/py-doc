@@ -8,6 +8,7 @@ mod tui;
 use anyhow::{Result, bail};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
@@ -200,22 +201,25 @@ fn run_generation(args: &Args) -> Result<()> {
             .progress_chars("=>-"),
     );
 
-    let mut parse_errors: Vec<String> = Vec::new();
-    for path in &py_files {
-        pb.set_message(
-            path.file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default(),
-        );
+    // Files are parsed in parallel; collecting keeps them in sorted order.
+    let results: Vec<_> = py_files
+        .par_iter()
+        .map(|path| {
+            let result = parser::parse_file(path, &root);
+            pb.inc(1);
+            (path, result)
+        })
+        .collect();
 
-        match parser::parse_file(path, &root) {
+    let mut parse_errors: Vec<String> = Vec::new();
+    for (path, result) in results {
+        match result {
             Ok(module) => package.modules.push(module),
             Err(e) => {
                 let shown = path.strip_prefix(&root).unwrap_or(path);
                 parse_errors.push(format!("{}: {:#}", shown.display(), e));
             }
         }
-        pb.inc(1);
     }
     pb.finish_and_clear();
 

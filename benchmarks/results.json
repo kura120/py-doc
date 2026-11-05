@@ -1,0 +1,65 @@
+{
+  "machine": "Median of 3-20 cold runs (hyperfine). Linux x86_64, 4 cores, Python 3.13. pdoc 16.0, pdoc3 0.11.6, Sphinx 9.2 (-j auto). Reproduce: python3 benchmarks/bench.py",
+  "corpora": [
+    {
+      "name": "requests 2.34.2",
+      "detail": "19 files, 6,385 lines of Python",
+      "times": {
+        "py-doc": 0.0205,
+        "py-doc-0.5.1": 0.0483,
+        "pydoc": 0.305,
+        "pdoc": 1.501,
+        "pdoc3": 0.868,
+        "sphinx": 4.2739
+      },
+      "peak_memory_mb": {
+        "py-doc": 9,
+        "py-doc-0.5.1": 9,
+        "pydoc": 33,
+        "pdoc": 73,
+        "pdoc3": 46,
+        "sphinx": 99
+      }
+    },
+    {
+      "name": "rich 15.0.0",
+      "detail": "100 files, 38,515 lines of Python",
+      "times": {
+        "py-doc": 0.0441,
+        "py-doc-0.5.1": 0.5115,
+        "pydoc": 0.5706,
+        "pdoc": 3.8789,
+        "pdoc3": 1.9539,
+        "sphinx": 10.8489
+      },
+      "peak_memory_mb": {
+        "py-doc": 15,
+        "py-doc-0.5.1": 16,
+        "pydoc": 39,
+        "pdoc": 172,
+        "pdoc3": 48,
+        "sphinx": 173
+      }
+    },
+    {
+      "name": "SQLAlchemy 2.1.6",
+      "detail": "258 files, 253,528 lines of Python",
+      "times": {
+        "py-doc": 0.3438,
+        "py-doc-0.5.1": 16.1972,
+        "pydoc": 15.9368,
+        "pdoc": 39.6908,
+        "pdoc3": 15.5367,
+        "sphinx": 62.613
+      },
+      "peak_memory_mb": {
+        "py-doc": 94,
+        "py-doc-0.5.1": 110,
+        "pydoc": 146,
+        "pdoc": 1077,
+        "pdoc3": 133,
+        "sphinx": 523
+      }
+    }
+  ]
+}
