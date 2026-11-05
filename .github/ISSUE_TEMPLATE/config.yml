@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Usage and options
+    url: https://github.com/kura120/py-doc#usage
+    about: Flags, macros, custom templates and troubleshooting are covered in the README.
