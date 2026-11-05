@@ -17,6 +17,7 @@ use std::io::{self, Stdout};
 use std::path::{Path, PathBuf};
 use tui_input::{Input, backend::crossterm::EventHandler};
 
+use crate::config::{Config, DEFAULT_VERSION};
 use crate::{Args, LayoutKind, ThemeKind};
 
 const LAYOUT_OPTIONS: [&str; 3] = ["Classic", "Minimal", "Modern"];
@@ -76,9 +77,13 @@ struct PathField {
 }
 
 impl PathField {
-    fn new(hint: &'static str) -> Self {
+    fn new(hint: &'static str, value: Option<&str>) -> Self {
+        let row = match value {
+            Some(value) => TextRow::with_value(hint, value),
+            None => TextRow::new(hint),
+        };
         let mut field = Self {
-            row: TextRow::new(hint),
+            row,
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             entries: Vec::new(),
             highlighted: 0,
@@ -178,21 +183,51 @@ struct App {
     focus: usize,
     name_touched: bool,
     error: Option<String>,
+    /// Settings from pyproject.toml that the form has no field for; they
+    /// are passed through to the generated config.
+    prefill: Args,
 }
 
 impl App {
-    fn new() -> Self {
+    /// A form prefilled from pyproject.toml (`[tool.py-doc]`, then `[project]`).
+    fn new(prefill: &Args) -> Self {
+        let name_hint = "(required) auto-filled from source folder name";
+        let layout_idx = match prefill.layout {
+            Some(LayoutKind::Minimal) => 1,
+            Some(LayoutKind::Modern) => 2,
+            _ => 0,
+        };
+        let theme_idx = match prefill.theme {
+            Some(ThemeKind::Dark) => 1,
+            Some(ThemeKind::Light) => 2,
+            Some(ThemeKind::Slate) => 3,
+            _ => 0,
+        };
         Self {
-            src: PathField::new("(required) path to your Python project"),
-            out: PathField::new("(required) e.g. ./docs"),
-            name: TextRow::new("(required) auto-filled from source folder name"),
-            version: TextRow::with_value("(optional, default shown)", "1.0.0"),
-            templates: PathField::new("(optional) blank = use bundled theme"),
-            layout_idx: 0,
-            theme_idx: 0,
+            src: PathField::new(
+                "(required) path to your Python project",
+                prefill.src.as_deref(),
+            ),
+            out: PathField::new("(required) e.g. ./docs", prefill.out.as_deref()),
+            name: match &prefill.name {
+                Some(name) => TextRow::with_value(name_hint, name),
+                None => TextRow::new(name_hint),
+            },
+            version: TextRow::with_value(
+                "(optional, default shown)",
+                prefill.doc_version.as_deref().unwrap_or(DEFAULT_VERSION),
+            ),
+            templates: PathField::new(
+                "(optional) blank = use bundled theme",
+                prefill.templates.as_deref(),
+            ),
+            layout_idx,
+            theme_idx,
             focus: F_SRC,
-            name_touched: false,
+            // A configured name is not replaced by the folder name.
+            name_touched: prefill.name.is_some(),
             error: None,
+            prefill: prefill.clone(),
         }
     }
 
@@ -258,11 +293,11 @@ impl App {
         true
     }
 
-    fn to_args(&self) -> Args {
+    fn to_config(&self) -> Config {
         let version = {
             let v = self.version.input.value().trim();
             if v.is_empty() {
-                "1.0.0".to_string()
+                DEFAULT_VERSION.to_string()
             } else {
                 v.to_string()
             }
@@ -287,7 +322,7 @@ impl App {
             _ => ThemeKind::Slate,
         };
 
-        Args {
+        Config {
             src: self.src.row.input.value().trim().to_string(),
             out: self.out.row.input.value().trim().to_string(),
             name: self.name.input.value().trim().to_string(),
@@ -295,10 +330,10 @@ impl App {
             templates,
             layout,
             theme,
-            exclude: Vec::new(),
-            source_url: None,
-            strict: false,
-            clean: false,
+            exclude: self.prefill.exclude.clone(),
+            source_url: self.prefill.source_url.clone(),
+            strict: self.prefill.strict.unwrap_or(false),
+            clean: self.prefill.clean.unwrap_or(false),
         }
     }
 }
@@ -318,7 +353,8 @@ impl Drop for TerminalGuard {
     }
 }
 
-pub fn run_tui() -> Result<Option<Args>> {
+/// Runs the setup wizard, prefilled from `prefill`.
+pub fn run_tui(prefill: &Args) -> Result<Option<Config>> {
     // The release profile aborts on panic, which skips destructors, so the
     // panic hook has to restore the terminal as well.
     let default_hook = std::panic::take_hook();
@@ -334,11 +370,14 @@ pub fn run_tui() -> Result<Option<Args>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    run_app(&mut terminal)
+    run_app(&mut terminal, prefill)
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<Option<Args>> {
-    let mut app = App::new();
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    prefill: &Args,
+) -> Result<Option<Config>> {
+    let mut app = App::new(prefill);
 
     loop {
         terminal.draw(|f| ui(f, &app))?;
@@ -424,7 +463,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<Option<A
                 KeyCode::Enter => {
                     if app.focus == F_GENERATE {
                         if app.validate() {
-                            return Ok(Some(app.to_args()));
+                            return Ok(Some(app.to_config()));
                         }
                     } else {
                         app.focus = (app.focus + 1) % FIELD_COUNT;
@@ -834,4 +873,53 @@ fn render_select_row(
 
     let paragraph = Paragraph::new(Line::from(spans)).block(block);
     f.render_widget(paragraph, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn form_is_prefilled_from_config() {
+        let prefill = Args {
+            src: Some("proj/src".into()),
+            out: Some("proj/site".into()),
+            name: Some("configured".into()),
+            doc_version: Some("2.0.0".into()),
+            layout: Some(LayoutKind::Modern),
+            theme: Some(ThemeKind::Slate),
+            exclude: vec!["tests".into()],
+            source_url: Some("https://x".into()),
+            strict: Some(true),
+            ..Default::default()
+        };
+        let mut app = App::new(&prefill);
+        // A configured name survives the folder-name autofill.
+        app.maybe_autofill_name();
+        assert_eq!(
+            app.to_config(),
+            Config {
+                src: "proj/src".into(),
+                out: "proj/site".into(),
+                name: "configured".into(),
+                doc_version: "2.0.0".into(),
+                templates: None,
+                layout: LayoutKind::Modern,
+                theme: ThemeKind::Slate,
+                exclude: vec!["tests".into()],
+                source_url: Some("https://x".into()),
+                strict: true,
+                clean: false,
+            }
+        );
+    }
+
+    #[test]
+    fn empty_prefill_keeps_the_old_defaults() {
+        let app = App::new(&Args::default());
+        assert_eq!(app.version.input.value(), DEFAULT_VERSION);
+        assert!(app.name.input.value().is_empty());
+        assert_eq!((app.layout_idx, app.theme_idx), (0, 0));
+        assert!(!app.name_touched);
+    }
 }
