@@ -299,6 +299,7 @@ impl App {
             source_url: None,
             strict: false,
             clean: false,
+            include_private: false,
         }
     }
 }

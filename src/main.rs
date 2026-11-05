@@ -120,6 +120,11 @@ pub struct Args {
     /// produces. Files py-doc did not write are never touched.
     #[arg(long)]
     pub clean: bool,
+
+    /// Also document private names (`_name`), private modules and names left
+    /// out of `__all__`
+    #[arg(long)]
+    pub include_private: bool,
 }
 
 fn is_excluded(entry: &DirEntry, root: &Path, user_excludes: &[String]) -> bool {
@@ -192,6 +197,7 @@ fn run_generation(args: &Args) -> Result<()> {
     let mut package = PythonPackage {
         name: args.name.clone(),
         modules: Vec::new(),
+        hidden: Vec::new(),
     };
 
     let pb = ProgressBar::new(py_files.len() as u64);
@@ -236,6 +242,10 @@ fn run_generation(args: &Args) -> Result<()> {
         for err in &parse_errors {
             eprintln!("    - {}", err);
         }
+    }
+
+    if !args.include_private {
+        package.hide_private();
     }
 
     println!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
