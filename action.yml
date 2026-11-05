@@ -1,0 +1,86 @@
+name: py-doc
+description: Generate static HTML API docs for a Python project with py-doc.
+author: kura120
+branding:
+  icon: book-open
+  color: blue
+
+inputs:
+  version:
+    description: >-
+      py-doc release to install, such as "v0.5.1" or "0.5.1". "latest" (the
+      default) uses the newest published release. Ignored with install: source.
+    required: false
+    default: latest
+  install:
+    description: >-
+      "release" (default) downloads the published binary for the runner and
+      verifies its SHA-256 checksum. "source" builds py-doc from the action's
+      own checkout with cargo, which needs a Rust toolchain on the runner.
+    required: false
+    default: release
+  src:
+    description: Project directory, or a single .py file (--src).
+    required: false
+    default: .
+  out:
+    description: Directory the site is written to (--out).
+    required: false
+    default: site
+  name:
+    description: Package name shown in the docs (--name). Defaults to the repository name.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Extra py-doc flags, passed through as-is, for example
+      "--strict --theme dark --doc-version 1.2.0". Quotes group words;
+      nothing is expanded or executed.
+    required: false
+    default: ""
+  upload-pages-artifact:
+    description: >-
+      "true" uploads the output directory with actions/upload-pages-artifact,
+      ready for actions/deploy-pages.
+    required: false
+    default: "false"
+  token:
+    description: Token for the GitHub API lookup of the latest release.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The py-doc version that was installed.
+    value: ${{ steps.install.outputs.version }}
+  out:
+    description: The directory the site was written to.
+    value: ${{ steps.run.outputs.out }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install py-doc
+      id: install
+      shell: bash
+      env:
+        PY_DOC_INSTALL: ${{ inputs.install }}
+        PY_DOC_VERSION: ${{ inputs.version }}
+        PY_DOC_TOKEN: ${{ inputs.token }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/action/install.sh"
+
+    - name: Generate docs
+      id: run
+      shell: bash
+      env:
+        PY_DOC_SRC: ${{ inputs.src }}
+        PY_DOC_OUT: ${{ inputs.out }}
+        PY_DOC_NAME: ${{ inputs.name }}
+        PY_DOC_ARGS: ${{ inputs.args }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/action/run.sh"
+
+    - name: Upload Pages artifact
+      if: inputs.upload-pages-artifact == 'true'
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ inputs.out }}
