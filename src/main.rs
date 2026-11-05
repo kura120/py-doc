@@ -1,3 +1,4 @@
+mod config;
 mod generator;
 mod highlight;
 mod models;
@@ -9,9 +10,11 @@ use anyhow::{Result, bail};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
+use config::Config;
 use generator::SiteGenerator;
 use models::PythonPackage;
 
@@ -28,7 +31,8 @@ const DEFAULT_EXCLUDES: [&str; 8] = [
     "__pypackages__",
 ];
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LayoutKind {
     Classic,
     Minimal,
@@ -45,7 +49,8 @@ impl LayoutKind {
     }
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ThemeKind {
     /// Follow the reader's system light/dark setting
     Auto,
@@ -66,7 +71,15 @@ impl ThemeKind {
     }
 }
 
-#[derive(Parser, Debug, Clone)]
+/// Every option, as given on the command line or in `[tool.py-doc]`.
+///
+/// This one struct is both the clap CLI and the serde shape of the
+/// `[tool.py-doc]` table, so a field's flag (`--doc-version`) and its key
+/// (`doc-version`) come from the same name. Every field is optional here;
+/// `Config::resolve` merges the layers and applies the defaults. To add an
+/// option: add a field here, then add it to `Config` and its `resolve`.
+#[derive(Parser, Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[command(
     author,
     version,
@@ -76,35 +89,37 @@ impl ThemeKind {
 pub struct Args {
     /// Path to the Python project (or a single .py file) to document
     #[arg(short, long)]
-    pub src: String,
+    pub src: Option<String>,
 
     /// Directory to write the generated site to
     #[arg(short, long)]
-    pub out: String,
+    pub out: Option<String>,
 
-    /// Package name shown in the docs
+    /// Package name shown in the docs [default: `[project] name` in pyproject.toml]
     #[arg(short, long)]
-    pub name: String,
+    pub name: Option<String>,
 
     /// Version of your project, shown in the docs
-    #[arg(long, default_value = "1.0.0")]
-    pub doc_version: String,
+    /// [default: `[project] version` in pyproject.toml, else 1.0.0]
+    #[arg(long)]
+    pub doc_version: Option<String>,
 
     /// Directory with replacement theme files (sidebar.html, module.html, style.css, ...).
     /// Any file not found there falls back to the bundled theme.
     #[arg(short, long)]
     pub templates: Option<String>,
 
-    /// Starting UI layout for the generated site
-    #[arg(long, value_enum, default_value = "classic")]
-    pub layout: LayoutKind,
+    /// Starting UI layout for the generated site [default: classic]
+    #[arg(long, value_enum)]
+    pub layout: Option<LayoutKind>,
 
-    /// Starting color theme for the generated site
-    #[arg(long, value_enum, default_value = "auto")]
-    pub theme: ThemeKind,
+    /// Starting color theme for the generated site [default: auto]
+    #[arg(long, value_enum)]
+    pub theme: Option<ThemeKind>,
 
     /// File or directory name (or path relative to --src) to skip. Repeatable.
     #[arg(short, long, value_name = "NAME")]
+    #[serde(default)]
     pub exclude: Vec<String>,
 
     /// Base URL of a browsable copy of the sources (e.g. a GitHub tree URL),
@@ -113,13 +128,20 @@ pub struct Args {
     pub source_url: Option<String>,
 
     /// Exit with an error if any file fails to parse, or an image or doc-link cannot be resolved
-    #[arg(long)]
-    pub strict: bool,
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub strict: Option<bool>,
 
     /// Remove files that an earlier run wrote to --out and this run no longer
     /// produces. Files py-doc did not write are never touched.
-    #[arg(long)]
-    pub clean: bool,
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub clean: Option<bool>,
+
+    /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
+    /// it is looked for in --src (or the current directory) and its parents,
+    /// stopping at the repository root.
+    #[arg(long, value_name = "FILE")]
+    #[serde(skip)]
+    pub config: Option<String>,
 }
 
 fn is_excluded(entry: &DirEntry, root: &Path, user_excludes: &[String]) -> bool {
@@ -175,7 +197,7 @@ fn collect_python_files(src_path: &Path, user_excludes: &[String]) -> (PathBuf, 
 
 /// Shared generation pipeline used by both the flag-driven CLI path and the
 /// interactive TUI path, so the two never drift out of sync.
-fn run_generation(args: &Args) -> Result<()> {
+fn run_generation(args: &Config) -> Result<()> {
     let src_path = Path::new(&args.src);
 
     if !src_path.exists() {
@@ -264,23 +286,27 @@ fn run_generation(args: &Args) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let raw_args: Vec<String> = std::env::args().collect();
+    let no_args = std::env::args().len() == 1;
+    let cli = Args::parse();
+    let pyproject = config::PyProject::load(&cli)?;
 
-    if raw_args.len() == 1 {
-        // No flags at all: launch the interactive setup wizard — unless we're
-        // not actually attached to a terminal (e.g. CI/non-interactive), in
-        // which case a hanging full-screen TUI would just be a stuck build.
+    // No flags and no [tool.py-doc]: launch the interactive setup wizard,
+    // unless we're not attached to a terminal (e.g. CI), in which case a
+    // hanging full-screen TUI would just be a stuck build.
+    if no_args && !pyproject.as_ref().is_some_and(|p| p.is_configured()) {
         use crossterm::tty::IsTty;
         if !std::io::stdout().is_tty() || !std::io::stdin().is_tty() {
             eprintln!("py-doc: no arguments given and no interactive terminal detected.");
             eprintln!(
-                "Run 'py-doc --help' for available flags, or run interactively for the setup wizard."
+                "Run 'py-doc --help' for available flags, add a [tool.py-doc] table to pyproject.toml, \
+                 or run interactively for the setup wizard."
             );
             std::process::exit(1);
         }
 
-        return match tui::run_tui()? {
-            Some(args) => run_generation(&args),
+        let prefill = config::file_layer(pyproject.as_ref());
+        return match tui::run_tui(&prefill)? {
+            Some(config) => run_generation(&config),
             None => {
                 println!("Cancelled.");
                 Ok(())
@@ -288,6 +314,6 @@ fn main() -> Result<()> {
         };
     }
 
-    let args = Args::parse();
-    run_generation(&args)
+    let config = Config::resolve(cli, pyproject.as_ref())?;
+    run_generation(&config)
 }

@@ -68,16 +68,18 @@ Run `py-doc` against a Python project directory or a single `.py` file:
 py-doc --src path/to/project --out ./docs --name project-name
 ```
 
-Run `py-doc` with no arguments in a terminal to use the interactive setup wizard instead. In the wizard, Tab moves between fields, the arrow keys browse folders in path fields, and Enter on the last row generates the site.
+Settings can also live in `pyproject.toml`; see [Configuring with pyproject.toml](#configuring-with-pyprojecttoml). In a configured project, `py-doc` alone builds the site.
+
+Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-doc]` table, to use the interactive setup wizard instead. It is prefilled from `pyproject.toml` when there is one. In the wizard, Tab moves between fields, the arrow keys browse folders in path fields, and Enter on the last row generates the site.
 
 ### Options
 
 | Flag | Meaning |
 | --- | --- |
-| `-s`, `--src <PATH>` | Project directory, or a single `.py` file. Required. |
-| `-o`, `--out <DIR>` | Where the site is written. Required. |
-| `-n`, `--name <NAME>` | Package name shown in the docs. Required. |
-| `--doc-version <VERSION>` | Your project's version, shown in the sidebar. Default `1.0.0`. |
+| `-s`, `--src <PATH>` | Project directory, or a single `.py` file. Required unless set in `pyproject.toml`. |
+| `-o`, `--out <DIR>` | Where the site is written. Required unless set in `pyproject.toml`. |
+| `-n`, `--name <NAME>` | Package name shown in the docs. Defaults to `[project] name`; required if there is none. |
+| `--doc-version <VERSION>` | Your project's version, shown in the sidebar. Defaults to `[project] version`, else `1.0.0`. |
 | `--layout <classic\|minimal\|modern>` | Layout the site opens with. Default `classic`. |
 | `--theme <auto\|dark\|light\|slate>` | Color theme the site opens with. `auto` (default) follows the reader's system setting. |
 | `-e`, `--exclude <NAME>` | Skip a file or directory, by name or by path relative to `--src`. Repeatable. |
@@ -85,10 +87,49 @@ Run `py-doc` with no arguments in a terminal to use the interactive setup wizard
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
+| `--config <FILE>` | The `pyproject.toml` to read. By default it is found automatically (see below). |
 | `-V`, `--version` | Print the py-doc version. |
 | `-h`, `--help` | Print help. |
 
 > **Changed in this release:** `-v` / `--version <VERSION>` used to set the version shown in the docs. That is now `--doc-version`, and `--version` reports the tool's own version.
+
+`--strict` and `--clean` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
+
+### Configuring with pyproject.toml
+
+Put any option in a `[tool.py-doc]` table, using the flag's name as the key:
+
+```toml
+[project]
+name = "myproject"
+version = "2.1.0"
+
+[tool.py-doc]
+src = "src/myproject"
+out = "docs"
+layout = "modern"
+theme = "dark"
+exclude = ["tests", "_vendor"]
+source-url = "https://github.com/me/myproject/blob/main"
+strict = true
+```
+
+Then run `py-doc` with no arguments. The name and version come from `[project]`; set `name` or `doc-version` in `[tool.py-doc]` to show something else. If the version is `dynamic`, py-doc shows `1.0.0` and prints a hint; pass `--doc-version` to set it.
+
+Each setting is taken from the first place that has it:
+
+1. the command-line flag;
+2. `[tool.py-doc]`;
+3. `[project]` (for `name` and `doc-version` only);
+4. the built-in default.
+
+A flag replaces the config value, it does not add to it: `--exclude` on the command line replaces the whole `exclude` list.
+
+Paths in `pyproject.toml` (`src`, `out`, `templates`) are relative to the directory that holds it. Paths on the command line are relative to the current directory.
+
+py-doc looks for `pyproject.toml` in `--src` (or the current directory, without `--src`) and then in each parent directory, stopping at the repository root (the first directory with a `.git`). `--config <FILE>` names the file instead.
+
+An unknown key in `[tool.py-doc]` prints a warning naming it. With `strict`, it is an error.
 
 ### What is scanned
 
