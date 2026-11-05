@@ -159,7 +159,9 @@ fn rebase_paths(args: &mut Args, base: &Path) {
 /// Looks for pyproject.toml in `start` (or its directory, for a file) and
 /// its parents. Stops after the first directory holding `.git`.
 fn find_pyproject(start: &Path) -> Option<PathBuf> {
-    let start = std::fs::canonicalize(start).ok()?;
+    // dunce avoids Windows verbatim paths (`\\?\C:\...`), which would
+    // otherwise flow into --src and --out and show up in messages.
+    let start = dunce::canonicalize(start).ok()?;
     let mut dir = if start.is_file() {
         start.parent()?.to_path_buf()
     } else {
