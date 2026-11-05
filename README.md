@@ -114,7 +114,7 @@ py-doc --src . --out docs --name myproject \
 
 ### GitHub Actions
 
-The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. A full build takes well under a second, so it can run on every push.
+The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. From v0.5.1 on, a missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
 
 This workflow builds the docs and publishes them to GitHub Pages. In the repository settings, set Pages to deploy from GitHub Actions.
 

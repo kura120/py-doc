@@ -12,6 +12,7 @@ REPO="kura120/py-doc"
 ROOT="$RUNNER_TEMP/py-doc"
 BIN_DIR="$ROOT/bin"
 WORK=""
+tag=""
 mkdir -p "$BIN_DIR"
 
 cleanup() {
@@ -38,6 +39,22 @@ sha256_of() {
     else
         shasum -a 256 "$1" | cut -d ' ' -f 1
     fi
+}
+
+# publishes_checksums TAG: true for v0.5.1 and later, which always ship a
+# .sha256 next to each archive. Tags that don't parse count as new, so they
+# must have a checksum.
+publishes_checksums() {
+    local v="${1#v}" major minor patch
+    v="${v%%-*}"
+    IFS=. read -r major minor patch <<<"$v"
+    case "$major$minor${patch:-0}" in
+        *[!0-9]* | "") return 0 ;;
+    esac
+    patch="${patch:-0}"
+    if [ "$major" -ne 0 ]; then return 0; fi
+    if [ "$minor" -ne 5 ]; then [ "$minor" -gt 5 ]; return; fi
+    [ "$patch" -ge 1 ]
 }
 
 # fetch URL FILE
@@ -68,7 +85,7 @@ install_release() {
             ;;
     esac
 
-    local tag
+    # tag is global: the version fallback at the end reads it.
     if [ -z "$PY_DOC_VERSION" ] || [ "$PY_DOC_VERSION" = "latest" ]; then
         local auth=()
         if [ -n "$PY_DOC_TOKEN" ]; then
@@ -104,9 +121,9 @@ install_release() {
         fi
     fi
 
-    # Verify against the checksum published with the release. Releases from
-    # before checksums were added have none; those get a warning, as in
-    # scripts/install.sh. A mismatch always fails.
+    # Verify against the checksum published with the release. A mismatch
+    # always fails. v0.5.1 and later always publish a checksum, so a missing
+    # one fails too; older releases have none and only get a warning.
     if fetch "$url.sha256" "$WORK/$asset.sha256"; then
         local expected actual
         expected=$(cut -d ' ' -f 1 <"$WORK/$asset.sha256" | tr 'A-F' 'a-f')
@@ -116,6 +133,9 @@ install_release() {
             exit 1
         fi
         echo "Checksum verified."
+    elif publishes_checksums "$tag"; then
+        echo "::error::Could not download the checksum for $asset ($tag). Refusing to install an unverified binary."
+        exit 1
     else
         echo "::warning::Release $tag publishes no checksum for $asset; skipping verification."
     fi
@@ -147,6 +167,10 @@ exe_path="$BIN_DIR/py-doc"
 if [ -f "$exe_path.exe" ]; then
     exe_path="$exe_path.exe"
 fi
-version=$("$exe_path" --version | sed -E 's/^py-doc //')
+# Releases before v0.5.0 used --version for the docs' version string and
+# cannot report their own, so fall back to the release tag for those.
+if ! version=$("$exe_path" --version 2>/dev/null | sed -E 's/^py-doc //') || [ -z "$version" ]; then
+    version="${tag#v}"
+fi
 echo "Installed py-doc $version"
 echo "version=$version" >>"$GITHUB_OUTPUT"
