@@ -21,8 +21,20 @@ fn out_dir(test: &str) -> PathBuf {
     dir
 }
 
+/// An empty pyproject.toml passed as `--config`, so these runs never pick
+/// up the repository's own pyproject.toml (the PyPI packaging metadata).
+fn empty_config() -> PathBuf {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
+    if !path.exists() {
+        fs::write(&path, "").unwrap();
+    }
+    path
+}
+
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
     let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        .arg("--config")
+        .arg(empty_config())
         .arg("--src")
         .arg(src)
         .arg("--out")
@@ -180,6 +192,8 @@ fn doc_links_to_hidden_symbols_warn_instead_of_linking() {
 
     // The warnings count as problems under --strict.
     let strict = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        .arg("--config")
+        .arg(empty_config())
         .arg("--src")
         .arg(fixture("visibility"))
         .arg("--out")

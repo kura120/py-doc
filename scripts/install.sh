@@ -20,6 +20,8 @@ elif [ "$OS" = "darwin" ]; then
     TARGET="x86_64-apple-darwin"
 elif [ "$OS" = "linux" ] && [ "$ARCH" = "x86_64" ]; then
     TARGET="x86_64-unknown-linux-gnu"
+elif [ "$OS" = "linux" ] && { [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; }; then
+    TARGET="aarch64-unknown-linux-gnu"
 else
     echo "Unsupported platform: $OS-$ARCH"
     exit 1

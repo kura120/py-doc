@@ -1,0 +1,53 @@
+name: Packaging
+
+# Builds the swiftdoc wheel and sdist the way release.yaml does, installs the
+# wheel and runs it, so packaging changes are tested before a release.
+
+on:
+  pull_request:
+    paths:
+      - pyproject.toml
+      - Cargo.toml
+      - Cargo.lock
+      - README.md
+      - scripts/wheel-smoke-test.sh
+      - .github/workflows/packaging.yaml
+      - .github/workflows/release.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    name: Build and test wheel (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          manylinux: auto
+          args: --release --locked --out dist
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check metadata
+        run: |
+          python -m pip install twine
+          python -m twine check --strict dist/*
+
+      - name: Install the wheel and run it
+        run: |
+          python -m pip install --no-index --find-links dist swiftdoc
+          sh scripts/wheel-smoke-test.sh
