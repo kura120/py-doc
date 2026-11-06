@@ -12,9 +12,15 @@ pub struct PythonPackage {
     pub hidden: Vec<PythonModule>,
 }
 
+/// Splits `items` into (public, private) by their `is_private` flag.
+fn split_private<T>(items: Vec<T>, is_private: impl Fn(&T) -> bool) -> (Vec<T>, Vec<T>) {
+    items.into_iter().partition(|item| !is_private(item))
+}
+
 impl PythonPackage {
-    /// Moves every private module, class and function out of `modules` and
-    /// into `hidden`, so pages, navigation and search only see the public API.
+    /// Moves every private module, class, function and variable out of
+    /// `modules` and into `hidden`, so pages, navigation and search only see
+    /// the public API.
     pub fn hide_private(&mut self) {
         let mut public = Vec::with_capacity(self.modules.len());
         for mut module in std::mem::take(&mut self.modules) {
@@ -24,27 +30,32 @@ impl PythonPackage {
             }
 
             let mut stub = module.empty_like();
-            let (classes, hidden_classes) = module.classes.into_iter().partition(|c| !c.is_private);
-            module.classes = classes;
-            stub.classes = hidden_classes;
+            (module.classes, stub.classes) = split_private(module.classes, |c| c.is_private);
             for class in module.classes.iter_mut() {
-                let (functions, hidden_methods): (Vec<_>, Vec<_>) =
-                    std::mem::take(&mut class.functions)
-                        .into_iter()
-                        .partition(|f| !f.is_private);
-                class.functions = functions;
-                if !hidden_methods.is_empty() {
-                    let mut class_stub = class.clone();
-                    class_stub.functions = hidden_methods;
-                    stub.classes.push(class_stub);
+                let hidden_methods;
+                let hidden_attributes;
+                (class.functions, hidden_methods) =
+                    split_private(std::mem::take(&mut class.functions), |f| f.is_private);
+                (class.variables, hidden_attributes) =
+                    split_private(std::mem::take(&mut class.variables), |v| v.is_private);
+                if !hidden_methods.is_empty() || !hidden_attributes.is_empty() {
+                    stub.classes.push(PythonClass {
+                        name: class.name.clone(),
+                        bases: Vec::new(),
+                        line: class.line,
+                        docstring: None,
+                        summary: None,
+                        functions: hidden_methods,
+                        variables: hidden_attributes,
+                        is_private: false,
+                    });
                 }
             }
-            let (functions, hidden_functions) =
-                module.functions.into_iter().partition(|f| !f.is_private);
-            module.functions = functions;
-            stub.functions = hidden_functions;
+            (module.functions, stub.functions) = split_private(module.functions, |f| f.is_private);
+            (module.variables, stub.variables) = split_private(module.variables, |v| v.is_private);
 
-            if !stub.classes.is_empty() || !stub.functions.is_empty() {
+            if !stub.classes.is_empty() || !stub.functions.is_empty() || !stub.variables.is_empty()
+            {
                 self.hidden.push(stub);
             }
             public.push(module);
@@ -65,6 +76,8 @@ pub struct PythonModule {
     pub summary: Option<String>,
     pub classes: Vec<PythonClass>,
     pub functions: Vec<PythonFunction>,
+    /// Module-level variables, constants and type aliases, in source order.
+    pub variables: Vec<PythonVariable>,
     pub z_index: i32,
     /// Display path of the containing folder, ordering prefixes stripped (e.g. "core/sub").
     pub folder: Option<String>,
@@ -92,6 +105,7 @@ impl PythonModule {
             summary: None,
             classes: Vec::new(),
             functions: Vec::new(),
+            variables: Vec::new(),
             z_index: self.z_index,
             folder: self.folder.clone(),
             dir: self.dir.clone(),
@@ -111,6 +125,8 @@ pub struct PythonClass {
     pub docstring: Option<String>,
     pub summary: Option<String>,
     pub functions: Vec<PythonFunction>,
+    /// Class attributes, including enum members and dataclass fields.
+    pub variables: Vec<PythonVariable>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,
 }
@@ -125,6 +141,28 @@ pub struct PythonFunction {
     pub badges: Vec<String>,
     pub is_async: bool,
     pub line: usize,
+    pub docstring: Option<String>,
+    pub summary: Option<String>,
+    /// Hidden unless `--include-private` (see `parser::is_public_name`).
+    pub is_private: bool,
+}
+
+/// A module variable or class attribute: `NAME = value`, `name: T = value`,
+/// `name: T` or `type Alias = ...`.
+#[derive(Debug, Serialize, Clone)]
+pub struct PythonVariable {
+    pub name: String,
+    pub annotation: Option<String>,
+    /// The value as written, whitespace collapsed, cut short if it is long.
+    pub value: Option<String>,
+    /// `value` was cut short; templates mark it with an ellipsis.
+    pub value_truncated: bool,
+    /// Declared with the `type` statement (PEP 695).
+    pub is_type_alias: bool,
+    /// "enum" for enum members, "field" for dataclass fields.
+    pub badges: Vec<String>,
+    pub line: usize,
+    /// From a string literal right after the assignment, or `#:` comments.
     pub docstring: Option<String>,
     pub summary: Option<String>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).

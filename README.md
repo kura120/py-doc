@@ -129,6 +129,24 @@ py-doc --src . --out docs --name myproject \
 
 Docstrings are rendered as Markdown, including tables, strikethrough and task lists. Python code blocks are syntax-highlighted at build time.
 
+### Variables and attributes
+
+Module variables, type aliases (`type X = ...`) and class attributes are documented with their annotation and value. Values longer than 80 characters are cut short and end in `…`. Enum members get an `enum` badge, and fields of a `@dataclass` (or attrs class) get a `field` badge.
+
+Document a variable with a string right after it, or with `#:` comments above it or at the end of its line:
+
+```python
+TIMEOUT: float = 2.5
+"""Seconds to wait for a reply."""
+
+#: How often a request is retried.
+MAX_RETRIES = 3
+
+DEFAULT_NAME = "anonymous"  #: Used when no name is given.
+```
+
+Class attributes starting with `_` are private, dunders included. `__slots__`, `__match_args__`, `__annotations__`, `__doc__`, `__module__` and `__all__` are never documented.
+
 ### Macros
 
 Put a macro on its own line inside any docstring.
@@ -137,7 +155,7 @@ Put a macro on its own line inside any docstring.
 | --- | --- |
 | `#pd-note: text` | A highlighted note box. The text may use inline Markdown. |
 | `#pd-warning: text` | A highlighted warning box. The text may use inline Markdown. |
-| `#pd-doc-link: target` | A "See Reference" link to a module, class, function or method. |
+| `#pd-doc-link: target` | A "See Reference" link to a module, class, function, method, variable or attribute. |
 | `#pd-image: path` | An image. The path is relative to `--src` and must stay inside it. |
 | `#pd-code` | Starts a Python code block that ends at the next line containing only ```` ``` ````. For another language, name it: `#pd-code json`. |
 | `#pd-write` | As the first line of a module docstring, in a module with no classes or functions: renders the module as a plain document page. |
