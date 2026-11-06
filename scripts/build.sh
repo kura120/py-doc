@@ -15,7 +15,7 @@ for arg in "$@"; do
     esac
 done
 
-echo "Building optimized release binary (opt-level=z, LTO, single codegen unit)..."
+echo "Building optimized release binary (opt-level=3, LTO, single codegen unit)..."
 if [ -n "$TARGET" ]; then
     cargo build --release --locked --target "$TARGET"
     BIN_PATH="target/$TARGET/release/py-doc"

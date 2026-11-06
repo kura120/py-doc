@@ -234,10 +234,52 @@ The output is plain static files. Open `index.html` directly or host the folder 
 `--templates <DIR>` replaces parts of the bundled theme. Any of these files found in the directory is used instead of the built-in one; the rest fall back to the bundled theme:
 
 ```text
-index.html  module.html  document.html  sidebar.html  style.css  app.js
+base.html  index.html  module.html  document.html  sidebar.html  style.css  app.js
 ```
 
 The HTML files are [Tera](https://keats.github.io/tera/) templates. The bundled versions in [`assets/`](assets) are the reference for the variables available.
+
+### Overriding one block
+
+You do not have to copy a whole page to change part of it. The bundled templates are also available under the `py-doc/` prefix, so a custom template can extend the one it replaces and override only the blocks it changes. Everything else keeps the bundled default.
+
+This `module.html` gives every module page a new header and leaves the rest of the page alone:
+
+```html
+{% extends "py-doc/module.html" %}
+
+{% block header %}
+<h1 class="module-title">{{ display_module_name }} <small>{{ package.name }} {{ version }}</small></h1>
+{% endblock header %}
+```
+
+Use `{{ super() }}` inside a block to keep the bundled content and add to it:
+
+```html
+{% block scripts %}{{ super() }}<script src="{{ root_path }}extra.js" defer></script>{% endblock scripts %}
+```
+
+`index.html`, `module.html` and `document.html` all extend `base.html`, which holds the page skeleton. Its blocks are:
+
+| Block | Holds |
+| --- | --- |
+| `head` | Everything inside `<head>`, including the blocks below it |
+| `title` | The text of `<title>` |
+| `description` | The `content` of the description `<meta>` tag |
+| `stylesheets` | The `style.css` link |
+| `body_attributes` | Extra attributes on `<body>` |
+| `sidebar` | The `sidebar.html` include and the resize handle |
+| `header` | The top of the page: breadcrumb and title |
+| `content` | The page body |
+| `outline` | The "On this page" panel (module pages only) |
+| `footer` | Empty by default; shown after the page body |
+| `scripts` | The script tags at the end of `<body>` |
+
+`module.html` also splits `content` into `module_docstring`, `classes` and `functions`.
+
+A custom `base.html` that extends `py-doc/base.html` changes every page at once, for example to add a footer to the whole site.
+
+Any other `*.html` file in the directory, including ones in subfolders, can be included or extended by name: `{% include "partials/footer.html" %}`. Whole-file replacements still work: a template that does not use `extends` is rendered as it is.
 
 ---
 
