@@ -4,6 +4,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("nested")
+}
+
+/// py-doc with an empty `--config`, so the repository's own pyproject.toml
+/// is never read.
+fn py_doc() -> Command {
+    let config = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
+    if !config.exists() {
+        fs::write(&config, "").unwrap();
+    }
+    let mut command = Command::new(env!("CARGO_BIN_EXE_py-doc"));
+    command.arg("--config").arg(config);
+    command
+}
+
 /// Generates the `nested` fixture; returns the output dir and the run's
 /// stdout + stderr.
 fn generate(test: &str, extra: &[&str]) -> (PathBuf, String) {
@@ -11,11 +30,8 @@ fn generate(test: &str, extra: &[&str]) -> (PathBuf, String) {
         .join("nested")
         .join(test);
     let _ = fs::remove_dir_all(&out);
-    let src = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("nested");
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let src = fixture();
+    let output = py_doc()
         .arg("--src")
         .arg(&src)
         .arg("--out")
@@ -196,4 +212,34 @@ fn include_private_shows_private_nested_classes() {
     assert!(page.contains("id=\"class.Outer._Private\""));
     assert!(page.contains("href=\"./compat.html#class.Outer._Private\""));
     assert!(!log.contains('⚠'), "{}", log);
+}
+
+#[test]
+fn coverage_counts_nested_classes() {
+    let output = py_doc()
+        .arg("--src")
+        .arg(fixture())
+        .args(["--coverage", "--coverage-format", "json"])
+        .output()
+        .expect("failed to run py-doc");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    // Outer, Outer.Inner, Outer.Inner.Deep and Outer.Meta (Outer._Private is private).
+    assert_eq!(report["kinds"]["class"]["total"], 4);
+    assert_eq!(report["kinds"]["class"]["documented"], 3);
+    let undocumented: Vec<&str> = report["modules"][0]["undocumented"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        undocumented.contains(&"compat.Outer.Meta"),
+        "{:?}",
+        undocumented
+    );
 }

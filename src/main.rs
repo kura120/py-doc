@@ -114,9 +114,16 @@ pub enum CoverageFormat {
     author,
     version,
     about = "Generates cargo-doc style documentation for Python projects",
-    long_about = None
+    long_about = None,
+    args_conflicts_with_subcommands = true
 )]
 pub struct Args {
+    /// A subcommand instead of generating docs. Not a `[tool.py-doc]` key:
+    /// `known_keys` lists only arguments, and serde skips this field.
+    #[command(subcommand)]
+    #[serde(skip)]
+    pub command: Option<Command>,
+
     /// Path to the Python project (or a single .py file) to document
     #[arg(short, long)]
     pub src: Option<String>,
@@ -197,6 +204,45 @@ pub struct Args {
     #[arg(long, value_name = "FILE")]
     #[serde(skip)]
     pub config: Option<String>,
+}
+
+/// Subcommands. Without one, py-doc generates docs from the flags (or
+/// starts the setup wizard when there are none).
+#[derive(clap::Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum Command {
+    /// Work with the bundled theme
+    #[command(subcommand)]
+    Theme(ThemeCommand),
+}
+
+#[derive(clap::Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum ThemeCommand {
+    /// Copy the bundled templates, CSS and JavaScript into DIR, as a
+    /// starting point for --templates
+    Eject {
+        /// Folder to write the theme to
+        #[arg(default_value = "py-doc-theme")]
+        dir: String,
+        /// Overwrite files that already exist
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+fn run_command(command: Command) -> Result<()> {
+    match command {
+        Command::Theme(ThemeCommand::Eject { dir, force }) => {
+            let written = generator::eject_theme(Path::new(&dir), force)?;
+            println!(
+                "\x1b[32m✔\x1b[0m Wrote the bundled theme ({} files) to {}",
+                written.len(),
+                dir.trim_end_matches(['/', '\\'])
+            );
+            println!("  Use it with: py-doc --templates {} ...", dir);
+            println!("  Delete the files you don't change; they fall back to the bundled theme.");
+            Ok(())
+        }
+    }
 }
 
 fn is_excluded(entry: &DirEntry, root: &Path, user_excludes: &[String]) -> bool {
@@ -389,7 +435,10 @@ fn run_generation(args: &Config) -> Result<()> {
 
 fn main() -> Result<()> {
     let no_args = std::env::args().len() == 1;
-    let cli = Args::parse();
+    let mut cli = Args::parse();
+    if let Some(command) = cli.command.take() {
+        return run_command(command);
+    }
     let pyproject = config::PyProject::load(&cli)?;
 
     // No flags and no [tool.py-doc]: launch the interactive setup wizard,
