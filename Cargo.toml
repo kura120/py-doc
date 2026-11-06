@@ -27,6 +27,8 @@ ratatui = "0.29"
 crossterm = "0.28"
 tui-input = "0.11"
 indicatif = "0.17"
+toml = { version = "1.2.0", default-features = false, features = ["std", "parse", "serde"] }
+dunce = "1"
 
 [package.metadata.binstall]
 # Directs cargo-binstall to your GitHub Releases
@@ -41,7 +43,7 @@ pkg-fmt = "zip"
 pkg-fmt = "tgz" # uses .tar.gz
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"

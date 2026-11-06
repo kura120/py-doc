@@ -1,0 +1,83 @@
+name: Bug report
+description: Something is wrong with py-doc or the site it generates.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The smallest Python file that shows the problem is the most useful thing you can include.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+      placeholder: |
+        The method `Engine.run` is missing from the generated page.
+        I expected it to be listed under the `Engine` class.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The command you ran and a minimal Python file (or a public repository) that triggers the problem.
+      placeholder: |
+        py-doc --src ./src --out ./docs --name myproject
+
+        ```python
+        class Engine:
+            def run(self) -> None:
+                """Start the engine."""
+        ```
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the problem?
+      options:
+        - Parsing (missing or wrong classes, functions, signatures)
+        - Docstring rendering (Markdown, macros, code highlighting)
+        - Generated site (layout, theme, search, navigation)
+        - Command line, configuration or setup wizard
+        - Installation or release binaries
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: py-doc version
+      description: Output of `py-doc --version`.
+      placeholder: py-doc 0.5.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Only for problems with the generated site.
+      placeholder: Firefox 140, Safari 19, ...
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Terminal output
+      description: Any errors or warnings py-doc printed. This is shown as code, so no backticks are needed.
+      render: text

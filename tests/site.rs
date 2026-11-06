@@ -323,6 +323,64 @@ fn assert_matches_sample_snapshots(out: &Path, skip: &[&str]) {
     }
 }
 
+/// The `href` values inside a page's `<noscript>` block.
+fn noscript_links(html: &str) -> Vec<String> {
+    let start = html.find("<noscript>").expect("page has a noscript block");
+    let end = start + html[start..].find("</noscript>").unwrap();
+    html[start..end]
+        .split("href=\"")
+        .skip(1)
+        .map(|rest| rest[..rest.find('"').unwrap()].to_string())
+        .collect()
+}
+
+/// Resolves a relative link found on `page` to a site-relative path,
+/// dropping any `#fragment`.
+fn resolve_link(page: &str, href: &str) -> String {
+    let href = href.split('#').next().unwrap();
+    let mut parts: Vec<&str> = page.split('/').collect();
+    parts.pop();
+    for part in href.split('/') {
+        match part {
+            "." | "" => {}
+            ".." => {
+                parts.pop().expect("link leaves the site");
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("/")
+}
+
+#[test]
+fn without_javascript_every_module_is_two_clicks_away() {
+    let out = generate_sample("noscript_fallback", &[]);
+    let pages = html_pages(&out);
+
+    // The index lists every other page once, in its sidebar fallback.
+    let index = read(&out, "index.html");
+    assert!(index.contains("id=\"all-modules\""));
+    let mut listed: Vec<String> = noscript_links(&index)
+        .iter()
+        .map(|href| resolve_link("index.html", href))
+        .collect();
+    listed.sort();
+    let others: Vec<String> = pages
+        .iter()
+        .filter(|page| *page != "index.html")
+        .cloned()
+        .collect();
+    assert_eq!(listed, others);
+
+    // Every other page carries a single link to that list, not the list itself.
+    for page in &others {
+        let links = noscript_links(&read(&out, page));
+        assert_eq!(links.len(), 1, "{} repeats the module list", page);
+        assert!(links[0].ends_with("index.html#all-modules"), "{}", page);
+        assert_eq!(resolve_link(page, &links[0]), "index.html", "{}", page);
+    }
+}
+
 #[test]
 fn default_output_matches_the_snapshots() {
     let out = generate_sample("default_snapshots", &[]);
@@ -331,8 +389,9 @@ fn default_output_matches_the_snapshots() {
 
 #[test]
 fn whole_file_template_overrides_still_work() {
-    // Copies of the theme from before it used template inheritance: each
-    // file is a complete page and must keep rendering the same site.
+    // Copies of the page templates from before the theme used template
+    // inheritance: each file is a complete page and must keep rendering the
+    // same site.
     let templates = fixture("templates").join("legacy");
     let out = out_dir("legacy_templates");
     let output = run(
@@ -346,8 +405,7 @@ fn whole_file_template_overrides_still_work() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("document.html, index.html, module.html, sidebar.html"),
+        String::from_utf8_lossy(&output.stdout).contains("document.html, index.html, module.html"),
         "the custom templates were not used:\n{}",
         String::from_utf8_lossy(&output.stdout)
     );
@@ -366,6 +424,11 @@ fn whole_file_template_overrides_still_work() {
         "<p class=\"standalone\">{{ display_module_name }} in {{ package.name }}</p>",
     )
     .unwrap();
+    fs::write(
+        templates.join("sidebar.html"),
+        "<nav class=\"custom-sidebar\">{{ package.name }}</nav>",
+    )
+    .unwrap();
     let out = generate_sample(
         "standalone_templates",
         &["--templates", templates.to_str().unwrap()],
@@ -374,7 +437,11 @@ fn whole_file_template_overrides_still_work() {
         read(&out, "utils/helpers.html"),
         "<p class=\"standalone\">helpers in demo</p>"
     );
-    assert!(read(&out, "index.html").contains("module-grid"));
+    // The bundled pages include the replacement sidebar.
+    let index = read(&out, "index.html");
+    assert!(index.contains("module-grid"));
+    assert!(index.contains("<nav class=\"custom-sidebar\">demo</nav>"));
+    assert!(!index.contains("nav-fallback"));
 }
 
 #[test]
