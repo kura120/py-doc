@@ -1,14 +1,15 @@
 use crate::models::{PythonModule, PythonPackage};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 struct ModuleEntry {
     /// Dotted paths this module answers to: with and without ordering
     /// prefixes ("01_core.engine" and "core.engine").
     paths: Vec<String>,
     link_path: String,
-    functions: HashSet<String>,
-    /// Class name -> method names.
-    classes: HashMap<String, HashSet<String>>,
+    /// Function and variable name -> anchor kind ("fn" or "var").
+    symbols: HashMap<String, &'static str>,
+    /// Class name -> member name -> anchor kind ("method" or "attr").
+    classes: HashMap<String, HashMap<String, &'static str>>,
 }
 
 /// Resolves `#pd-doc-link` targets against the modules that were actually parsed.
@@ -42,15 +43,25 @@ fn module_entries(modules: &[PythonModule]) -> Vec<ModuleEntry> {
             ModuleEntry {
                 paths,
                 link_path: module.link_path.clone(),
-                functions: module.functions.iter().map(|f| f.name.clone()).collect(),
+                // Functions are inserted last so they win over a variable
+                // of the same name; likewise methods over attributes.
+                symbols: module
+                    .variables
+                    .iter()
+                    .map(|v| (v.name.clone(), "var"))
+                    .chain(module.functions.iter().map(|f| (f.name.clone(), "fn")))
+                    .collect(),
                 classes: module
                     .classes
                     .iter()
                     .map(|c| {
-                        (
-                            c.name.clone(),
-                            c.functions.iter().map(|f| f.name.clone()).collect(),
-                        )
+                        let members = c
+                            .variables
+                            .iter()
+                            .map(|v| (v.name.clone(), "attr"))
+                            .chain(c.functions.iter().map(|f| (f.name.clone(), "method")))
+                            .collect();
+                        (c.name.clone(), members)
                     })
                     .collect(),
             }
@@ -121,20 +132,20 @@ impl Resolver {
                 if module.classes.contains_key(symbol) {
                     return Some(format!("{}#class.{}", module.link_path, symbol));
                 }
-                if module.functions.contains(symbol) {
-                    return Some(format!("{}#fn.{}", module.link_path, symbol));
+                if let Some(kind) = module.symbols.get(symbol) {
+                    return Some(format!("{}#{}.{}", module.link_path, kind, symbol));
                 }
             }
 
-            // module.Class.method
+            // module.Class.member
             if let Some((module_path, class)) = module_path.rsplit_once('.')
                 && let Some(module) = self.find_module(module_path)
-                && module
-                    .classes
-                    .get(class)
-                    .is_some_and(|m| m.contains(symbol))
+                && let Some(kind) = module.classes.get(class).and_then(|m| m.get(symbol))
             {
-                return Some(format!("{}#method.{}.{}", module.link_path, class, symbol));
+                return Some(format!(
+                    "{}#{}.{}.{}",
+                    module.link_path, kind, class, symbol
+                ));
             }
         }
 
@@ -148,15 +159,15 @@ impl Resolver {
             Some(member) => module
                 .classes
                 .get(class)
-                .filter(|methods| methods.contains(member))
-                .map(|_| format!("{}#method.{}.{}", module.link_path, class, member)),
+                .and_then(|members| members.get(member))
+                .map(|kind| format!("{}#{}.{}.{}", module.link_path, kind, class, member)),
             None if module.classes.contains_key(class) => {
                 Some(format!("{}#class.{}", module.link_path, class))
             }
-            None if module.functions.contains(class) => {
-                Some(format!("{}#fn.{}", module.link_path, class))
-            }
-            None => None,
+            None => module
+                .symbols
+                .get(class)
+                .map(|kind| format!("{}#{}.{}", module.link_path, kind, class)),
         });
         let first = hits.next()?;
         hits.next().is_none().then_some(first)

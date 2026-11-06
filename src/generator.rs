@@ -10,7 +10,7 @@ use std::time::Instant;
 use tera::{Context as TeraContext, Kwargs, State, Tera, Value};
 
 use crate::highlight::highlight_python;
-use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage};
+use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage, PythonVariable};
 use crate::parser::split_order_prefix;
 use crate::resolver::Resolver;
 
@@ -748,14 +748,23 @@ impl SiteGenerator {
             }
         };
 
+        let render_variable = |var: &mut PythonVariable| {
+            if let Some(doc) = var.docstring.take() {
+                var.summary = summarize(&doc);
+                var.docstring = Some(self.render_markdown(&doc, &ctx));
+            }
+        };
+
         for class in module.classes.iter_mut() {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
                 class.docstring = Some(self.render_markdown(&doc, &ctx));
             }
             class.functions.iter_mut().for_each(render_function);
+            class.variables.iter_mut().for_each(render_variable);
         }
         module.functions.iter_mut().for_each(render_function);
+        module.variables.iter_mut().for_each(render_variable);
     }
 
     /// Groups modules by directory into the folder structure used by the
@@ -926,7 +935,9 @@ impl SiteGenerator {
             index_context.insert("package_docstring", doc);
         }
         if let Some(root) = root_init
-            && (!root.classes.is_empty() || !root.functions.is_empty())
+            && (!root.classes.is_empty()
+                || !root.functions.is_empty()
+                || !root.variables.is_empty())
         {
             index_context.insert("package_link_path", &root.link_path);
         }
@@ -1160,22 +1171,35 @@ fn function_entries(functions: &[PythonFunction], with_summary: bool) -> Vec<ser
 
 /// A deliberately small search payload: names, links and one-line
 /// summaries only. No rendered HTML and no build-machine paths.
+/// Adds `"variables"` to a search entry, only when there are any, so
+/// projects without documented variables keep the same payload.
+fn with_variables(mut entry: serde_json::Value, variables: &[PythonVariable]) -> serde_json::Value {
+    if !variables.is_empty() {
+        entry["variables"] = variables
+            .iter()
+            .map(|v| serde_json::json!({ "name": v.name, "summary": v.summary }))
+            .collect();
+    }
+    entry
+}
+
 fn search_index_json(package: &PythonPackage) -> serde_json::Value {
     let modules: Vec<serde_json::Value> = package
         .modules
         .iter()
         .map(|m| {
-            serde_json::json!({
+            let entry = serde_json::json!({
                 "name": if m.qualname.is_empty() { &package.name } else { &m.qualname },
                 "link_path": m.link_path,
                 "summary": m.summary,
-                "classes": m.classes.iter().map(|c| serde_json::json!({
+                "classes": m.classes.iter().map(|c| with_variables(serde_json::json!({
                     "name": c.name,
                     "summary": c.summary,
                     "functions": function_entries(&c.functions, true),
-                })).collect::<Vec<_>>(),
+                }), &c.variables)).collect::<Vec<_>>(),
                 "functions": function_entries(&m.functions, true),
-            })
+            });
+            with_variables(entry, &m.variables)
         })
         .collect();
 

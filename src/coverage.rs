@@ -325,6 +325,7 @@ mod tests {
             summary: None,
             classes: vec![],
             functions: vec![],
+            variables: vec![],
             z_index: 0,
             folder: None,
             dir: String::new(),
@@ -353,6 +354,7 @@ mod tests {
             docstring: None,
             summary: None,
             functions: vec![function("run", Some("Runs.")), function("stop", None)],
+            variables: vec![],
             is_private: false,
         });
         m.functions.push(function("helper", Some("  \n\t ")));

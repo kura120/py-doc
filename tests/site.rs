@@ -308,7 +308,8 @@ fn normalize_whitespace(html: &str) -> String {
 /// Compares every page of a generated sample site with the snapshots in
 /// `tests/snapshots/sample`. Set `PY_DOC_UPDATE_SNAPSHOTS=1` to rewrite them
 /// after an intended change to the default theme.
-fn assert_matches_sample_snapshots(out: &Path) {
+/// Pages listed in `skip` must exist but are not compared.
+fn assert_matches_sample_snapshots(out: &Path, skip: &[&str]) {
     let snapshots = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("snapshots")
@@ -324,7 +325,7 @@ fn assert_matches_sample_snapshots(out: &Path) {
         return;
     }
     assert_eq!(pages, html_pages(&snapshots), "the set of pages changed");
-    for page in &pages {
+    for page in pages.iter().filter(|p| !skip.contains(&p.as_str())) {
         let expected = fs::read_to_string(snapshots.join(page)).unwrap();
         assert_eq!(
             normalize_whitespace(&read(out, page)),
@@ -397,7 +398,7 @@ fn without_javascript_every_module_is_two_clicks_away() {
 #[test]
 fn default_output_matches_the_snapshots() {
     let out = generate_sample("default_snapshots", &[]);
-    assert_matches_sample_snapshots(&out);
+    assert_matches_sample_snapshots(&out, &[]);
 }
 
 #[test]
@@ -422,7 +423,12 @@ fn whole_file_template_overrides_still_work() {
         "the custom templates were not used:\n{}",
         String::from_utf8_lossy(&output.stdout)
     );
-    assert_matches_sample_snapshots(&out);
+    // engine.html has a class attribute, which the old module.html predates:
+    // it still renders, just without the Attributes list.
+    assert_matches_sample_snapshots(&out, &["01_core/engine.html"]);
+    let engine = read(&out, "01_core/engine.html");
+    assert!(engine.contains("id=\"class.Engine\""));
+    assert!(!engine.contains("attr.Engine.speed"));
 
     // A standalone page that shares nothing with the bundled theme.
     let templates = out_dir("standalone_templates_src");

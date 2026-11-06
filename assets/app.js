@@ -124,9 +124,15 @@ function collectSearchEntries(index) {
             (cls.functions || []).forEach(f => {
                 entries.push({ type: "Method", name: `${mod.name}.${cls.name}.${f.name}`, summary: f.summary, link: `${mod.link_path}#method.${cls.name}.${f.name}` });
             });
+            (cls.variables || []).forEach(v => {
+                entries.push({ type: "Attribute", name: `${mod.name}.${cls.name}.${v.name}`, summary: v.summary, link: `${mod.link_path}#attr.${cls.name}.${v.name}` });
+            });
         });
         (mod.functions || []).forEach(f => {
             entries.push({ type: "Function", name: `${mod.name}.${f.name}`, summary: f.summary, link: `${mod.link_path}#fn.${f.name}` });
+        });
+        (mod.variables || []).forEach(v => {
+            entries.push({ type: "Variable", name: `${mod.name}.${v.name}`, summary: v.summary, link: `${mod.link_path}#var.${v.name}` });
         });
     });
     return entries;
