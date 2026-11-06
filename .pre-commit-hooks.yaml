@@ -1,0 +1,13 @@
+# Runs `py-doc --strict` into a temporary directory, so a file that fails to
+# parse or a doc-link, macro or image that cannot be resolved fails the commit.
+#
+# This hook uses the `py-doc` already on PATH (see the README's Installation
+# section); pre-commit does not install it. Once py-doc ships as a Python
+# wheel, this should become `language: python` so pre-commit installs it.
+- id: py-doc
+  name: py-doc --strict
+  description: Check that py-doc can build the docs with no unresolved links, macros or images.
+  entry: scripts/pre-commit.sh
+  language: script
+  files: \.py$
+  pass_filenames: false
