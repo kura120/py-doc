@@ -1,7 +1,8 @@
 use anyhow::{Context as AnyhowContext, Result, anyhow};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use rayon::prelude::*;
-use std::collections::BTreeSet;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -9,9 +10,10 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 use tera::{Context as TeraContext, Kwargs, State, Tera, Value};
 
+use crate::cache::{self, Cache, ModuleDeps, ModuleEntryRef, PageEntry, hash_bytes, hash_parts};
 use crate::highlight::highlight_python;
 use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage};
-use crate::parser::split_order_prefix;
+use crate::parser::{self, split_order_prefix};
 use crate::resolver::Resolver;
 
 /// The bundled theme. Compiled into the binary so generation works offline
@@ -199,6 +201,30 @@ struct RenderCtx<'a> {
     resolver: &'a Resolver,
     /// The module being rendered, for warning messages.
     origin: &'a str,
+    /// What rendering looked at, for the incremental-build cache.
+    deps: RefCell<ModuleDeps>,
+}
+
+/// One source file handed to [`SiteGenerator::generate`].
+pub struct ModuleSource {
+    pub path: PathBuf,
+    pub source_hash: String,
+    /// The parsed module, or None when the cache holds this exact file.
+    pub parsed: Option<PythonModule>,
+}
+
+/// The cache state carried with a module through one run.
+struct Rendered {
+    deps: ModuleDeps,
+    full_hash: String,
+    shared_hash: String,
+}
+
+struct ModuleSlot {
+    path: PathBuf,
+    source_hash: String,
+    /// Set once the module is rendered, or up front when the cache has it.
+    rendered: Option<Rendered>,
 }
 
 pub struct SiteGenerator {
@@ -216,6 +242,14 @@ pub struct SiteGenerator {
     warnings: AtomicUsize,
     /// Site-relative paths of every file written in this run.
     written: Mutex<BTreeSet<String>>,
+    /// Hash of every template and static file in use.
+    theme_fingerprint: String,
+    /// Any page template comes from --templates. Such a template may show
+    /// any part of any module on every page, so pages are not reused
+    /// selectively.
+    custom_templates: bool,
+    /// The "Using custom templates" line, printed by `announce_templates`.
+    templates_note: Option<String>,
 }
 
 /// Where a module's page is written, relative to the site root.
@@ -261,6 +295,7 @@ impl SiteGenerator {
     ) -> Result<Self> {
         let template_dir = template_dir.map(PathBuf::from);
         let mut overridden = Vec::new();
+        let mut theme_parts = Vec::new();
 
         let mut tera = Tera::default();
         tera.register_filter("striptags", striptags_filter);
@@ -271,9 +306,17 @@ impl SiteGenerator {
             }
             tera.add_raw_template(name, &body)
                 .with_context(|| format!("Failed to load template {}", name))?;
+            theme_parts.push(name.to_string());
+            theme_parts.push(body);
         }
-        if let Some(dir) = &template_dir {
-            println!(
+        for name in STATIC_NAMES {
+            let (body, _) = load_asset(template_dir.as_deref(), name)?;
+            theme_parts.push(name.to_string());
+            theme_parts.push(body);
+        }
+        let theme_fingerprint = hash_parts(theme_parts.iter().map(String::as_str));
+        let templates_note = template_dir.as_ref().map(|dir| {
+            format!(
                 "  Using custom templates from '{}': {}",
                 dir.display(),
                 if overridden.is_empty() {
@@ -281,8 +324,8 @@ impl SiteGenerator {
                 } else {
                     overridden.join(", ")
                 }
-            );
-        }
+            )
+        });
 
         let src_root = src_root.canonicalize().with_context(|| {
             format!(
@@ -302,7 +345,22 @@ impl SiteGenerator {
             source_url: source_url.map(|url| url.trim_end_matches('/').to_string()),
             warnings: AtomicUsize::new(0),
             written: Mutex::new(BTreeSet::new()),
+            theme_fingerprint,
+            custom_templates: !overridden.is_empty(),
+            templates_note,
         })
+    }
+
+    /// Prints which custom templates are used, if --templates was given.
+    pub fn announce_templates(&self) {
+        if let Some(note) = &self.templates_note {
+            println!("{}", note);
+        }
+    }
+
+    /// Hash of the template and static files, for the cache key.
+    pub fn theme_fingerprint(&self) -> &str {
+        &self.theme_fingerprint
     }
 
     /// Number of non-fatal problems found (missing images, unresolved doc-links).
@@ -366,8 +424,10 @@ impl SiteGenerator {
 
         let mut body = listed.into_iter().collect::<Vec<_>>().join("\n");
         body.push('\n');
-        fs::write(&manifest_path, body)
-            .with_context(|| format!("Failed to write {:?}", manifest_path))?;
+        if previous.as_deref() != Some(body.as_str()) {
+            fs::write(&manifest_path, body)
+                .with_context(|| format!("Failed to write {:?}", manifest_path))?;
+        }
         Ok(removed)
     }
 
@@ -376,9 +436,16 @@ impl SiteGenerator {
         eprintln!("  \x1b[33m⚠\x1b[0m {}: {}", origin, message);
     }
 
-    /// Copies an image into the site and returns the URL to use from the
-    /// current page. Paths are relative to the source root and must stay inside it.
-    fn process_image_path(&self, img_path: &str, ctx: &RenderCtx) -> Result<String> {
+    /// Warns about the module being rendered, and remembers the warning so
+    /// a later run that reuses this module reports it again.
+    fn warn_at(&self, ctx: &RenderCtx, message: &str) {
+        self.warn(ctx.origin, message);
+        ctx.deps.borrow_mut().warnings.push(message.to_string());
+    }
+
+    /// Resolves an image path (relative to the source root, and inside it)
+    /// to the file and its URL path below `assets/`.
+    fn resolve_image(&self, img_path: &str) -> Result<(PathBuf, String)> {
         let resolved = self
             .src_root
             .join(img_path)
@@ -393,6 +460,25 @@ impl SiteGenerator {
             .map(|c| c.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
+        Ok((resolved, url_path))
+    }
+
+    /// What the cache records about an image path: where it is copied to and
+    /// a hash of its bytes, or why it cannot be used.
+    fn image_status(&self, img_path: &str) -> String {
+        let found = self.resolve_image(img_path).and_then(|(file, url_path)| {
+            let bytes = fs::read(&file)?;
+            Ok(format!("ok {} {}", hash_bytes(&bytes), url_path))
+        });
+        match found {
+            Ok(status) => status,
+            Err(e) => format!("err {}", e),
+        }
+    }
+
+    /// Copies an image into the site once per run. With `only_if_missing`
+    /// an existing file is kept (the cache vouches for its content).
+    fn copy_image(&self, resolved: &Path, url_path: &str, only_if_missing: bool) -> Result<()> {
         let site_path = format!("assets/{}", url_path);
 
         // Modules render in parallel and often share an image. Copy each
@@ -402,16 +488,55 @@ impl SiteGenerator {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if !written.contains(&site_path) {
-            let dest = Path::new(&self.output_dir).join("assets").join(relative);
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)?;
+            let dest = Path::new(&self.output_dir).join(&site_path);
+            if !(only_if_missing && dest.is_file()) {
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(resolved, &dest)?;
             }
-            fs::copy(&resolved, &dest)?;
             written.insert(site_path);
         }
-        drop(written);
+        Ok(())
+    }
 
+    /// Copies an image into the site and returns the URL to use from the
+    /// current page. Paths are relative to the source root and must stay inside it.
+    fn process_image_path(&self, img_path: &str, ctx: &RenderCtx) -> Result<String> {
+        ctx.deps
+            .borrow_mut()
+            .images
+            .push((img_path.to_string(), self.image_status(img_path)));
+        let (resolved, url_path) = self.resolve_image(img_path)?;
+        self.copy_image(&resolved, &url_path, false)?;
         Ok(format!("{}assets/{}", ctx.root_prefix, url_path))
+    }
+
+    /// Whether a cached module's rendering still holds: every doc-link
+    /// resolves as before and every image is unchanged.
+    fn deps_hold(&self, deps: &ModuleDeps, resolver: &Resolver) -> bool {
+        deps.links
+            .iter()
+            .all(|(target, link)| resolver.resolve(target) == *link)
+            && deps
+                .images
+                .iter()
+                .all(|(path, status)| self.image_status(path) == *status)
+    }
+
+    /// The side effects of rendering a module that is reused from the
+    /// cache: its warnings and its images.
+    fn replay(&self, module: &PythonModule, deps: &ModuleDeps) -> Result<()> {
+        for warning in &deps.warnings {
+            self.warn(&module.source_path, warning);
+        }
+        for (path, status) in &deps.images {
+            if status.starts_with("ok ") {
+                let (resolved, url_path) = self.resolve_image(path)?;
+                self.copy_image(&resolved, &url_path, true)?;
+            }
+        }
+        Ok(())
     }
 
     fn render_macro(&self, mac: DocMacro, ctx: &RenderCtx) -> String {
@@ -419,7 +544,7 @@ impl SiteGenerator {
             DocMacro::Image { path } => match self.process_image_path(path, ctx) {
                 Ok(url) => format!("\n\n<img src=\"{}\" alt=\"\">\n\n", escape_html(&url)),
                 Err(e) => {
-                    self.warn(ctx.origin, &e.to_string());
+                    self.warn_at(ctx, &e.to_string());
                     AlertType::Error.to_html(&escape_html(&e.to_string()))
                 }
             },
@@ -427,7 +552,12 @@ impl SiteGenerator {
             DocMacro::Warning { text } => AlertType::Warning.to_html(&render_inline(text)),
             DocMacro::DocLink { target } => {
                 let label = format!("<code>{}</code>", escape_html(target));
-                let link_html = match ctx.resolver.resolve(target) {
+                let resolved = ctx.resolver.resolve(target);
+                ctx.deps
+                    .borrow_mut()
+                    .links
+                    .push((target.to_string(), resolved.clone()));
+                let link_html = match resolved {
                     Some(link) => format!(
                         "<a href=\"{}{}\" class=\"doc-internal-link\">{}</a>",
                         ctx.root_prefix,
@@ -435,8 +565,8 @@ impl SiteGenerator {
                         label
                     ),
                     None => {
-                        self.warn(
-                            ctx.origin,
+                        self.warn_at(
+                            ctx,
                             &format!("#pd-doc-link target '{}' was not found", target),
                         );
                         format!("{} <em>(not found)</em>", label)
@@ -534,8 +664,8 @@ impl SiteGenerator {
                 } else {
                     ""
                 };
-                self.warn(
-                    ctx.origin,
+                self.warn_at(
+                    ctx,
                     &format!("'{}' is not a macro that works here{}", name, hint),
                 );
             }
@@ -548,8 +678,8 @@ impl SiteGenerator {
         }
         if in_custom_code {
             // Never drop content: an unterminated block runs to the end of the docstring.
-            self.warn(
-                ctx.origin,
+            self.warn_at(
+                ctx,
                 "#pd-code block is not closed with a line containing only ```",
             );
             processed_md.push_str(&format!(
@@ -614,7 +744,7 @@ impl SiteGenerator {
                                 id,
                             })),
                             Err(e) => {
-                                self.warn(ctx.origin, &e.to_string());
+                                self.warn_at(ctx, &e.to_string());
                                 events.push(Event::Text(CowStr::from(format!(
                                     "[⚠️ Image Error: {}]",
                                     e
@@ -632,14 +762,16 @@ impl SiteGenerator {
         html_output
     }
 
-    /// Fills in summaries, ordering, the doc-only flag and rendered HTML for one module.
-    fn render_module(&self, module: &mut PythonModule, resolver: &Resolver) {
+    /// Fills in summaries, ordering, the doc-only flag and rendered HTML for
+    /// one module. Returns what the rendering depended on.
+    fn render_module(&self, module: &mut PythonModule, resolver: &Resolver) -> ModuleDeps {
         let root_prefix = root_prefix_for(&module.link_path);
         let origin = module.source_path.clone();
         let ctx = RenderCtx {
             root_prefix: &root_prefix,
             resolver,
             origin: &origin,
+            deps: RefCell::new(ModuleDeps::default()),
         };
 
         if let Some(raw_doc) = module.docstring.take() {
@@ -668,6 +800,7 @@ impl SiteGenerator {
             class.functions.iter_mut().for_each(render_function);
         }
         module.functions.iter_mut().for_each(render_function);
+        ctx.deps.into_inner()
     }
 
     /// Groups modules by directory into the folder structure used by the
@@ -785,23 +918,167 @@ impl SiteGenerator {
         context
     }
 
-    pub fn generate(&self, package: &mut PythonPackage, clean: bool) -> Result<()> {
-        let compile_start = Instant::now();
+    /// Skips a page when the cache says it was rendered from exactly these
+    /// inputs and the file on disk is still the one written then.
+    fn current_page(
+        &self,
+        old_pages: &BTreeMap<String, PageEntry>,
+        site_path: &str,
+        inputs: &str,
+    ) -> Option<PageEntry> {
+        let entry = old_pages.get(site_path)?;
+        if entry.inputs != inputs {
+            return None;
+        }
+        let on_disk = fs::read(Path::new(&self.output_dir).join(site_path)).ok()?;
+        if hash_bytes(&on_disk) != entry.output {
+            return None;
+        }
+        self.record(site_path);
+        Some(entry.clone())
+    }
 
-        fs::create_dir_all(&self.output_dir)?;
+    fn write_page(&self, site_path: &str, inputs: &str, body: String) -> Result<PageEntry> {
+        let path = Path::new(&self.output_dir).join(site_path);
+        if let Some(parent_dir) = path.parent() {
+            fs::create_dir_all(parent_dir)
+                .with_context(|| format!("Failed to create output directory {:?}", parent_dir))?;
+        }
+        let output = hash_bytes(body.as_bytes());
+        fs::write(&path, body).with_context(|| format!("Failed to write {:?}", path))?;
+        self.record(site_path);
+        Ok(PageEntry {
+            inputs: inputs.to_string(),
+            output,
+        })
+    }
+
+    /// Writes a non-page file unless it already has exactly this content.
+    fn write_if_changed(&self, site_path: &str, body: &[u8]) -> Result<()> {
+        let path = Path::new(&self.output_dir).join(site_path);
+        if fs::read(&path).ok().as_deref() != Some(body) {
+            fs::write(&path, body).with_context(|| format!("Failed to write {}", site_path))?;
+        }
+        self.record(site_path);
+        Ok(())
+    }
+
+    /// Builds the site from `sources`. `cache` is the previous run's cache
+    /// (None for a full build) and `cache_key` the key of this run.
+    pub fn generate(
+        &self,
+        name: &str,
+        sources: Vec<ModuleSource>,
+        parse_root: &Path,
+        cache: Option<Cache>,
+        cache_key: &str,
+        clean: bool,
+    ) -> Result<()> {
+        let compile_start = Instant::now();
+        let out = Path::new(&self.output_dir);
+        fs::create_dir_all(out)?;
+
+        let mut old = cache.unwrap_or_default();
+        // An old cache stays sound even if this run is interrupted: module
+        // entries are keyed by content, and a page is only reused when the
+        // file on disk is still the one the cache recorded.
+        let old_pages = std::mem::take(&mut old.pages);
+
+        let mut package = PythonPackage {
+            name: name.to_string(),
+            modules: Vec::with_capacity(sources.len()),
+        };
+        let mut slots = Vec::with_capacity(sources.len());
+        for source in sources {
+            let mut rendered = None;
+            let module = match source.parsed {
+                Some(module) => module,
+                None => match old
+                    .modules
+                    .remove(&cache::source_path_for(&source.path, parse_root))
+                {
+                    Some(entry) => {
+                        rendered = Some(Rendered {
+                            deps: entry.deps,
+                            full_hash: entry.full_hash,
+                            shared_hash: entry.shared_hash,
+                        });
+                        entry.module
+                    }
+                    None => parser::parse_file(&source.path, parse_root)?,
+                },
+            };
+            package.modules.push(module);
+            slots.push(ModuleSlot {
+                path: source.path,
+                source_hash: source.source_hash,
+                rendered,
+            });
+        }
 
         // Output locations first: doc-links and image URLs depend on them.
         for module in package.modules.iter_mut() {
             module.link_path = output_path_for(&module.source_path);
         }
-        let resolver = Resolver::build(package);
+        // Built from names only, so cached (rendered) modules serve as well
+        // as freshly parsed ones.
+        let resolver = Resolver::build(&package);
+
+        // A cached module whose doc-links now resolve differently, or whose
+        // images changed, is parsed and rendered again.
+        let stale: Vec<usize> = slots
+            .par_iter()
+            .enumerate()
+            .filter(|(_, slot)| {
+                slot.rendered
+                    .as_ref()
+                    .is_some_and(|rendered| !self.deps_hold(&rendered.deps, &resolver))
+            })
+            .map(|(index, _)| index)
+            .collect();
+        for index in stale {
+            let mut module = parser::parse_file(&slots[index].path, parse_root)?;
+            module.link_path = output_path_for(&module.source_path);
+            package.modules[index] = module;
+            slots[index].rendered = None;
+        }
+        let fresh_modules = slots.iter().filter(|s| s.rendered.is_none()).count();
 
         package
             .modules
             .par_iter_mut()
-            .for_each(|module| self.render_module(module, &resolver));
+            .zip(slots.par_iter_mut())
+            .try_for_each(|(module, slot)| -> Result<()> {
+                match &slot.rendered {
+                    Some(rendered) => self.replay(module, &rendered.deps)?,
+                    None => {
+                        let deps = self.render_module(module, &resolver);
+                        let (full_hash, shared_hash) = module_hashes(module)?;
+                        slot.rendered = Some(Rendered {
+                            deps,
+                            full_hash,
+                            shared_hash,
+                        });
+                    }
+                }
+                Ok(())
+            })?;
 
-        package.modules.sort_by(module_order);
+        let mut pairs = package
+            .modules
+            .drain(..)
+            .zip(slots)
+            .map(|(module, slot)| {
+                let rendered = slot
+                    .rendered
+                    .ok_or_else(|| anyhow!("{} was not rendered", module.source_path))?;
+                Ok((module, (slot.source_hash, rendered)))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        pairs.sort_by(|a, b| module_order(&a.0, &b.0));
+        let (modules, rendered): (Vec<PythonModule>, Vec<(String, Rendered)>) =
+            pairs.into_iter().unzip();
+        package.modules = modules;
 
         let nav_groups = self.build_nav_groups(&package.modules);
 
@@ -820,84 +1097,151 @@ impl SiteGenerator {
             .iter()
             .find(|m| m.link_path == "__init__.html");
 
-        let package_value = Value::from_serializable(&*package);
-        let nav_value = Value::from_serializable(&nav_groups);
-
-        // Render index page
-        let mut index_context = self.base_context(&package_value, &nav_value, "./");
-        index_context.insert("total_modules", &total_modules);
-        index_context.insert("total_classes", &total_classes);
-        index_context.insert("total_functions", &total_functions);
-        if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
-            index_context.insert("package_docstring", doc);
+        // What each page is rendered from. Every page gets the whole package
+        // and nav in its context; the bundled module and document templates
+        // only show other modules' names, links, signatures and summaries
+        // (the "shared" hash), never their docstrings. Custom templates
+        // might, so with those every module's full content counts. The
+        // index shows everything.
+        let mut global_parts: Vec<&str> = vec![cache_key, &package.name];
+        for (_, module) in &rendered {
+            global_parts.push(&module.shared_hash);
+            if self.custom_templates {
+                global_parts.push(&module.full_hash);
+            }
         }
-        if let Some(root) = root_init
-            && (!root.classes.is_empty() || !root.functions.is_empty())
-        {
-            index_context.insert("package_link_path", &root.link_path);
-        }
+        let global = hash_parts(global_parts);
+        let index_inputs = hash_parts(
+            [global.as_str(), "index.html"]
+                .into_iter()
+                .chain(rendered.iter().map(|(_, r)| r.full_hash.as_str())),
+        );
+        let page_inputs: Vec<String> = package
+            .modules
+            .iter()
+            .zip(&rendered)
+            .map(|(module, (_, r))| {
+                hash_parts([global.as_str(), module.link_path.as_str(), &r.full_hash])
+            })
+            .collect();
 
-        let rendered_index = self.tera.render("index.html", &index_context)?;
-        fs::write(
-            Path::new(&self.output_dir).join("index.html"),
-            rendered_index,
-        )?;
-        self.record("index.html");
-
-        // Render detailed individual module detail pages, in parallel.
-        package
+        let index_kept = self.current_page(&old_pages, "index.html", &index_inputs);
+        let pages_kept: Vec<Option<PageEntry>> = package
             .modules
             .par_iter()
-            .try_for_each(|module| -> Result<()> {
-                let absolute_output_path = Path::new(&self.output_dir).join(&module.link_path);
+            .zip(page_inputs.par_iter())
+            .map(|(module, inputs)| self.current_page(&old_pages, &module.link_path, inputs))
+            .collect();
+        let kept_count =
+            usize::from(index_kept.is_some()) + pages_kept.iter().filter(|p| p.is_some()).count();
+        let page_count = package.modules.len() + 1;
+        // Left-over entries in `old` are modules that were edited or deleted.
+        let cache_changed = fresh_modules > 0
+            || !old.modules.is_empty()
+            || kept_count < page_count
+            || old_pages.len() != page_count;
 
-                if let Some(parent_dir) = absolute_output_path.parent() {
-                    fs::create_dir_all(parent_dir).with_context(|| {
-                        format!("Failed to create output directory {:?}", parent_dir)
-                    })?;
-                }
+        // Serializing the package is a large part of rendering; skip it
+        // when every page is current.
+        let values = (index_kept.is_none() || pages_kept.iter().any(Option::is_none)).then(|| {
+            (
+                Value::from_serializable(&package),
+                Value::from_serializable(&nav_groups),
+            )
+        });
 
-                let mut mod_context = self.base_context(
-                    &package_value,
-                    &nav_value,
-                    &root_prefix_for(&module.link_path),
-                );
-                mod_context.insert("module", module);
+        // The module part of the new cache is serialized while pages render.
+        let (modules_json, pages) = rayon::join(
+            || {
+                cache_changed.then(|| {
+                    cache::modules_json(package.modules.iter().zip(&rendered).map(
+                        |(module, (source_hash, r))| ModuleEntryRef {
+                            source_hash,
+                            dir: &module.dir,
+                            module,
+                            deps: &r.deps,
+                            full_hash: &r.full_hash,
+                            shared_hash: &r.shared_hash,
+                        },
+                    ))
+                })
+            },
+            || -> Result<(PageEntry, Vec<PageEntry>)> {
+                // Render index page
+                let index_entry = match index_kept {
+                    Some(entry) => entry,
+                    None => {
+                        let (package_value, nav_value) =
+                            values.as_ref().expect("built when a page is not current");
+                        let mut index_context = self.base_context(package_value, nav_value, "./");
+                        index_context.insert("total_modules", &total_modules);
+                        index_context.insert("total_classes", &total_classes);
+                        index_context.insert("total_functions", &total_functions);
+                        if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
+                            index_context.insert("package_docstring", doc);
+                        }
+                        if let Some(root) = root_init
+                            && (!root.classes.is_empty() || !root.functions.is_empty())
+                        {
+                            index_context.insert("package_link_path", &root.link_path);
+                        }
 
-                let template_name = if module.is_document {
-                    "document.html"
-                } else {
-                    "module.html"
+                        let rendered_index = self.tera.render("index.html", &index_context)?;
+                        self.write_page("index.html", &index_inputs, rendered_index)?
+                    }
                 };
 
-                let rendered_mod = self
-                    .tera
-                    .render(template_name, &mod_context)
-                    .with_context(|| format!("Failed to render {}", module.source_path))?;
-                fs::write(&absolute_output_path, rendered_mod)
-                    .with_context(|| format!("Failed to write {:?}", absolute_output_path))?;
-                self.record(&module.link_path);
-                Ok(())
-            })?;
+                // Render detailed individual module detail pages, in parallel.
+                let page_entries: Vec<PageEntry> = package
+                    .modules
+                    .par_iter()
+                    .zip(page_inputs.par_iter())
+                    .zip(pages_kept.into_par_iter())
+                    .map(|((module, inputs), kept)| -> Result<PageEntry> {
+                        if let Some(entry) = kept {
+                            return Ok(entry);
+                        }
+                        let (package_value, nav_value) =
+                            values.as_ref().expect("built when a page is not current");
+                        let mut mod_context = self.base_context(
+                            package_value,
+                            nav_value,
+                            &root_prefix_for(&module.link_path),
+                        );
+                        mod_context.insert("module", module);
+
+                        let template_name = if module.is_document {
+                            "document.html"
+                        } else {
+                            "module.html"
+                        };
+
+                        let rendered_mod = self
+                            .tera
+                            .render(template_name, &mod_context)
+                            .with_context(|| format!("Failed to render {}", module.source_path))?;
+                        self.write_page(&module.link_path, inputs, rendered_mod)
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok((index_entry, page_entries))
+            },
+        );
+        let (index_entry, page_entries) = pages?;
 
         println!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
-        fs::write(
-            Path::new(&self.output_dir).join("search-index.js"),
-            format!("const searchIndex = {};", search_index_json(package)),
+        self.write_if_changed(
+            "search-index.js",
+            format!("const searchIndex = {};", search_index_json(&package)).as_bytes(),
         )?;
-        fs::write(
-            Path::new(&self.output_dir).join("nav-data.js"),
-            format!("const navData = {};", nav_data_json(&nav_groups)),
+        self.write_if_changed(
+            "nav-data.js",
+            format!("const navData = {};", nav_data_json(&nav_groups)).as_bytes(),
         )?;
-        self.record("search-index.js");
-        self.record("nav-data.js");
 
         for name in STATIC_NAMES {
             let (body, _) = load_asset(self.template_dir.as_deref(), name)?;
-            fs::write(Path::new(&self.output_dir).join(name), body)
-                .with_context(|| format!("Failed to write {}", name))?;
-            self.record(name);
+            self.write_if_changed(name, body.as_bytes())?;
         }
 
         let removed = self.update_manifest(clean)?;
@@ -909,14 +1253,60 @@ impl SiteGenerator {
             );
         }
 
+        if let Some(modules_json) = modules_json {
+            let mut pages = BTreeMap::new();
+            pages.insert("index.html".to_string(), index_entry);
+            for (module, page) in package.modules.iter().zip(page_entries) {
+                pages.insert(module.link_path.clone(), page);
+            }
+            let saved = modules_json.and_then(|json| cache::write(out, cache_key, &json, &pages));
+            if let Err(e) = saved {
+                eprintln!("  \x1b[33m⚠\x1b[0m could not save the build cache: {:#}", e);
+            }
+        }
+
+        let unchanged = if kept_count > 0 {
+            format!(" ({} unchanged)", kept_count)
+        } else {
+            String::new()
+        };
         println!(
-            "  \x1b[32m✔\x1b[0m Generated {} pages in {:.2?}",
-            package.modules.len() + 1,
-            compile_start.elapsed()
+            "  \x1b[32m✔\x1b[0m Generated {} pages in {:.2?}{}",
+            page_count,
+            compile_start.elapsed(),
+            unchanged
         );
 
         Ok(())
     }
+}
+
+/// Hashes of a rendered module: all of it, and only the part other pages
+/// can show (docstrings reduced to whether there is one).
+fn module_hashes(module: &PythonModule) -> Result<(String, String)> {
+    let full = hash_bytes(&serde_json::to_vec(module)?);
+
+    let blank = |doc: &mut Option<String>| {
+        if doc.is_some() {
+            *doc = Some(String::new());
+        }
+    };
+    let mut shared = module.clone();
+    blank(&mut shared.docstring);
+    for class in shared.classes.iter_mut() {
+        blank(&mut class.docstring);
+        class
+            .functions
+            .iter_mut()
+            .for_each(|f| blank(&mut f.docstring));
+    }
+    shared
+        .functions
+        .iter_mut()
+        .for_each(|f| blank(&mut f.docstring));
+    let shared = hash_bytes(&serde_json::to_vec(&shared)?);
+
+    Ok((full, shared))
 }
 
 /// Reads a theme file from the custom template directory when it exists

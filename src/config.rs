@@ -14,6 +14,7 @@
 
 use anyhow::{Context, Result, bail};
 use clap::CommandFactory;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::{Args, LayoutKind, ThemeKind};
@@ -21,7 +22,7 @@ use crate::{Args, LayoutKind, ThemeKind};
 pub const DEFAULT_VERSION: &str = "1.0.0";
 
 /// The fully resolved settings the rest of the program runs on.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub src: String,
     pub out: String,
@@ -34,6 +35,7 @@ pub struct Config {
     pub source_url: Option<String>,
     pub strict: bool,
     pub clean: bool,
+    pub no_cache: bool,
 }
 
 /// What was read from one pyproject.toml.
@@ -196,6 +198,20 @@ fn missing(key: &str) -> anyhow::Error {
 }
 
 impl Config {
+    /// The settings that can change the generated site, serialized for the
+    /// cache key. Everything except where the site goes and how the run
+    /// behaves (`out`, `strict`, `clean`, `no-cache`), so a new option is
+    /// part of the key unless it is listed here.
+    pub fn cache_settings(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(map) = value.as_object_mut() {
+            for key in ["out", "strict", "clean", "no_cache"] {
+                map.remove(key);
+            }
+        }
+        value.to_string()
+    }
+
     /// Merges the CLI over the config file and fills in defaults.
     /// Prints a warning for unknown `[tool.py-doc]` keys (an error when
     /// strict) and a hint when the version falls back because it is dynamic.
@@ -260,6 +276,7 @@ impl Config {
             source_url: cli.source_url.or(tool.source_url),
             strict,
             clean: cli.clean.or(tool.clean).unwrap_or(false),
+            no_cache: cli.no_cache.or(tool.no_cache).unwrap_or(false),
         })
     }
 }
@@ -298,6 +315,7 @@ exclude = ["tool-ex"]
 source-url = "https://tool"
 strict = true
 clean = true
+no-cache = true
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -321,6 +339,7 @@ clean = true
         "https://cli",
         "--strict=false",
         "--clean=false",
+        "--no-cache=false",
     ];
 
     #[test]
@@ -341,6 +360,7 @@ clean = true
                 source_url: Some("https://cli".into()),
                 strict: false,
                 clean: false,
+                no_cache: false,
             }
         );
     }
@@ -363,6 +383,7 @@ clean = true
                 source_url: Some("https://tool".into()),
                 strict: true,
                 clean: true,
+                no_cache: true,
             }
         );
     }
@@ -392,6 +413,7 @@ clean = true
                 source_url: None,
                 strict: false,
                 clean: false,
+                no_cache: false,
             }
         );
     }
@@ -453,10 +475,38 @@ clean = true
             "source-url",
             "strict",
             "clean",
+            "no-cache",
         ] {
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
         assert!(!keys.iter().any(|k| k == "config"));
+    }
+
+    #[test]
+    fn cache_settings_leave_out_run_behaviour() {
+        let base = Config::resolve(cli(&["-s", "a", "-o", "b", "-n", "c"]), None).unwrap();
+        let other_run = Config::resolve(
+            cli(&[
+                "-s",
+                "a",
+                "-o",
+                "elsewhere",
+                "-n",
+                "c",
+                "--strict",
+                "--clean",
+                "--no-cache",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(base.cache_settings(), other_run.cache_settings());
+        let other_site = Config::resolve(
+            cli(&["-s", "a", "-o", "b", "-n", "c", "--layout", "modern"]),
+            None,
+        )
+        .unwrap();
+        assert_ne!(base.cache_settings(), other_site.cache_settings());
     }
 
     #[test]

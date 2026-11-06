@@ -1,3 +1,4 @@
+mod cache;
 mod config;
 mod generator;
 mod highlight;
@@ -10,13 +11,13 @@ use anyhow::{Result, bail};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
+use cache::Cache;
 use config::Config;
-use generator::SiteGenerator;
-use models::PythonPackage;
+use generator::{ModuleSource, SiteGenerator};
 
 /// Directory names that are never documented: environments, caches and
 /// build output. Hidden directories (".git", ".venv", ...) are skipped too.
@@ -31,7 +32,7 @@ const DEFAULT_EXCLUDES: [&str; 8] = [
     "__pypackages__",
 ];
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LayoutKind {
     Classic,
@@ -49,7 +50,7 @@ impl LayoutKind {
     }
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeKind {
     /// Follow the reader's system light/dark setting
@@ -136,6 +137,11 @@ pub struct Args {
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub clean: Option<bool>,
 
+    /// Ignore the build cache in --out and render every page. A new cache
+    /// is still written for the next run.
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub no_cache: Option<bool>,
+
     /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
     /// it is looked for in --src (or the current directory) and its parents,
     /// stopping at the repository root.
@@ -211,9 +217,20 @@ fn run_generation(args: &Config) -> Result<()> {
 
     let (root, py_files) = collect_python_files(src_path, &args.exclude);
 
-    let mut package = PythonPackage {
-        name: args.name.clone(),
-        modules: Vec::new(),
+    let generator = SiteGenerator::new(
+        &root,
+        &args.out,
+        &args.doc_version,
+        args.templates.as_deref(),
+        args.layout.as_str(),
+        args.theme.as_baked(),
+        args.source_url.as_deref(),
+    )?;
+    let cache_key = cache::cache_key(&args.cache_settings(), generator.theme_fingerprint());
+    let old_cache = if args.no_cache {
+        None
+    } else {
+        Cache::load(Path::new(&args.out), &cache_key)
     };
 
     let pb = ProgressBar::new(py_files.len() as u64);
@@ -224,19 +241,38 @@ fn run_generation(args: &Config) -> Result<()> {
     );
 
     // Files are parsed in parallel; collecting keeps them in sorted order.
+    // A file the cache holds with the same content is not parsed at all.
     let results: Vec<_> = py_files
         .par_iter()
         .map(|path| {
-            let result = parser::parse_file(path, &root);
+            let source_path = cache::source_path_for(path, &root);
+            // An unreadable file gets no hash, misses the cache and fails to parse below.
+            let source_hash = std::fs::read(path)
+                .map(|bytes| cache::hash_source(&source_path, &bytes))
+                .unwrap_or_default();
+            let cached = !source_hash.is_empty()
+                && old_cache
+                    .as_ref()
+                    .is_some_and(|c| c.has_source(&source_path, &source_hash));
+            let result = if cached {
+                Ok(None)
+            } else {
+                parser::parse_file(path, &root).map(Some)
+            };
             pb.inc(1);
-            (path, result)
+            (path, source_hash, result)
         })
         .collect();
 
+    let mut sources = Vec::new();
     let mut parse_errors: Vec<String> = Vec::new();
-    for (path, result) in results {
+    for (path, source_hash, result) in results {
         match result {
-            Ok(module) => package.modules.push(module),
+            Ok(parsed) => sources.push(ModuleSource {
+                path: path.clone(),
+                source_hash,
+                parsed,
+            }),
             Err(e) => {
                 let shown = path.strip_prefix(&root).unwrap_or(path);
                 parse_errors.push(format!("{}: {:#}", shown.display(), e));
@@ -245,10 +281,16 @@ fn run_generation(args: &Config) -> Result<()> {
     }
     pb.finish_and_clear();
 
+    let unchanged = sources.iter().filter(|s| s.parsed.is_none()).count();
     println!(
-        "  \x1b[32m✔\x1b[0m Parsed {} of {} Python files.",
-        package.modules.len(),
-        py_files.len()
+        "  \x1b[32m✔\x1b[0m Parsed {} of {} Python files{}.",
+        sources.len(),
+        py_files.len(),
+        if unchanged > 0 {
+            format!(" ({} unchanged)", unchanged)
+        } else {
+            String::new()
+        }
     );
     if !parse_errors.is_empty() {
         eprintln!(
@@ -261,17 +303,11 @@ fn run_generation(args: &Config) -> Result<()> {
     }
 
     println!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
-    let generator = SiteGenerator::new(
-        &root,
-        &args.out,
-        &args.doc_version,
-        args.templates.as_deref(),
-        args.layout.as_str(),
-        args.theme.as_baked(),
-        args.source_url.as_deref(),
-    )?;
+    generator.announce_templates();
 
-    generator.generate(&mut package, args.clean)?;
+    generator.generate(
+        &args.name, sources, &root, old_cache, &cache_key, args.clean,
+    )?;
 
     println!(
         "\n\x1b[32;1m✔ Documentation generated at {}/index.html\x1b[0m",

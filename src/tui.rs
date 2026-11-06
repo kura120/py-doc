@@ -334,6 +334,7 @@ impl App {
             source_url: self.prefill.source_url.clone(),
             strict: self.prefill.strict.unwrap_or(false),
             clean: self.prefill.clean.unwrap_or(false),
+            no_cache: self.prefill.no_cache.unwrap_or(false),
         }
     }
 }
@@ -910,6 +911,7 @@ mod tests {
                 source_url: Some("https://x".into()),
                 strict: true,
                 clean: false,
+                no_cache: false,
             }
         );
     }

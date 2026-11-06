@@ -87,13 +87,14 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
+| `--no-cache` | Ignore the build cache and render every page. See [Incremental builds](#incremental-builds). |
 | `--config <FILE>` | The `pyproject.toml` to read. By default it is found automatically (see below). |
 | `-V`, `--version` | Print the py-doc version. |
 | `-h`, `--help` | Print help. |
 
 > **Changed in this release:** `-v` / `--version <VERSION>` used to set the version shown in the docs. That is now `--doc-version`, and `--version` reports the tool's own version.
 
-`--strict` and `--clean` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
+`--strict`, `--clean` and `--no-cache` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
 
 ### Configuring with pyproject.toml
 
@@ -145,6 +146,17 @@ Files with syntax errors are reported and skipped; the rest of the site is still
 ### Keeping the output folder tidy
 
 Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything py-doc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
+
+### Incremental builds
+
+Each run saves a cache in `.py-doc-cache` inside `--out`, next to `.py-doc-manifest`. The next run only parses files whose content changed and only rewrites pages whose content would change. A run with no changes writes no pages.
+
+* Editing a docstring re-renders that module's page and the index.
+* Adding, removing or renaming a module, class or function, or changing a one-line summary, re-renders every page, because every page shows the navigation.
+* A page that links to a renamed symbol with `#pd-doc-link`, or shows an image that changed, is re-rendered too.
+* A new py-doc version, a changed option or a changed template file rebuilds everything. With `--templates`, any change to a module re-renders every page, since a custom template can show any module on any page.
+
+The result is always the same as a full build. `--no-cache` forces one (and saves a fresh cache). The cache belongs to the output folder: if you commit `--out`, add `.py-doc-cache` to your `.gitignore`.
 
 ### Linking to source
 

@@ -1,12 +1,12 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonPackage {
     pub name: String,
     pub modules: Vec<PythonModule>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonModule {
     pub name: String,
     /// Path relative to the source root, with forward slashes (e.g. "01_core/engine.py").
@@ -29,7 +29,7 @@ pub struct PythonModule {
     pub is_document: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonClass {
     pub name: String,
     pub bases: Vec<String>,
@@ -39,7 +39,7 @@ pub struct PythonClass {
     pub functions: Vec<PythonFunction>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonFunction {
     pub name: String,
     pub args: Vec<String>,
