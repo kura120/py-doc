@@ -741,12 +741,14 @@ impl SiteGenerator {
                 && module.functions.is_empty();
             module.summary = summarize(&cleaned_doc);
             module.docstring = Some(self.render_markdown(&cleaned_doc, &ctx));
+            module.raw_docstring = Some(raw_doc);
         }
 
         let render_function = |func: &mut PythonFunction| {
             if let Some(doc) = func.docstring.take() {
                 func.summary = summarize(&doc);
                 func.docstring = Some(self.render_markdown(&doc, &ctx));
+                func.raw_docstring = Some(doc);
             }
         };
 
@@ -754,6 +756,7 @@ impl SiteGenerator {
             if let Some(doc) = var.docstring.take() {
                 var.summary = summarize(&doc);
                 var.docstring = Some(self.render_markdown(&doc, &ctx));
+                var.raw_docstring = Some(doc);
             }
         };
 
@@ -761,6 +764,7 @@ impl SiteGenerator {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
                 class.docstring = Some(self.render_markdown(&doc, &ctx));
+                class.raw_docstring = Some(doc);
             }
             class.functions.iter_mut().for_each(render_function);
             class.variables.iter_mut().for_each(render_variable);
@@ -890,9 +894,19 @@ impl SiteGenerator {
         context
     }
 
-    pub fn generate(&self, package: &mut PythonPackage, clean: bool) -> Result<()> {
-        let compile_start = Instant::now();
+    /// Writes `contents` to `site_path` in the output folder and lists it in
+    /// the manifest. For output formats other than the HTML site.
+    pub fn write_file(&self, site_path: &str, contents: &str) -> Result<()> {
+        let path = Path::new(&self.output_dir).join(site_path);
+        fs::write(&path, contents).with_context(|| format!("Failed to write {:?}", path))?;
+        self.record(site_path);
+        Ok(())
+    }
 
+    /// Renders every docstring to HTML in place (keeping the original in
+    /// `raw_docstring`), fills in page paths, summaries and ordering, and
+    /// copies the images docstrings use. Shared by every output format.
+    pub fn render(&self, package: &mut PythonPackage) -> Result<()> {
         fs::create_dir_all(&self.output_dir)?;
 
         // Output locations first: doc-links and image URLs depend on them.
@@ -907,6 +921,26 @@ impl SiteGenerator {
             .for_each(|module| self.render_module(module, &resolver));
 
         package.modules.sort_by(module_order);
+        Ok(())
+    }
+
+    /// Writes the manifest, after every format has written its files. With
+    /// `clean`, first removes what earlier runs wrote and this one did not.
+    pub fn finish(&self, clean: bool) -> Result<()> {
+        let removed = self.update_manifest(clean)?;
+        if removed > 0 {
+            status!(
+                "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
+                removed,
+                if removed == 1 { "" } else { "s" }
+            );
+        }
+        Ok(())
+    }
+
+    /// Writes the HTML site for a package that [`Self::render`] prepared.
+    pub fn write_html(&self, package: &PythonPackage) -> Result<()> {
+        let compile_start = Instant::now();
 
         let nav_groups = self.build_nav_groups(&package.modules);
 
@@ -925,7 +959,7 @@ impl SiteGenerator {
             .iter()
             .find(|m| m.link_path == "__init__.html");
 
-        let package_value = Value::from_serializable(&*package);
+        let package_value = Value::from_serializable(package);
         let nav_value = Value::from_serializable(&nav_groups);
 
         // Render index page
@@ -1027,15 +1061,6 @@ impl SiteGenerator {
             fs::write(Path::new(&self.output_dir).join(name), body)
                 .with_context(|| format!("Failed to write {}", name))?;
             self.record(name);
-        }
-
-        let removed = self.update_manifest(clean)?;
-        if removed > 0 {
-            status!(
-                "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
-                removed,
-                if removed == 1 { "" } else { "s" }
-            );
         }
 
         status!(
