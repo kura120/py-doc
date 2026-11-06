@@ -234,7 +234,20 @@ pub struct RunCache {
     pub key: String,
 }
 
-/// One source file handed to [`SiteGenerator::generate`].
+/// A package rendered by [`SiteGenerator::render`], with what the cache
+/// needs to skip pages and to be saved.
+pub struct Prepared {
+    pub package: PythonPackage,
+    /// Per module of `package`, in the same order.
+    rendered: Vec<SlotInfo>,
+    private_files: Vec<PrivateFile>,
+    old_pages: BTreeMap<String, PageEntry>,
+    key: String,
+    /// Whether the modules differ from the previous cache's.
+    modules_changed: bool,
+}
+
+/// One source file handed to [`SiteGenerator::render`].
 pub struct ModuleSource {
     pub path: PathBuf,
     pub source_hash: String,
@@ -905,12 +918,14 @@ impl SiteGenerator {
                 && module.functions.is_empty();
             module.summary = summarize(&cleaned_doc);
             module.docstring = Some(self.render_markdown(&cleaned_doc, &ctx));
+            module.raw_docstring = Some(raw_doc);
         }
 
         let render_function = |func: &mut PythonFunction| {
             if let Some(doc) = func.docstring.take() {
                 func.summary = summarize(&doc);
                 func.docstring = Some(self.render_markdown(&doc, &ctx));
+                func.raw_docstring = Some(doc);
             }
         };
 
@@ -918,6 +933,7 @@ impl SiteGenerator {
             if let Some(doc) = var.docstring.take() {
                 var.summary = summarize(&doc);
                 var.docstring = Some(self.render_markdown(&doc, &ctx));
+                var.raw_docstring = Some(doc);
             }
         };
 
@@ -925,6 +941,7 @@ impl SiteGenerator {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
                 class.docstring = Some(self.render_markdown(&doc, &ctx));
+                class.raw_docstring = Some(doc);
             }
             class.functions.iter_mut().for_each(render_function);
             class.variables.iter_mut().for_each(render_variable);
@@ -1100,27 +1117,36 @@ impl SiteGenerator {
         Ok(())
     }
 
-    /// Builds the site from `sources`. `cache` is the previous run's cache
-    /// (see [`RunCache`]). Without
-    /// `include_private`, private names are hidden as by
+    /// Writes `contents` to `site_path` in the output folder and lists it in
+    /// the manifest. For output formats other than the HTML site.
+    pub fn write_file(&self, site_path: &str, contents: &str) -> Result<()> {
+        let path = Path::new(&self.output_dir).join(site_path);
+        fs::write(&path, contents).with_context(|| format!("Failed to write {:?}", path))?;
+        self.record(site_path);
+        Ok(())
+    }
+
+    /// Parses what the cache cannot supply, then renders every docstring to
+    /// HTML in place (keeping the original in `raw_docstring` for modules
+    /// rendered in this run), fills in page paths, summaries and ordering,
+    /// and copies the images docstrings use. `cache` is the previous run's
+    /// cache (see [`RunCache`]); a module it supplies is already rendered and
+    /// has no `raw_docstring`, so a run that writes `api.json` passes none.
+    /// Without `include_private`, private names are hidden as by
     /// [`PythonPackage::hide_private`].
-    pub fn generate(
+    pub fn render(
         &self,
         name: &str,
         sources: Vec<ModuleSource>,
         parse_root: &Path,
         cache: RunCache,
         include_private: bool,
-        clean: bool,
-    ) -> Result<()> {
+    ) -> Result<Prepared> {
         let RunCache {
             previous: cache,
-            key: cache_key,
+            key,
         } = cache;
-        let cache_key = cache_key.as_str();
-        let compile_start = Instant::now();
-        let out = Path::new(&self.output_dir);
-        fs::create_dir_all(out)?;
+        fs::create_dir_all(&self.output_dir)?;
 
         let mut old = cache.unwrap_or_default();
         // An old cache stays sound even if this run is interrupted: module
@@ -1260,7 +1286,88 @@ impl SiteGenerator {
             .collect::<Result<Vec<_>>>()?;
         pairs.sort_by(|a, b| module_order(&a.0, &b.0));
         let (modules, rendered): (Vec<PythonModule>, Vec<SlotInfo>) = pairs.into_iter().unzip();
-        package.modules = modules;
+
+        // Left-over entries in `old` are modules that were edited or deleted.
+        let modules_changed = parsed_files > 0 || fresh_modules > 0 || !old.modules.is_empty();
+        Ok(Prepared {
+            package: PythonPackage {
+                name: package.name,
+                modules,
+                hidden: package.hidden,
+            },
+            rendered,
+            private_files,
+            old_pages,
+            key,
+            modules_changed,
+        })
+    }
+
+    /// Saves the cache for the next run: the modules [`Self::render`]
+    /// prepared and the pages [`Self::write_html`] wrote. A cache that could
+    /// not be saved only costs the next run its speed, so it is a warning.
+    pub fn save_cache(&self, prepared: &Prepared, pages: &BTreeMap<String, PageEntry>) {
+        if !prepared.modules_changed && *pages == prepared.old_pages {
+            return;
+        }
+        let no_deps = ModuleDeps::default();
+        let public =
+            prepared
+                .package
+                .modules
+                .iter()
+                .zip(&prepared.rendered)
+                .map(|(module, info)| ModuleEntryRef {
+                    source_path: &info.source_path,
+                    source_hash: &info.source_hash,
+                    dir: &module.dir,
+                    module: Some(module),
+                    hidden: info.hidden.as_ref(),
+                    deps: &info.rendered.deps,
+                    full_hash: &info.rendered.full_hash,
+                    shared_hash: &info.rendered.shared_hash,
+                });
+        let private = prepared.private_files.iter().map(|file| ModuleEntryRef {
+            source_path: &file.source_path,
+            source_hash: &file.source_hash,
+            dir: "",
+            module: None,
+            hidden: file.hidden.as_ref(),
+            deps: &no_deps,
+            full_hash: "",
+            shared_hash: "",
+        });
+        let entries: Vec<ModuleEntryRef> = public.chain(private).collect();
+        let saved = cache::encode_modules(&entries).and_then(|bytes| {
+            cache::write(Path::new(&self.output_dir), &prepared.key, &bytes, pages)
+        });
+        if let Err(e) = saved {
+            eprintln!("  \x1b[33m⚠\x1b[0m could not save the build cache: {:#}", e);
+        }
+    }
+
+    /// Writes the manifest, after every format has written its files. With
+    /// `clean`, first removes what earlier runs wrote and this one did not.
+    pub fn finish(&self, clean: bool) -> Result<()> {
+        let removed = self.update_manifest(clean)?;
+        if removed > 0 {
+            status!(
+                "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
+                removed,
+                if removed == 1 { "" } else { "s" }
+            );
+        }
+        Ok(())
+    }
+
+    /// Writes the HTML site for a package that [`Self::render`] prepared,
+    /// skipping each page whose inputs and file on disk are as the cache
+    /// recorded. Returns the pages for [`Self::save_cache`].
+    pub fn write_html(&self, prepared: &Prepared) -> Result<BTreeMap<String, PageEntry>> {
+        let compile_start = Instant::now();
+        let package = &prepared.package;
+        let rendered = &prepared.rendered;
+        let old_pages = &prepared.old_pages;
 
         let nav_groups = self.build_nav_groups(&package.modules);
 
@@ -1285,8 +1392,8 @@ impl SiteGenerator {
         // (the "shared" hash), never their docstrings. Custom templates
         // might, so with those every module's full content counts. The
         // index shows everything.
-        let mut global_parts: Vec<&str> = vec![cache_key, &package.name];
-        for info in &rendered {
+        let mut global_parts: Vec<&str> = vec![&prepared.key, &package.name];
+        for info in rendered {
             global_parts.push(&info.rendered.shared_hash);
             if self.custom_templates {
                 global_parts.push(&info.rendered.full_hash);
@@ -1301,7 +1408,7 @@ impl SiteGenerator {
         let page_inputs: Vec<String> = package
             .modules
             .iter()
-            .zip(&rendered)
+            .zip(rendered)
             .map(|(module, info)| {
                 hash_parts([
                     global.as_str(),
@@ -1311,140 +1418,100 @@ impl SiteGenerator {
             })
             .collect();
 
-        let index_kept = self.current_page(&old_pages, "index.html", &index_inputs);
+        let index_kept = self.current_page(old_pages, "index.html", &index_inputs);
         let pages_kept: Vec<Option<PageEntry>> = package
             .modules
             .par_iter()
             .zip(page_inputs.par_iter())
-            .map(|(module, inputs)| self.current_page(&old_pages, &module.link_path, inputs))
+            .map(|(module, inputs)| self.current_page(old_pages, &module.link_path, inputs))
             .collect();
         let kept_count =
             usize::from(index_kept.is_some()) + pages_kept.iter().filter(|p| p.is_some()).count();
         let page_count = package.modules.len() + 1;
-        // Left-over entries in `old` are modules that were edited or deleted.
-        let cache_changed = parsed_files > 0
-            || fresh_modules > 0
-            || !old.modules.is_empty()
-            || kept_count < page_count
-            || old_pages.len() != page_count;
 
         // Serializing the package is a large part of rendering; skip it
         // when every page is current.
         let values = (index_kept.is_none() || pages_kept.iter().any(Option::is_none)).then(|| {
             (
-                Value::from_serializable(&package),
+                Value::from_serializable(package),
                 Value::from_serializable(&nav_groups),
             )
         });
 
-        // The module part of the new cache is built while pages render.
-        let no_deps = ModuleDeps::default();
-        let (modules_encoded, pages) =
-            rayon::join(
-                || -> Option<Result<Vec<u8>>> {
-                    if !cache_changed {
-                        return None;
-                    }
-                    let public = package.modules.iter().zip(&rendered).map(|(module, info)| {
-                        ModuleEntryRef {
-                            source_path: &info.source_path,
-                            source_hash: &info.source_hash,
-                            dir: &module.dir,
-                            module: Some(module),
-                            hidden: info.hidden.as_ref(),
-                            deps: &info.rendered.deps,
-                            full_hash: &info.rendered.full_hash,
-                            shared_hash: &info.rendered.shared_hash,
-                        }
-                    });
-                    let private = private_files.iter().map(|file| ModuleEntryRef {
-                        source_path: &file.source_path,
-                        source_hash: &file.source_hash,
-                        dir: "",
-                        module: None,
-                        hidden: file.hidden.as_ref(),
-                        deps: &no_deps,
-                        full_hash: "",
-                        shared_hash: "",
-                    });
-                    let entries: Vec<ModuleEntryRef> = public.chain(private).collect();
-                    Some(cache::encode_modules(&entries))
-                },
-                || -> Result<(PageEntry, Vec<PageEntry>)> {
-                    // Render index page
-                    let index_entry = match index_kept {
-                        Some(entry) => entry,
-                        None => {
-                            let (package_value, nav_value) =
-                                values.as_ref().expect("built when a page is not current");
-                            let mut index_context =
-                                self.base_context(package_value, nav_value, "./");
-                            index_context.insert("total_modules", &total_modules);
-                            index_context.insert("total_classes", &total_classes);
-                            index_context.insert("total_functions", &total_functions);
-                            if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
-                                index_context.insert("package_docstring", doc);
-                            }
-                            if let Some(root) = root_init
-                                && (!root.classes.is_empty()
-                                    || !root.functions.is_empty()
-                                    || !root.variables.is_empty())
-                            {
-                                index_context.insert("package_link_path", &root.link_path);
-                            }
+        // Render index page
+        let index_entry = match index_kept {
+            Some(entry) => entry,
+            None => {
+                let (package_value, nav_value) =
+                    values.as_ref().expect("built when a page is not current");
+                let mut index_context = self.base_context(package_value, nav_value, "./");
+                index_context.insert("total_modules", &total_modules);
+                index_context.insert("total_classes", &total_classes);
+                index_context.insert("total_functions", &total_functions);
+                if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
+                    index_context.insert("package_docstring", doc);
+                }
+                if let Some(root) = root_init
+                    && (!root.classes.is_empty()
+                        || !root.functions.is_empty()
+                        || !root.variables.is_empty())
+                {
+                    index_context.insert("package_link_path", &root.link_path);
+                }
 
-                            let rendered_index = self.tera.render("index.html", &index_context)?;
-                            self.write_page("index.html", &index_inputs, rendered_index)?
-                        }
-                    };
+                let rendered_index = self.tera.render("index.html", &index_context)?;
+                self.write_page("index.html", &index_inputs, rendered_index)?
+            }
+        };
 
-                    // Render detailed individual module detail pages, in parallel.
-                    let page_entries: Vec<PageEntry> = package
-                        .modules
-                        .par_iter()
-                        .zip(page_inputs.par_iter())
-                        .zip(pages_kept.into_par_iter())
-                        .map(|((module, inputs), kept)| -> Result<PageEntry> {
-                            if let Some(entry) = kept {
-                                return Ok(entry);
-                            }
-                            let (package_value, nav_value) =
-                                values.as_ref().expect("built when a page is not current");
-                            let mut mod_context = self.base_context(
-                                package_value,
-                                nav_value,
-                                &root_prefix_for(&module.link_path),
-                            );
-                            mod_context.insert("module", module);
-                            mod_context.insert(
-                                "display_module_name",
-                                display_module_name(module, &package.name),
-                            );
+        // Render detailed individual module detail pages, in parallel.
+        let page_entries: Vec<PageEntry> = package
+            .modules
+            .par_iter()
+            .zip(page_inputs.par_iter())
+            .zip(pages_kept.into_par_iter())
+            .map(|((module, inputs), kept)| -> Result<PageEntry> {
+                if let Some(entry) = kept {
+                    return Ok(entry);
+                }
+                let (package_value, nav_value) =
+                    values.as_ref().expect("built when a page is not current");
+                let mut mod_context = self.base_context(
+                    package_value,
+                    nav_value,
+                    &root_prefix_for(&module.link_path),
+                );
+                mod_context.insert("module", module);
+                mod_context.insert(
+                    "display_module_name",
+                    display_module_name(module, &package.name),
+                );
 
-                            let template_name = if module.is_document {
-                                "document.html"
-                            } else {
-                                "module.html"
-                            };
+                let template_name = if module.is_document {
+                    "document.html"
+                } else {
+                    "module.html"
+                };
 
-                            let rendered_mod =
-                                self.tera.render(template_name, &mod_context).with_context(
-                                    || format!("Failed to render {}", module.source_path),
-                                )?;
-                            self.write_page(&module.link_path, inputs, rendered_mod)
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    Ok((index_entry, page_entries))
-                },
-            );
-        let (index_entry, page_entries) = pages?;
+                let rendered_mod = self
+                    .tera
+                    .render(template_name, &mod_context)
+                    .with_context(|| format!("Failed to render {}", module.source_path))?;
+                self.write_page(&module.link_path, inputs, rendered_mod)
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         status!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
+        // The search index is loaded by app.js on the first search, not by
+        // every page: as JSON over HTTP, or through the .js copy on file://,
+        // where browsers block fetch() of local files.
+        let search_index = search_index_json(package).to_string();
         self.write_if_changed(
             "search-index.js",
-            format!("const searchIndex = {};", search_index_json(&package)).as_bytes(),
+            format!("const searchIndex = {};", search_index).as_bytes(),
         )?;
+        self.write_if_changed("search-index.json", search_index.as_bytes())?;
         self.write_if_changed(
             "nav-data.js",
             format!("const navData = {};", nav_data_json(&nav_groups)).as_bytes(),
@@ -1462,28 +1529,6 @@ impl SiteGenerator {
             self.write_if_changed(name, body.as_bytes())?;
         }
 
-        let removed = self.update_manifest(clean)?;
-        if removed > 0 {
-            status!(
-                "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
-                removed,
-                if removed == 1 { "" } else { "s" }
-            );
-        }
-
-        if let Some(modules_encoded) = modules_encoded {
-            let mut pages = BTreeMap::new();
-            pages.insert("index.html".to_string(), index_entry);
-            for (module, page) in package.modules.iter().zip(page_entries) {
-                pages.insert(module.link_path.clone(), page);
-            }
-            let saved =
-                modules_encoded.and_then(|bytes| cache::write(out, cache_key, &bytes, &pages));
-            if let Err(e) = saved {
-                eprintln!("  \x1b[33m⚠\x1b[0m could not save the build cache: {:#}", e);
-            }
-        }
-
         let unchanged = if kept_count > 0 {
             format!(" ({} unchanged)", kept_count)
         } else {
@@ -1496,7 +1541,12 @@ impl SiteGenerator {
             unchanged
         );
 
-        Ok(())
+        let mut pages = BTreeMap::new();
+        pages.insert("index.html".to_string(), index_entry);
+        for (module, page) in package.modules.iter().zip(page_entries) {
+            pages.insert(module.link_path.clone(), page);
+        }
+        Ok(pages)
     }
 }
 

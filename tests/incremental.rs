@@ -542,3 +542,34 @@ fn coverage_runs_do_not_use_the_cache() {
     assert!(stdout(&out).contains("coverage") || stdout(&out).contains("Coverage"));
     assert_eq!(fs::read(&cache).unwrap(), before);
 }
+
+/// Cached modules are already rendered and have lost their raw docstrings,
+/// so a run that writes `api.json` does not read the cache. With `html` as
+/// well it still writes one, and later HTML builds reuse it.
+#[test]
+fn json_output_is_a_full_build() {
+    let mut project = Project::new("json");
+    project.build_and_compare(&[]);
+
+    project.edit(
+        "pkg/engine.py",
+        "Starts the engine.",
+        "Starts the engine now.",
+    );
+    let both = ["--format", "html", "--format", "json"];
+    let out = project.build_and_compare(&both);
+    assert_eq!(unchanged_files(&out), 0);
+    let api = fs::read_to_string(project.out.join("api.json")).unwrap();
+    assert!(
+        api.contains(r#""docstring": "An engine.\n\n    It has"#),
+        "{api}"
+    );
+
+    // The cache that run wrote serves an HTML build.
+    let out = project.build_and_compare(&[]);
+    assert_eq!(unchanged_files(&out), 4);
+    assert_eq!(unchanged_pages(&out), total_pages(&out));
+
+    let out = project.build_and_compare(&["--format", "json"]);
+    assert_eq!(unchanged_files(&out), 0);
+}

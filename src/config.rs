@@ -17,7 +17,7 @@ use clap::CommandFactory;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-use crate::{Args, CoverageFormat, LayoutKind, ThemeKind};
+use crate::{Args, CoverageFormat, LayoutKind, OutputFormat, ThemeKind};
 
 pub const DEFAULT_VERSION: &str = "1.0.0";
 
@@ -55,6 +55,11 @@ pub struct Config {
     /// key: the report does not change the site.
     #[serde(skip)]
     pub coverage: Option<CoverageSettings>,
+    /// What to write to `out`: sorted, without duplicates, never empty.
+    /// Not part of the cache key: the formats do not change the HTML pages,
+    /// and a run with `json` does not read the cache (see `run_generation`).
+    #[serde(skip)]
+    pub formats: Vec<OutputFormat>,
 }
 
 /// Resolves the coverage options of two layers (CLI over `[tool.py-doc]`).
@@ -311,6 +316,24 @@ impl Config {
         } else {
             Some(cli.out.or(tool.out).ok_or_else(|| missing("out"))?)
         };
+        // Like --exclude, a --format on the command line replaces the list.
+        let mut formats = if cli.format.is_empty() {
+            tool.format
+        } else {
+            cli.format
+        };
+        if formats.is_empty() {
+            formats.push(OutputFormat::Html);
+        }
+        formats.sort();
+        formats.dedup();
+        if formats.contains(&OutputFormat::Markdown) {
+            bail!(
+                "format `markdown` is not supported yet; use `html` and/or `json` \
+                 (see https://github.com/kura120/py-doc/issues/20)"
+            );
+        }
+
         let name = match cli.name.or(tool.name).or(project_name) {
             Some(name) => name,
             // No site, so the name is never shown.
@@ -345,6 +368,7 @@ impl Config {
                 .or(tool.include_private)
                 .unwrap_or(false),
             coverage,
+            formats,
         })
     }
 }
@@ -389,6 +413,7 @@ include-private = true
 coverage = true
 fail-under = 50
 coverage-format = "json"
+format = ["json"]
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -420,6 +445,12 @@ coverage-format = "json"
         "75.5",
         "--coverage-format",
         "text",
+        "--format",
+        "json",
+        "--format",
+        "html",
+        "--format",
+        "json",
     ];
 
     #[test]
@@ -443,6 +474,7 @@ coverage-format = "json"
                 clean: false,
                 no_cache: false,
                 include_private: false,
+                formats: vec![OutputFormat::Html, OutputFormat::Json],
                 coverage: Some(CoverageSettings {
                     format: CoverageFormat::Text,
                     fail_under: Some(75.5),
@@ -472,6 +504,7 @@ coverage-format = "json"
                 clean: true,
                 no_cache: true,
                 include_private: true,
+                formats: vec![OutputFormat::Json],
                 coverage: Some(CoverageSettings {
                     format: CoverageFormat::Json,
                     fail_under: Some(50.0),
@@ -508,6 +541,7 @@ coverage-format = "json"
                 clean: false,
                 no_cache: false,
                 include_private: false,
+                formats: vec![OutputFormat::Html],
                 coverage: None,
             }
         );
@@ -576,6 +610,7 @@ coverage-format = "json"
             "coverage",
             "fail-under",
             "coverage-format",
+            "format",
         ] {
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
@@ -684,5 +719,31 @@ coverage-format = "json"
         for ok in ["0", "100", "87.5"] {
             assert!(Config::resolve(cli(&["-s", "a", "--fail-under", ok]), None).is_ok());
         }
+    }
+
+    #[test]
+    fn formats_default_to_html_and_markdown_is_not_supported_yet() {
+        let base = ["-s", "a", "-o", "b", "-n", "c"];
+        let config = Config::resolve(cli(&base), None).unwrap();
+        assert_eq!(config.formats, [OutputFormat::Html]);
+
+        let mut args = base.to_vec();
+        args.extend(["--format", "json"]);
+        assert_eq!(
+            Config::resolve(cli(&args), None).unwrap().formats,
+            [OutputFormat::Json]
+        );
+
+        let file = pyproject("[tool.py-doc]\nformat = [\"html\", \"json\"]\n");
+        assert_eq!(
+            Config::resolve(cli(&base), Some(&file)).unwrap().formats,
+            [OutputFormat::Html, OutputFormat::Json]
+        );
+
+        let file = pyproject("[tool.py-doc]\nformat = [\"markdown\"]\n");
+        let err = Config::resolve(cli(&base), Some(&file)).unwrap_err();
+        assert!(err.to_string().contains("not supported yet"), "{err}");
+        let text = "[tool.py-doc]\nformat = [\"pdf\"]\n";
+        assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
     }
 }

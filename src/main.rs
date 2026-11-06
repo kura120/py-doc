@@ -16,6 +16,7 @@ mod coverage;
 mod generator;
 mod highlight;
 mod models;
+mod output;
 mod parser;
 mod resolver;
 mod tui;
@@ -101,6 +102,20 @@ pub enum CoverageFormat {
     Text,
     /// Machine-readable; the schema is in the README
     Json,
+}
+
+/// What a run writes to `--out`. Each format is one arm of the match in
+/// `run_generation`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputFormat {
+    /// The HTML site
+    Html,
+    /// `api.json`: the parsed API, with raw and rendered docstrings
+    Json,
+    /// Not supported yet (planned, #20)
+    #[value(hide = true)]
+    Markdown,
 }
 
 /// Every option, as given on the command line or in `[tool.py-doc]`.
@@ -190,6 +205,12 @@ pub struct Args {
     /// out of `__all__`
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub include_private: Option<bool>,
+
+    /// What to write to --out: `html` (the site) and/or `json` (api.json).
+    /// Repeatable [default: html]
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    #[serde(default)]
+    pub format: Vec<OutputFormat>,
 
     /// Print a documentation coverage report. On the command line without
     /// --out, only the report is made and no site is written
@@ -333,7 +354,10 @@ fn run_generation(args: &Config) -> Result<()> {
     // The generator comes first: the cache key includes its theme files.
     // A coverage report needs every module parsed, so it never reads the
     // cache (a run that also builds the site still writes one), and a
-    // check-only run has no output folder and no cache at all.
+    // check-only run has no output folder and no cache at all. Nor does
+    // `--format json` read it: api.json carries raw docstrings, which a
+    // cached (already rendered) module no longer has, so that run is a full
+    // build. With `html` too, it still writes the cache.
     let generator = match &args.out {
         Some(out) => Some(
             SiteGenerator::new(
@@ -353,7 +377,11 @@ fn run_generation(args: &Config) -> Result<()> {
         .as_ref()
         .map(|g| cache::cache_key(&args.cache_settings(), g.theme_fingerprint()));
     let old_cache = match (&args.out, &cache_key) {
-        (Some(out), Some(key)) if !args.no_cache && args.coverage.is_none() => {
+        (Some(out), Some(key))
+            if !args.no_cache
+                && args.coverage.is_none()
+                && !args.formats.contains(&OutputFormat::Json) =>
+        {
             Cache::load(Path::new(out), key)
         }
         _ => None,
@@ -454,7 +482,7 @@ fn run_generation(args: &Config) -> Result<()> {
             status!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
             generator.announce_templates();
 
-            generator.generate(
+            let prepared = generator.render(
                 &args.name,
                 sources,
                 &root,
@@ -463,12 +491,41 @@ fn run_generation(args: &Config) -> Result<()> {
                     key,
                 },
                 args.include_private,
-                args.clean,
             )?;
 
+            let out_shown = out.trim_end_matches(['/', '\\']);
+            let mut written = Vec::new();
+            for format in &args.formats {
+                match format {
+                    OutputFormat::Html => {
+                        let pages = generator.write_html(&prepared)?;
+                        generator.save_cache(&prepared, &pages);
+                        written.push(format!("{out_shown}/index.html"));
+                    }
+                    OutputFormat::Json => {
+                        if !args.formats.contains(&OutputFormat::Html) {
+                            status!(
+                                "\x1b[36;1m[3/3]\x1b[0m Writing {}...",
+                                output::json::FILE_NAME
+                            );
+                        }
+                        let api = output::json::to_string(
+                            &prepared.package,
+                            &args.doc_version,
+                            args.include_private,
+                        );
+                        generator.write_file(output::json::FILE_NAME, &api)?;
+                        written.push(format!("{out_shown}/{}", output::json::FILE_NAME));
+                    }
+                    // Rejected by Config::resolve until #20 implements it.
+                    OutputFormat::Markdown => bail!("format `markdown` is not supported yet"),
+                }
+            }
+            generator.finish(args.clean)?;
+
             status!(
-                "\n\x1b[32;1m✔ Documentation generated at {}/index.html\x1b[0m",
-                out.trim_end_matches(['/', '\\'])
+                "\n\x1b[32;1m✔ Documentation generated at {}\x1b[0m",
+                written.join(" and ")
             );
             problems += generator.warning_count();
         }

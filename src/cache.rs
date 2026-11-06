@@ -277,6 +277,7 @@ mod tests {
             is_async: true,
             line: 3,
             docstring: Some("<p>Doc.</p>".into()),
+            raw_docstring: None,
             summary: Some("Doc.".into()),
             is_private: false,
         };
@@ -289,6 +290,7 @@ mod tests {
             badges: vec!["field".into()],
             line: 1,
             docstring: Some("<p>Limit.</p>".into()),
+            raw_docstring: None,
             summary: None,
             is_private: false,
         };
@@ -297,12 +299,14 @@ mod tests {
             source_path: "a/m.py".into(),
             qualname: "a.m".into(),
             docstring: Some("<p>Module.</p>".into()),
+            raw_docstring: None,
             summary: Some("Module.".into()),
             classes: vec![PythonClass {
                 name: "C".into(),
                 bases: vec!["Base".into()],
                 line: 5,
                 docstring: None,
+                raw_docstring: None,
                 summary: None,
                 functions: vec![function.clone()],
                 variables: vec![variable.clone()],
