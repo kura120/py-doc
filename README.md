@@ -4,7 +4,7 @@ A lightweight and fast documentation tool for Python codebases, powered by Rust.
 
 py-doc reads your `.py` files, never imports or runs them, and writes a static site: one page per module, a searchable index, and three switchable layouts. The theme is built into the binary, so generation works offline.
 
-<p align="center"><img src="benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 20 ms, pydoc 305 ms, pdoc3 868 ms, pdoc 1.50 s, Sphinx 4.27 s. rich: py-doc 44 ms, pydoc 571 ms, pdoc3 1.95 s, pdoc 3.88 s, Sphinx 10.8 s. SQLAlchemy: py-doc 344 ms, pdoc3 15.5 s, pydoc 15.9 s, pdoc 39.7 s, Sphinx 62.6 s." width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/kura120/py-doc/master/benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 20 ms, pydoc 305 ms, pdoc3 868 ms, pdoc 1.50 s, Sphinx 4.27 s. rich: py-doc 44 ms, pydoc 571 ms, pdoc3 1.95 s, pdoc 3.88 s, Sphinx 10.8 s. SQLAlchemy: py-doc 344 ms, pdoc3 15.5 s, pydoc 15.9 s, pdoc 39.7 s, Sphinx 62.6 s." width="820"></p>
 
 py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 45x faster than `pydoc` and `pdoc3`, 115x faster than `pdoc`, and 180x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
 
@@ -26,7 +26,19 @@ py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 4
 
 Choose the installation method that fits your environment.
 
-### Option A: One-Line Script Installer (Easiest)
+### Option A: pip, pipx or uv (Recommended)
+
+From the first release that includes wheels, py-doc is on PyPI as `swiftdoc` (the name `py-doc` was taken). The wheels hold the compiled binary, so no Rust toolchain is needed. The command it installs is still `py-doc`.
+
+```bash
+pipx install swiftdoc      # or
+uv tool install swiftdoc   # or
+pip install swiftdoc
+```
+
+To pin it per project, add `swiftdoc` to your dev dependencies, for example `uv add --dev swiftdoc`. Wheels are built for Linux (x86_64 and aarch64, glibc and musl), macOS (Intel and Apple silicon) and Windows (x86_64).
+
+### Option B: One-Line Script Installer
 
 You do not need Cargo or Rust installed for this. The script downloads the pre-compiled binary for your platform, verifies its SHA-256 checksum when the release publishes one, and installs it.
 
@@ -40,7 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/kura120/py-doc/master/scripts/insta
 irm https://raw.githubusercontent.com/kura120/py-doc/master/scripts/install.ps1 | iex
 ```
 
-### Option B: Fast Binary Installer (cargo-binstall)
+### Option C: Fast Binary Installer (cargo-binstall)
 
 If you have Cargo but want to avoid compile times, install the pre-compiled binary with `cargo-binstall`. py-doc is not published on crates.io, so point it at the repository:
 
@@ -51,7 +63,7 @@ cargo install cargo-binstall
 cargo binstall --git https://github.com/kura120/py-doc py-doc
 ```
 
-### Option C: Build from Source
+### Option D: Build from Source
 
 ```bash
 git clone https://github.com/kura120/py-doc.git
@@ -434,7 +446,7 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-Release builds are made with `scripts/build.sh [TARGET]` or `scripts/build.ps1 [-Target TARGET]`. Pushing a `v*` tag that matches the version in `Cargo.toml` builds and publishes binaries with SHA-256 checksums.
+Release builds are made with `scripts/build.sh [TARGET]` or `scripts/build.ps1 [-Target TARGET]`. Pushing a `v*` tag that matches the version in `Cargo.toml` builds and publishes binaries with SHA-256 checksums, and publishes the `swiftdoc` wheels and sdist to PyPI through trusted publishing. Each wheel is installed and run on its own platform first. The Packaging workflow builds and tests the Linux wheel on pull requests that touch packaging files.
 
 UPX compression is available with `--upx` / `-Upx` for local builds. Published binaries are not packed: the download is already compressed, and packed executables are unsupported on macOS and often flagged by antivirus tools on Windows.
 
@@ -444,7 +456,7 @@ UPX compression is available with `--upx` / `-Upx` for local builds. Published b
 
 ### 'py-doc' is not recognized as a command
 
-If you chose Option C (or your script path environment variable is missing), your shell cannot locate the executable. You must add Cargo's binary directory to your PATH.
+If you chose Option D (or your script path environment variable is missing), your shell cannot locate the executable. You must add Cargo's binary directory to your PATH.
 
 * **Windows (PowerShell):**
 ```powershell

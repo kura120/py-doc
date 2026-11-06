@@ -19,8 +19,22 @@ fn out_dir(test: &str) -> PathBuf {
     dir
 }
 
+/// An empty pyproject.toml passed as `--config`, so runs against the
+/// fixtures never pick up the repository's own pyproject.toml (the PyPI
+/// packaging metadata), which py-doc would otherwise find by walking up
+/// from `--src`.
+fn empty_config() -> PathBuf {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
+    if !path.exists() {
+        fs::write(&path, "").unwrap();
+    }
+    path
+}
+
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        .arg("--config")
+        .arg(empty_config())
         .arg("--src")
         .arg(src)
         .arg("--out")
