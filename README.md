@@ -83,6 +83,8 @@ py-doc --src path/to/project --out ./docs --name project-name
 
 Settings can also live in `pyproject.toml`; see [Configuring with pyproject.toml](#configuring-with-pyprojecttoml). In a configured project, `py-doc` alone builds the site.
 
+`py-doc theme eject` copies the bundled theme into a folder for customizing; see [Starting from the bundled theme](#starting-from-the-bundled-theme).
+
 Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-doc]` table, to use the interactive setup wizard instead. It is prefilled from `pyproject.toml` when there is one. In the wizard, Tab moves between fields, the arrow keys browse folders in path fields, and Enter on the last row generates the site.
 
 ### Options
@@ -459,6 +461,20 @@ base.html  index.html  module.html  document.html  sidebar.html  style.css  app.
 ```
 
 The HTML files are [Tera](https://keats.github.io/tera/) templates. The bundled versions in [`assets/`](assets) are the reference for the variables available.
+
+### Starting from the bundled theme
+
+`py-doc theme eject` writes the theme built into your py-doc binary to a folder, as a starting point:
+
+```bash
+py-doc theme eject              # writes ./py-doc-theme
+py-doc theme eject my-theme     # or another folder
+py-doc --src ./myproject --out ./docs --templates py-doc-theme
+```
+
+The files are exact copies, so the folder renders the default site until you change it. It also gets a short `README.md` about blocks, `--css` and `extra_css`. If any of the files already exists, nothing is written and the existing ones are listed; `--force` overwrites them.
+
+Delete the files you don't change. They fall back to the bundled theme, so later py-doc releases can still fix them.
 
 ### Overriding one block
 
