@@ -87,7 +87,7 @@ fn css_in_the_pyproject_is_relative_to_it() {
     fs::create_dir_all(repo.join("docs")).unwrap();
     fs::write(
         repo.join("docs/theme.css"),
-        ":root { --accent-blue: #2563eb !important; }\n",
+        ":root { --accent-blue: #2563eb; }\n",
     )
     .unwrap();
     let output = py_doc(&repo.join("sub"), &["--config", "../pyproject.toml"]);

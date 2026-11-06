@@ -227,8 +227,8 @@ To change colors or fonts, keep the bundled theme and add a stylesheet with `--c
 ```css
 /* brand.css */
 :root {
-    --accent-blue: #2563eb !important;
-    --font-body: "IBM Plex Sans", sans-serif !important;
+    --accent-blue: #2563eb;
+    --font-body: "IBM Plex Sans", sans-serif;
 }
 ```
 
@@ -240,7 +240,7 @@ In `pyproject.toml`: `css = ["docs/brand.css"]`.
 
 Each file is copied to `custom/` in the output and linked after `style.css` on every page, in the order given, so it can also add or override rules. A missing file is an error. `--clean` removes copies that a later run no longer writes.
 
-The theme sets its properties with selectors such as `:root[data-theme="dark"]`, which beat a plain `:root` rule. Mark each value `!important`, as above, to apply it to every layout and theme. To set a value for one theme only, use `!important` with that theme's selector, for example `:root[data-theme="light"]`.
+A plain `:root` rule like the one above applies to every layout and color theme; `!important` is not needed. To set a value for one theme or layout only, use its attribute: `:root[data-theme="light"]`, `:root[data-layout="modern"]`, or both.
 
 The bundled theme reads these properties. The colors are set per layout and per color theme; the rest are set per layout.
 

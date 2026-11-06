@@ -485,7 +485,7 @@ fn a_custom_base_template_reaches_every_page() {
 }
 
 /// A 5-line stylesheet that only changes the accent color.
-const ACCENT_CSS: &str = "/* brand.css: blue links, red keywords */\n:root {\n    --accent-blue: #2563eb !important;\n    --accent-red: #dc2626 !important;\n}\n";
+const ACCENT_CSS: &str = "/* brand.css: blue links, red keywords */\n:root {\n    --accent-blue: #2563eb;\n    --accent-red: #dc2626;\n}\n";
 
 /// Writes `theme.css` and `more/theme.css` (same name, other folder) and
 /// returns their paths.
@@ -542,6 +542,44 @@ fn css_files_are_copied_and_linked_after_the_theme_on_every_page() {
     assert!(output.status.success());
     assert!(!out.join("custom").exists());
     assert!(!read(&out, "index.html").contains("custom/"));
+}
+
+/// A plain `:root` rule in a `--css` file must beat the theme's own token
+/// rules, so every rule in style.css that sets a custom property has to
+/// carry zero specificity, i.e. be wrapped in `:where()`.
+#[test]
+fn theme_tokens_have_zero_specificity() {
+    let css =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/style.css")).unwrap();
+    // Drop comments.
+    let mut text = String::new();
+    let mut rest = css.as_str();
+    while let Some(start) = rest.find("/*") {
+        text.push_str(&rest[..start]);
+        let end = rest[start..].find("*/").expect("closed comment") + start + 2;
+        rest = &rest[end..];
+    }
+    text.push_str(rest);
+
+    let mut token_rules = 0;
+    for chunk in text.split('}') {
+        let Some(open) = chunk.rfind('{') else {
+            continue;
+        };
+        let selector = chunk[..open].rsplit('{').next().unwrap().trim();
+        let body = &chunk[open + 1..];
+        let defines_token = body
+            .split(';')
+            .any(|decl| decl.trim_start().starts_with("--"));
+        if defines_token {
+            token_rules += 1;
+            assert!(
+                selector.starts_with(":where(") && selector.ends_with(')'),
+                "`{selector}` sets custom properties but is not wrapped in :where()"
+            );
+        }
+    }
+    assert!(token_rules >= 11, "found only {token_rules} token rules");
 }
 
 #[test]
