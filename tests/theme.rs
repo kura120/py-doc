@@ -115,7 +115,18 @@ fn the_ejected_theme_renders_the_default_site() {
 
     let default_out = cwd.join("default");
     let ejected_out = cwd.join("ejected");
-    let base = ["--src", sample, "--name", "demo"];
+    // An empty --config keeps the repository's own pyproject.toml (the PyPI
+    // packaging metadata) out of these runs.
+    let empty_config = cwd.join("empty-pyproject.toml");
+    fs::write(&empty_config, "").unwrap();
+    let base = [
+        "--config",
+        empty_config.to_str().unwrap(),
+        "--src",
+        sample,
+        "--name",
+        "demo",
+    ];
     let default_run = py_doc(
         &cwd,
         &[&base[..], &["--out", default_out.to_str().unwrap()]].concat(),
