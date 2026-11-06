@@ -324,7 +324,7 @@ impl App {
 
         Config {
             src: self.src.row.input.value().trim().to_string(),
-            out: self.out.row.input.value().trim().to_string(),
+            out: Some(self.out.row.input.value().trim().to_string()),
             name: self.name.input.value().trim().to_string(),
             doc_version: version,
             templates,
@@ -336,6 +336,9 @@ impl App {
             strict: self.prefill.strict.unwrap_or(false),
             clean: self.prefill.clean.unwrap_or(false),
             include_private: self.prefill.include_private.unwrap_or(false),
+            // The wizard only runs without a [tool.py-doc] table, so no
+            // coverage settings can reach it.
+            coverage: None,
         }
     }
 }
@@ -902,7 +905,7 @@ mod tests {
             app.to_config(),
             Config {
                 src: "proj/src".into(),
-                out: "proj/site".into(),
+                out: Some("proj/site".into()),
                 name: "configured".into(),
                 doc_version: "2.0.0".into(),
                 templates: None,
@@ -914,6 +917,7 @@ mod tests {
                 strict: true,
                 clean: false,
                 include_private: false,
+                coverage: None,
             }
         );
     }

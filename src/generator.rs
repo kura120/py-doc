@@ -112,6 +112,16 @@ fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
     (z_index, cleaned_lines.join("\n"))
 }
 
+fn starts_with_pd_write(cleaned_doc: &str) -> bool {
+    cleaned_doc.trim_start().starts_with("#pd-write")
+}
+
+/// True when a raw module docstring marks a doc-only page (`#pd-write`,
+/// possibly after a `#pd-z-index` line). Shared with the coverage report.
+pub fn is_document_docstring(raw_doc: &str) -> bool {
+    starts_with_pd_write(&extract_z_index_and_clean(raw_doc).1)
+}
+
 /// First meaningful line of a raw docstring as plain text, for cards and search.
 fn summarize(docstring: &str) -> Option<String> {
     docstring
@@ -310,7 +320,7 @@ impl SiteGenerator {
 
         if let Some(dir) = &template_dir {
             let names: Vec<&str> = custom.iter().map(|(name, _)| name.as_str()).collect();
-            println!(
+            status!(
                 "  Using custom templates from '{}': {}",
                 dir.display(),
                 if names.is_empty() {
@@ -399,7 +409,7 @@ impl SiteGenerator {
 
         let previous = fs::read_to_string(&manifest_path).ok();
         if clean && previous.is_none() {
-            println!(
+            status!(
                 "  --clean: this folder has no {} from an earlier run, so nothing was removed.",
                 MANIFEST_NAME
             );
@@ -724,7 +734,7 @@ impl SiteGenerator {
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
             module.z_index = z_val;
             // Must be decided on the raw docstring: render_markdown strips the marker.
-            module.is_document = cleaned_doc.trim_start().starts_with("#pd-write")
+            module.is_document = starts_with_pd_write(&cleaned_doc)
                 && module.classes.is_empty()
                 && module.functions.is_empty();
             module.summary = summarize(&cleaned_doc);
@@ -968,7 +978,7 @@ impl SiteGenerator {
                 Ok(())
             })?;
 
-        println!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
+        status!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
         fs::write(
             Path::new(&self.output_dir).join("search-index.js"),
@@ -999,14 +1009,14 @@ impl SiteGenerator {
 
         let removed = self.update_manifest(clean)?;
         if removed > 0 {
-            println!(
+            status!(
                 "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
                 removed,
                 if removed == 1 { "" } else { "s" }
             );
         }
 
-        println!(
+        status!(
             "  \x1b[32m✔\x1b[0m Generated {} pages in {:.2?}",
             package.modules.len() + 1,
             compile_start.elapsed()

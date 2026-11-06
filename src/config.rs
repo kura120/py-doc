@@ -16,15 +16,27 @@ use anyhow::{Context, Result, bail};
 use clap::CommandFactory;
 use std::path::{Path, PathBuf};
 
-use crate::{Args, LayoutKind, ThemeKind};
+use crate::{Args, CoverageFormat, LayoutKind, ThemeKind};
 
 pub const DEFAULT_VERSION: &str = "1.0.0";
+
+/// How to report documentation coverage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CoverageSettings {
+    pub format: CoverageFormat,
+    /// Fail when the total is below this percentage.
+    pub fail_under: Option<f64>,
+}
 
 /// The fully resolved settings the rest of the program runs on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     pub src: String,
-    pub out: String,
+    /// Where to write the site. None in check-only coverage runs: `--coverage`
+    /// or `--fail-under` on the command line without `--out` there (an `out`
+    /// in `[tool.py-doc]` does not count), so CI can check coverage without
+    /// building the site.
+    pub out: Option<String>,
     pub name: String,
     pub doc_version: String,
     pub templates: Option<String>,
@@ -37,6 +49,31 @@ pub struct Config {
     pub strict: bool,
     pub clean: bool,
     pub include_private: bool,
+    /// None when no coverage report was asked for.
+    pub coverage: Option<CoverageSettings>,
+}
+
+/// Resolves the coverage options of two layers (CLI over `[tool.py-doc]`).
+/// `fail-under` turns the report on within its own layer, so `--fail-under`
+/// works alone, while an explicit `--coverage=false` still turns it off.
+pub fn resolve_coverage(cli: &Args, tool: &Args) -> Result<Option<CoverageSettings>> {
+    let wants = |layer: &Args| layer.coverage.or(layer.fail_under.map(|_| true));
+    if !wants(cli).or(wants(tool)).unwrap_or(false) {
+        return Ok(None);
+    }
+    let fail_under = cli.fail_under.or(tool.fail_under);
+    if let Some(value) = fail_under
+        && !(0.0..=100.0).contains(&value)
+    {
+        bail!("fail-under must be a percentage from 0 to 100, got {value}");
+    }
+    Ok(Some(CoverageSettings {
+        format: cli
+            .coverage_format
+            .or(tool.coverage_format)
+            .unwrap_or(CoverageFormat::Text),
+        fail_under,
+    }))
 }
 
 /// What was read from one pyproject.toml.
@@ -208,6 +245,12 @@ impl Config {
 
         let strict = cli.strict.or(tool.strict).unwrap_or(false);
 
+        let coverage = resolve_coverage(&cli, &tool)?;
+        // Check-only: coverage asked for on the command line, with no --out
+        // there. A config-file `out` is for normal builds, so it is ignored.
+        let cli_wants_coverage = cli.coverage.or(cli.fail_under.map(|_| true)) == Some(true);
+        let check_only = cli_wants_coverage && cli.out.is_none();
+
         if let Some(file) = file
             && !file.unknown_keys.is_empty()
         {
@@ -244,14 +287,23 @@ impl Config {
             }
         };
 
+        let src = cli.src.or(tool.src).ok_or_else(|| missing("src"))?;
+        let out = if check_only {
+            None
+        } else {
+            Some(cli.out.or(tool.out).ok_or_else(|| missing("out"))?)
+        };
+        let name = match cli.name.or(tool.name).or(project_name) {
+            Some(name) => name,
+            // No site, so the name is never shown.
+            None if check_only => String::new(),
+            None => return Err(missing("name")),
+        };
+
         Ok(Config {
-            src: cli.src.or(tool.src).ok_or_else(|| missing("src"))?,
-            out: cli.out.or(tool.out).ok_or_else(|| missing("out"))?,
-            name: cli
-                .name
-                .or(tool.name)
-                .or(project_name)
-                .ok_or_else(|| missing("name"))?,
+            src,
+            out,
+            name,
             doc_version,
             templates: cli.templates.or(tool.templates),
             css: if cli.css.is_empty() {
@@ -273,6 +325,7 @@ impl Config {
                 .include_private
                 .or(tool.include_private)
                 .unwrap_or(false),
+            coverage,
         })
     }
 }
@@ -313,6 +366,9 @@ source-url = "https://tool"
 strict = true
 clean = true
 include-private = true
+coverage = true
+fail-under = 50
+coverage-format = "json"
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -339,6 +395,10 @@ include-private = true
         "--strict=false",
         "--clean=false",
         "--include-private=false",
+        "--fail-under",
+        "75.5",
+        "--coverage-format",
+        "text",
     ];
 
     #[test]
@@ -349,7 +409,7 @@ include-private = true
             config,
             Config {
                 src: "cli-src".into(),
-                out: "cli-out".into(),
+                out: Some("cli-out".into()),
                 name: "cli-name".into(),
                 doc_version: "4.0.0".into(),
                 templates: Some("cli-templates".into()),
@@ -361,6 +421,10 @@ include-private = true
                 strict: false,
                 clean: false,
                 include_private: false,
+                coverage: Some(CoverageSettings {
+                    format: CoverageFormat::Text,
+                    fail_under: Some(75.5),
+                }),
             }
         );
     }
@@ -373,7 +437,7 @@ include-private = true
             config,
             Config {
                 src: in_proj("tool-src"),
-                out: in_proj("tool-out"),
+                out: Some(in_proj("tool-out")),
                 name: "tool-name".into(),
                 doc_version: "3.0.0".into(),
                 templates: Some(in_proj("tool-templates")),
@@ -385,6 +449,10 @@ include-private = true
                 strict: true,
                 clean: true,
                 include_private: true,
+                coverage: Some(CoverageSettings {
+                    format: CoverageFormat::Json,
+                    fail_under: Some(50.0),
+                }),
             }
         );
     }
@@ -404,7 +472,7 @@ include-private = true
             config,
             Config {
                 src: "a".into(),
-                out: "b".into(),
+                out: Some("b".into()),
                 name: "c".into(),
                 doc_version: "1.0.0".into(),
                 templates: None,
@@ -416,6 +484,7 @@ include-private = true
                 strict: false,
                 clean: false,
                 include_private: false,
+                coverage: None,
             }
         );
     }
@@ -479,6 +548,9 @@ include-private = true
             "strict",
             "clean",
             "include-private",
+            "coverage",
+            "fail-under",
+            "coverage-format",
         ] {
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
@@ -491,5 +563,63 @@ include-private = true
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
         let text = "[tool.py-doc]\nexclude = \"not-a-list\"\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
+        let text = "[tool.py-doc]\ncoverage-format = \"xml\"\n";
+        assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
+    }
+
+    #[test]
+    fn coverage_on_the_command_line_without_out_skips_the_site() {
+        // A config-file `out` is for normal builds: a command-line coverage
+        // check without --out writes no site, and needs no name.
+        let file = pyproject("[tool.py-doc]\nsrc = \"a\"\nout = \"site\"\n");
+        let config = Config::resolve(cli(&["--coverage"]), Some(&file)).unwrap();
+        assert_eq!(config.out, None);
+        assert_eq!(
+            config.coverage,
+            Some(CoverageSettings {
+                format: CoverageFormat::Text,
+                fail_under: None,
+            })
+        );
+
+        let config = Config::resolve(cli(&["--fail-under", "80"]), Some(&file)).unwrap();
+        assert_eq!(config.out, None);
+        assert_eq!(config.coverage.unwrap().fail_under, Some(80.0));
+
+        // --out on the command line builds the site as well.
+        let config = Config::resolve(
+            cli(&["--coverage", "-o", "cli-out", "-n", "x"]),
+            Some(&file),
+        )
+        .unwrap();
+        assert_eq!(config.out.as_deref(), Some("cli-out"));
+        assert!(config.coverage.is_some());
+    }
+
+    #[test]
+    fn coverage_in_the_config_file_adds_to_a_normal_build() {
+        let file = pyproject(
+            "[tool.py-doc]\nsrc = \"a\"\nout = \"site\"\nname = \"n\"\nfail-under = 80\n",
+        );
+        let config = Config::resolve(cli(&[]), Some(&file)).unwrap();
+        assert_eq!(config.out, Some(in_proj("site")));
+        assert_eq!(config.coverage.unwrap().fail_under, Some(80.0));
+
+        // An explicit --coverage=false beats the file's fail-under.
+        let config = Config::resolve(cli(&["--coverage=false"]), Some(&file)).unwrap();
+        assert_eq!(config.coverage, None);
+        assert_eq!(config.out, Some(in_proj("site")));
+    }
+
+    #[test]
+    fn fail_under_must_be_a_percentage() {
+        for bad in ["-1", "100.5", "NaN"] {
+            let flag = format!("--fail-under={bad}");
+            let err = Config::resolve(cli(&["-s", "a", &flag]), None).unwrap_err();
+            assert!(err.to_string().contains("0 to 100"), "{bad}: {err}");
+        }
+        for ok in ["0", "100", "87.5"] {
+            assert!(Config::resolve(cli(&["-s", "a", "--fail-under", ok]), None).is_ok());
+        }
     }
 }
