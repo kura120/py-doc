@@ -20,15 +20,19 @@ inputs:
     required: false
     default: release
   src:
-    description: Project directory, or a single .py file (--src).
+    description: >-
+      Project directory, or a single .py file (--src). Defaults to the
+      repository root, or to `src` in [tool.py-doc] of pyproject.toml.
     required: false
-    default: .
+    default: ""
   out:
     description: Directory the site is written to (--out).
     required: false
     default: site
   name:
-    description: Package name shown in the docs (--name). Defaults to the repository name.
+    description: >-
+      Package name shown in the docs (--name). Defaults to the name in
+      pyproject.toml when it configures py-doc, otherwise the repository name.
     required: false
     default: ""
   args:

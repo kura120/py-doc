@@ -158,9 +158,9 @@ jobs:
 | --- | --- |
 | `version` | Release to install, such as `0.5.1`. Default `latest`. |
 | `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. Releases up to v0.5.1 have no Linux arm64 binary, so use `source` there for those versions. |
-| `src` | `--src`. Default `.`. |
+| `src` | `--src`. Default `.`, or `src` from `[tool.py-doc]` when `pyproject.toml` configures py-doc. |
 | `out` | `--out`. Default `site`. |
-| `name` | `--name`. Defaults to the repository name. |
+| `name` | `--name`. Defaults to the repository name, or the name from `pyproject.toml` when it configures py-doc. |
 | `args` | Any other flags, passed through. Quotes group words. |
 | `upload-pages-artifact` | `true` uploads `out` with `actions/upload-pages-artifact`. Default `false`. |
 
@@ -179,7 +179,7 @@ repos:
         args: [--src, src/myproject, --name, myproject]
 ```
 
-`--src` defaults to `.` and `--name` to the folder name. Any other args are passed to py-doc.
+`--src` defaults to `.` and `--name` to the folder name, unless `pyproject.toml` has a `[tool.py-doc]` table, in which case both come from it. Any other args are passed to py-doc.
 
 ---
 

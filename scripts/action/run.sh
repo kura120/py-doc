@@ -6,12 +6,28 @@
 #                honored, nothing is expanded or executed)
 set -eo pipefail
 
-name="$PY_DOC_NAME"
-if [ -z "$name" ]; then
-    name="${GITHUB_REPOSITORY#*/}"
+# A repository that configures py-doc in pyproject.toml supplies its own
+# src and name; passing defaults here would override them, because flags
+# take precedence over [tool.py-doc].
+configured=0
+if [ -f pyproject.toml ] && grep -q '^\[tool\.py-doc\]' pyproject.toml; then
+    configured=1
 fi
 
-args=(--src "$PY_DOC_SRC" --out "$PY_DOC_OUT" --name "$name")
+src="$PY_DOC_SRC"
+name="$PY_DOC_NAME"
+if [ "$configured" = 0 ]; then
+    src="${src:-.}"
+    name="${name:-${GITHUB_REPOSITORY#*/}}"
+fi
+
+args=(--out "$PY_DOC_OUT")
+if [ -n "$src" ]; then
+    args+=(--src "$src")
+fi
+if [ -n "$name" ]; then
+    args+=(--name "$name")
+fi
 if [ -n "${PY_DOC_ARGS//[[:space:]]/}" ]; then
     # xargs splits on whitespace and honors quotes without running anything.
     while IFS= read -r -d '' arg; do

@@ -21,6 +21,13 @@ for arg in "$@"; do
     esac
 done
 
+# With [tool.py-doc] in pyproject.toml, src and name come from there:
+# defaults passed here would override them.
+if [ -f pyproject.toml ] && grep -q '^\[tool\.py-doc\]' pyproject.toml; then
+    has_src=1
+    has_name=1
+fi
+
 if [ "$has_src" = 0 ]; then
     set -- "$@" --src .
 fi
