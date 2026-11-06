@@ -37,6 +37,8 @@ const TEMPLATE_NAMES: [&str; 5] = [
 /// Tera falls back to it for any name the custom directory does not provide.
 const BUNDLED_PREFIX: &str = "py-doc/";
 const STATIC_NAMES: [&str; 2] = ["style.css", "app.js"];
+/// Written next to the ejected theme to explain how to use it.
+const THEME_README: &str = include_str!("../assets/theme-README.md");
 /// Lists every file a run wrote, so a later `--clean` run can remove the
 /// ones that are no longer produced without touching anything else.
 const MANIFEST_NAME: &str = ".py-doc-manifest";
@@ -1028,6 +1030,42 @@ fn load_asset(template_dir: Option<&Path>, name: &str) -> Result<(String, bool)>
         }
     }
     Ok((bundled_asset(name)?.to_string(), false))
+}
+
+/// `py-doc theme eject`: writes the bundled theme, exactly as compiled into
+/// this binary, plus a README into `dir`, as a starting point for
+/// `--templates`. Unless `force` is set, nothing is written when any of the
+/// files already exists. Returns the paths written.
+pub fn eject_theme(dir: &Path, force: bool) -> Result<Vec<PathBuf>> {
+    let files: Vec<(&str, &str)> = EMBEDDED_ASSETS
+        .iter()
+        .copied()
+        .chain(std::iter::once(("README.md", THEME_README)))
+        .collect();
+
+    if !force {
+        let existing: Vec<String> = files
+            .iter()
+            .map(|(name, _)| dir.join(name))
+            .filter(|path| path.exists())
+            .map(|path| path.display().to_string())
+            .collect();
+        if !existing.is_empty() {
+            bail!(
+                "these files already exist, so nothing was written (pass --force to overwrite them):\n  {}",
+                existing.join("\n  ")
+            );
+        }
+    }
+
+    fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    let mut written = Vec::with_capacity(files.len());
+    for (name, body) in files {
+        let path = dir.join(name);
+        fs::write(&path, body).with_context(|| format!("Failed to write {}", path.display()))?;
+        written.push(path);
+    }
+    Ok(written)
 }
 
 fn bundled_asset(name: &str) -> Result<&'static str> {

@@ -483,6 +483,17 @@ include-private = true
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
         assert!(!keys.iter().any(|k| k == "config"));
+        // Subcommands (`py-doc theme eject`) are not options.
+        for key in ["command", "eject", "dir", "force"] {
+            assert!(!keys.iter().any(|k| k == key), "{key} must not be a key");
+        }
+    }
+
+    #[test]
+    fn subcommand_fields_are_not_config_keys() {
+        let file = pyproject("[tool.py-doc]\ncommand = \"theme\"\neject = true\n");
+        assert_eq!(file.unknown_keys, ["command", "eject"]);
+        assert_eq!(file.tool.unwrap().command, None);
     }
 
     #[test]
