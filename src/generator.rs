@@ -1,4 +1,4 @@
-use anyhow::{Context as AnyhowContext, Result, anyhow};
+use anyhow::{Context as AnyhowContext, Result, anyhow, bail};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
@@ -110,6 +110,16 @@ fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
     }
 
     (z_index, cleaned_lines.join("\n"))
+}
+
+fn starts_with_pd_write(cleaned_doc: &str) -> bool {
+    cleaned_doc.trim_start().starts_with("#pd-write")
+}
+
+/// True when a raw module docstring marks a doc-only page (`#pd-write`,
+/// possibly after a `#pd-z-index` line). Shared with the coverage report.
+pub fn is_document_docstring(raw_doc: &str) -> bool {
+    starts_with_pd_write(&extract_z_index_and_clean(raw_doc).1)
 }
 
 /// First meaningful line of a raw docstring as plain text, for cards and search.
@@ -227,6 +237,8 @@ pub struct SiteGenerator {
     warnings: AtomicUsize,
     /// Site-relative paths of every file written in this run.
     written: Mutex<BTreeSet<String>>,
+    /// `--css` files as (site path, contents), linked after style.css.
+    extra_css: Vec<(String, String)>,
 }
 
 /// Where a module's page is written, relative to the site root.
@@ -308,7 +320,7 @@ impl SiteGenerator {
 
         if let Some(dir) = &template_dir {
             let names: Vec<&str> = custom.iter().map(|(name, _)| name.as_str()).collect();
-            println!(
+            status!(
                 "  Using custom templates from '{}': {}",
                 dir.display(),
                 if names.is_empty() {
@@ -337,7 +349,38 @@ impl SiteGenerator {
             source_url: source_url.map(|url| url.trim_end_matches('/').to_string()),
             warnings: AtomicUsize::new(0),
             written: Mutex::new(BTreeSet::new()),
+            extra_css: Vec::new(),
         })
+    }
+
+    /// Adds `--css` stylesheets. Each is copied to `custom/<n>-<name>`: the
+    /// index keeps the order they were given in and keeps two files with
+    /// the same name apart. A file that cannot be read is an error.
+    pub fn with_extra_css(mut self, files: &[String]) -> Result<Self> {
+        for (index, file) in files.iter().enumerate() {
+            let path = Path::new(file);
+            if !path.is_file() {
+                bail!("the CSS file '{}' given with --css does not exist", file);
+            }
+            let contents = fs::read_to_string(path)
+                .with_context(|| format!("Failed to read CSS file '{}'", file))?;
+            let name: String = path
+                .file_name()
+                .map(|name| name.to_string_lossy())
+                .unwrap_or_default()
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                        c
+                    } else {
+                        '-'
+                    }
+                })
+                .collect();
+            self.extra_css
+                .push((format!("custom/{}-{}", index, name), contents));
+        }
+        Ok(self)
     }
 
     /// Number of non-fatal problems found (missing images, unresolved doc-links).
@@ -366,7 +409,7 @@ impl SiteGenerator {
 
         let previous = fs::read_to_string(&manifest_path).ok();
         if clean && previous.is_none() {
-            println!(
+            status!(
                 "  --clean: this folder has no {} from an earlier run, so nothing was removed.",
                 MANIFEST_NAME
             );
@@ -691,7 +734,7 @@ impl SiteGenerator {
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
             module.z_index = z_val;
             // Must be decided on the raw docstring: render_markdown strips the marker.
-            module.is_document = cleaned_doc.trim_start().starts_with("#pd-write")
+            module.is_document = starts_with_pd_write(&cleaned_doc)
                 && module.classes.is_empty()
                 && module.functions.is_empty();
             module.summary = summarize(&cleaned_doc);
@@ -833,6 +876,12 @@ impl SiteGenerator {
         context.insert("version", &self.version);
         context.insert("root_path", root_path);
         context.insert("layout", &self.layout);
+        let extra_css: Vec<&str> = self
+            .extra_css
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect();
+        context.insert("extra_css", &extra_css);
         if let Some(theme) = &self.theme {
             context.insert("theme", theme);
         }
@@ -943,7 +992,7 @@ impl SiteGenerator {
                 Ok(())
             })?;
 
-        println!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
+        status!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
         fs::write(
             Path::new(&self.output_dir).join("search-index.js"),
@@ -956,6 +1005,15 @@ impl SiteGenerator {
         self.record("search-index.js");
         self.record("nav-data.js");
 
+        if !self.extra_css.is_empty() {
+            fs::create_dir_all(Path::new(&self.output_dir).join("custom"))?;
+        }
+        for (site_path, contents) in &self.extra_css {
+            fs::write(Path::new(&self.output_dir).join(site_path), contents)
+                .with_context(|| format!("Failed to write {}", site_path))?;
+            self.record(site_path);
+        }
+
         for name in STATIC_NAMES {
             let (body, _) = load_asset(self.template_dir.as_deref(), name)?;
             fs::write(Path::new(&self.output_dir).join(name), body)
@@ -965,14 +1023,14 @@ impl SiteGenerator {
 
         let removed = self.update_manifest(clean)?;
         if removed > 0 {
-            println!(
+            status!(
                 "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
                 removed,
                 if removed == 1 { "" } else { "s" }
             );
         }
 
-        println!(
+        status!(
             "  \x1b[32m✔\x1b[0m Generated {} pages in {:.2?}",
             package.modules.len() + 1,
             compile_start.elapsed()

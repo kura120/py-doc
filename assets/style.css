@@ -6,9 +6,15 @@
    dark / slate) into data-theme. Without JavaScript there is
    no data-theme, so plain :root carries the dark palette and
    the media query below swaps in the light one.
+
+   Every rule in sections 1 and 2 that sets custom properties is
+   wrapped in :where(), which gives it zero specificity. Among
+   themselves the later rule wins, as it did before, and a plain
+   :root rule in a --css file (linked after this one) overrides
+   any of them. Keep new token rules in :where() and in order:
+   general first, layout x theme combinations last.
 ========================================= */
-:root,
-:root[data-theme="dark"] {
+:where(:root, :root[data-theme="dark"]) {
     --bg-color: #0d0f12;
     --sidebar-bg: #14171c;
     --text-color: #dfe2e6;
@@ -23,7 +29,7 @@
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 }
 
-:root[data-theme="light"] {
+:where(:root[data-theme="light"]) {
     --bg-color: #ffffff;
     --sidebar-bg: #f8f9fa;
     --text-color: #24292e;
@@ -38,7 +44,7 @@
     --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
 }
 
-:root[data-theme="slate"] {
+:where(:root[data-theme="slate"]) {
     --bg-color: #1e293b;
     --sidebar-bg: #0f172a;
     --text-color: #f1f5f9;
@@ -54,7 +60,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-    :root:not([data-theme]) {
+    :where(:root:not([data-theme])) {
         --bg-color: #ffffff;
         --sidebar-bg: #f8f9fa;
         --text-color: #24292e;
@@ -79,8 +85,7 @@
 ========================================= */
 
 /* --- Classic: reuses the theme colors above, boxy dev-tool feel --- */
-:root,
-:root[data-layout="classic"] {
+:where(:root, :root[data-layout="classic"]) {
     --radius-sm: 3px;
     --radius-md: 3px;
     --shadow-card: none;
@@ -94,7 +99,7 @@
 }
 
 /* --- Minimal: docs.rs / pydoc lineage. Flat, dense, one accent. --- */
-:root[data-layout="minimal"] {
+:where(:root[data-layout="minimal"]) {
     --bg-color: #fbfbfa;
     --sidebar-bg: #f3f3f1;
     --text-color: #1c1c1c;
@@ -123,7 +128,7 @@
 }
 
 /* --- Modern: Stripe/Mintlify lineage. Airy, soft-shadowed, indigo. --- */
-:root[data-layout="modern"] {
+:where(:root[data-layout="modern"]) {
     --bg-color: #f8f8fb;
     --sidebar-bg: #ffffff;
     --text-color: #1a1a2e;
@@ -149,8 +154,7 @@
     --nav-icon-color: var(--accent-blue);
 }
 
-:root[data-layout="minimal"][data-theme="dark"],
-:root[data-layout="minimal"][data-theme="slate"] {
+:where(:root[data-layout="minimal"][data-theme="dark"], :root[data-layout="minimal"][data-theme="slate"]) {
     --bg-color: #161615;
     --sidebar-bg: #1c1c1a;
     --text-color: #e6e6e1;
@@ -165,8 +169,7 @@
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 }
 
-:root[data-layout="modern"][data-theme="dark"],
-:root[data-layout="modern"][data-theme="slate"] {
+:where(:root[data-layout="modern"][data-theme="dark"], :root[data-layout="modern"][data-theme="slate"]) {
     --bg-color: #0f1020;
     --sidebar-bg: #15162a;
     --text-color: #e8e8f5;
@@ -183,7 +186,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    :root[data-layout="minimal"]:not([data-theme]) {
+    :where(:root[data-layout="minimal"]:not([data-theme])) {
         --bg-color: #161615;
         --sidebar-bg: #1c1c1a;
         --text-color: #e6e6e1;
@@ -197,7 +200,7 @@
         --scrollbar-thumb: rgba(255, 255, 255, 0.14);
         --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
     }
-    :root[data-layout="modern"]:not([data-theme]) {
+    :where(:root[data-layout="modern"]:not([data-theme])) {
         --bg-color: #0f1020;
         --sidebar-bg: #15162a;
         --text-color: #e8e8f5;

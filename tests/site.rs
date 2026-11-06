@@ -504,6 +504,136 @@ fn a_custom_base_template_reaches_every_page() {
     }
 }
 
+/// A 5-line stylesheet that only changes the accent color.
+const ACCENT_CSS: &str = "/* brand.css: blue links, red keywords */\n:root {\n    --accent-blue: #2563eb;\n    --accent-red: #dc2626;\n}\n";
+
+/// Writes `theme.css` and `more/theme.css` (same name, other folder) and
+/// returns their paths.
+fn write_extra_css(test: &str) -> (PathBuf, PathBuf) {
+    let dir = out_dir(test);
+    fs::create_dir_all(dir.join("more")).unwrap();
+    let first = dir.join("theme.css");
+    let second = dir.join("more").join("theme.css");
+    fs::write(&first, ACCENT_CSS).unwrap();
+    fs::write(&second, ".module-title { letter-spacing: 0.02em; }\n").unwrap();
+    (first, second)
+}
+
+#[test]
+fn css_files_are_copied_and_linked_after_the_theme_on_every_page() {
+    let (first, second) = write_extra_css("extra_css_src");
+    let out = generate_sample(
+        "extra_css",
+        &[
+            "--css",
+            first.to_str().unwrap(),
+            "--css",
+            second.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(read(&out, "custom/0-theme.css"), ACCENT_CSS);
+    assert!(read(&out, "custom/1-theme.css").contains("letter-spacing"));
+
+    // Index, module, nested module and document pages, each from its depth.
+    for (page, root) in [
+        ("index.html", "./"),
+        ("utils/helpers.html", "../"),
+        ("01_core/sub/engine.html", "../../"),
+        ("guide.html", "./"),
+    ] {
+        let html = read(&out, page);
+        let theme = html
+            .find(&format!("href=\"{root}style.css\""))
+            .unwrap_or_else(|| panic!("{page} lacks style.css"));
+        let first = html
+            .find(&format!("href=\"{root}custom/0-theme.css\""))
+            .unwrap_or_else(|| panic!("{page} lacks the first --css file"));
+        let second = html
+            .find(&format!("href=\"{root}custom/1-theme.css\""))
+            .unwrap_or_else(|| panic!("{page} lacks the second --css file"));
+        assert!(theme < first && first < second, "{page}: wrong order");
+    }
+
+    // The copies are in the manifest, so --clean removes them once dropped.
+    let manifest = read(&out, ".py-doc-manifest");
+    assert!(manifest.lines().any(|l| l == "custom/0-theme.css"));
+    assert!(manifest.lines().any(|l| l == "custom/1-theme.css"));
+    let output = run(&fixture("sample"), &out, &["--clean"]);
+    assert!(output.status.success());
+    assert!(!out.join("custom").exists());
+    assert!(!read(&out, "index.html").contains("custom/"));
+}
+
+/// A plain `:root` rule in a `--css` file must beat the theme's own token
+/// rules, so every rule in style.css that sets a custom property has to
+/// carry zero specificity, i.e. be wrapped in `:where()`.
+#[test]
+fn theme_tokens_have_zero_specificity() {
+    let css =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/style.css")).unwrap();
+    // Drop comments.
+    let mut text = String::new();
+    let mut rest = css.as_str();
+    while let Some(start) = rest.find("/*") {
+        text.push_str(&rest[..start]);
+        let end = rest[start..].find("*/").expect("closed comment") + start + 2;
+        rest = &rest[end..];
+    }
+    text.push_str(rest);
+
+    let mut token_rules = 0;
+    for chunk in text.split('}') {
+        let Some(open) = chunk.rfind('{') else {
+            continue;
+        };
+        let selector = chunk[..open].rsplit('{').next().unwrap().trim();
+        let body = &chunk[open + 1..];
+        let defines_token = body
+            .split(';')
+            .any(|decl| decl.trim_start().starts_with("--"));
+        if defines_token {
+            token_rules += 1;
+            assert!(
+                selector.starts_with(":where(") && selector.ends_with(')'),
+                "`{selector}` sets custom properties but is not wrapped in :where()"
+            );
+        }
+    }
+    assert!(token_rules >= 11, "found only {token_rules} token rules");
+}
+
+#[test]
+fn a_missing_css_file_is_an_error() {
+    let out = out_dir("missing_css");
+    let output = run(&fixture("sample"), &out, &["--css", "no/such/theme.css"]);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("no/such/theme.css"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!out.join("index.html").exists());
+}
+
+#[test]
+fn css_files_work_together_with_custom_templates() {
+    let (first, _) = write_extra_css("extra_css_templates_src");
+    let templates = fixture("templates").join("blocks");
+    let out = generate_sample(
+        "extra_css_templates",
+        &[
+            "--templates",
+            templates.to_str().unwrap(),
+            "--css",
+            first.to_str().unwrap(),
+        ],
+    );
+    let page = read(&out, "utils/helpers.html");
+    assert!(page.contains("custom-header"));
+    assert!(page.contains("href=\"../custom/0-theme.css\""));
+    assert!(read(&out, "index.html").contains("href=\"./custom/0-theme.css\""));
+}
+
 #[test]
 fn fixture_runs_ignore_the_repository_pyproject() {
     // The repository root has a pyproject.toml for the PyPI package. These
