@@ -22,11 +22,20 @@
          {% if module %}data-current-path="{{ module.link_path }}"{% endif %}>
     </div>
     <noscript>
+        {# The full list is written once, on the index page. Every other
+           page links to it, so each module stays two clicks away without
+           JavaScript and page size does not grow with the module count. #}
+        {% if module %}
         <ul class="nav-fallback">
+            <li><a class="nav-item-link" href="{{ root_path }}index.html#all-modules">All modules</a></li>
+        </ul>
+        {% else %}
+        <ul class="nav-fallback" id="all-modules">
             {% for mod in package.modules %}
                 <li><a class="nav-item-link" href="{{ root_path }}{{ mod.link_path }}">{{ mod.source_path }}</a></li>
             {% endfor %}
         </ul>
+        {% endif %}
     </noscript>
 
     <div class="theme-selector">

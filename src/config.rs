@@ -34,6 +34,7 @@ pub struct Config {
     pub source_url: Option<String>,
     pub strict: bool,
     pub clean: bool,
+    pub include_private: bool,
 }
 
 /// What was read from one pyproject.toml.
@@ -260,6 +261,10 @@ impl Config {
             source_url: cli.source_url.or(tool.source_url),
             strict,
             clean: cli.clean.or(tool.clean).unwrap_or(false),
+            include_private: cli
+                .include_private
+                .or(tool.include_private)
+                .unwrap_or(false),
         })
     }
 }
@@ -298,6 +303,7 @@ exclude = ["tool-ex"]
 source-url = "https://tool"
 strict = true
 clean = true
+include-private = true
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -321,6 +327,7 @@ clean = true
         "https://cli",
         "--strict=false",
         "--clean=false",
+        "--include-private=false",
     ];
 
     #[test]
@@ -341,6 +348,7 @@ clean = true
                 source_url: Some("https://cli".into()),
                 strict: false,
                 clean: false,
+                include_private: false,
             }
         );
     }
@@ -363,6 +371,7 @@ clean = true
                 source_url: Some("https://tool".into()),
                 strict: true,
                 clean: true,
+                include_private: true,
             }
         );
     }
@@ -392,6 +401,7 @@ clean = true
                 source_url: None,
                 strict: false,
                 clean: false,
+                include_private: false,
             }
         );
     }
@@ -453,6 +463,7 @@ clean = true
             "source-url",
             "strict",
             "clean",
+            "include-private",
         ] {
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
