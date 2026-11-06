@@ -1,4 +1,17 @@
+/// Progress output: stdout normally, stderr while a JSON coverage report
+/// owns stdout. Defined before the modules so they can use it.
+macro_rules! status {
+    ($($arg:tt)*) => {
+        if crate::status_to_stderr() {
+            eprintln!($($arg)*)
+        } else {
+            println!($($arg)*)
+        }
+    };
+}
+
 mod config;
+mod coverage;
 mod generator;
 mod highlight;
 mod models;
@@ -12,11 +25,19 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use walkdir::{DirEntry, WalkDir};
 
 use config::Config;
 use generator::SiteGenerator;
 use models::PythonPackage;
+
+static STATUS_TO_STDERR: AtomicBool = AtomicBool::new(false);
+
+/// Read by `status!`.
+fn status_to_stderr() -> bool {
+    STATUS_TO_STDERR.load(Ordering::Relaxed)
+}
 
 /// Directory names that are never documented: environments, caches and
 /// build output. Hidden directories (".git", ".venv", ...) are skipped too.
@@ -69,6 +90,15 @@ impl ThemeKind {
             ThemeKind::Slate => Some("slate"),
         }
     }
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CoverageFormat {
+    /// A table, worst-covered module first
+    Text,
+    /// Machine-readable; the schema is in the README
+    Json,
 }
 
 /// Every option, as given on the command line or in `[tool.py-doc]`.
@@ -141,6 +171,20 @@ pub struct Args {
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub include_private: Option<bool>,
 
+    /// Print a documentation coverage report. On the command line without
+    /// --out, only the report is made and no site is written
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub coverage: Option<bool>,
+
+    /// Exit with an error when documentation coverage is below PERCENT
+    /// (0-100). Turns on --coverage
+    #[arg(long, value_name = "PERCENT")]
+    pub fail_under: Option<f64>,
+
+    /// Format of the coverage report [default: text]
+    #[arg(long, value_enum)]
+    pub coverage_format: Option<CoverageFormat>,
+
     /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
     /// it is looked for in --src (or the current directory) and its parents,
     /// stopping at the repository root.
@@ -202,6 +246,9 @@ fn collect_python_files(src_path: &Path, user_excludes: &[String]) -> (PathBuf, 
 
 /// Shared generation pipeline used by both the flag-driven CLI path and the
 /// interactive TUI path, so the two never drift out of sync.
+///
+/// With `args.out` None (a check-only coverage run) it stops after the
+/// coverage report and writes nothing.
 fn run_generation(args: &Config) -> Result<()> {
     let src_path = Path::new(&args.src);
 
@@ -209,8 +256,16 @@ fn run_generation(args: &Config) -> Result<()> {
         bail!("the source path '{}' does not exist", args.src);
     }
 
-    println!(
-        "\x1b[36;1m[1/3]\x1b[0m Scanning '{}' for Python modules...",
+    // A JSON report owns stdout, so progress moves to stderr to keep it parseable.
+    let json_report = args
+        .coverage
+        .as_ref()
+        .is_some_and(|c| c.format == CoverageFormat::Json);
+    STATUS_TO_STDERR.store(json_report, Ordering::Relaxed);
+
+    let steps = if args.out.is_some() { 3 } else { 2 };
+    status!(
+        "\x1b[36;1m[1/{steps}]\x1b[0m Scanning '{}' for Python modules...",
         args.src
     );
 
@@ -251,7 +306,7 @@ fn run_generation(args: &Config) -> Result<()> {
     }
     pb.finish_and_clear();
 
-    println!(
+    status!(
         "  \x1b[32m✔\x1b[0m Parsed {} of {} Python files.",
         package.modules.len(),
         py_files.len()
@@ -270,27 +325,57 @@ fn run_generation(args: &Config) -> Result<()> {
         package.hide_private();
     }
 
-    println!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
-    let generator = SiteGenerator::new(
-        &root,
-        &args.out,
-        &args.doc_version,
-        args.templates.as_deref(),
-        args.layout.as_str(),
-        args.theme.as_baked(),
-        args.source_url.as_deref(),
-    )?;
+    // Measured before rendering, which replaces docstrings with HTML.
+    let report = args
+        .coverage
+        .as_ref()
+        .map(|_| coverage::Report::of(&package, args.include_private));
 
-    generator.generate(&mut package, args.clean)?;
+    let mut problems = parse_errors.len();
+    if let Some(out) = &args.out {
+        status!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
+        let generator = SiteGenerator::new(
+            &root,
+            out,
+            &args.doc_version,
+            args.templates.as_deref(),
+            args.layout.as_str(),
+            args.theme.as_baked(),
+            args.source_url.as_deref(),
+        )?;
 
-    println!(
-        "\n\x1b[32;1m✔ Documentation generated at {}/index.html\x1b[0m",
-        args.out.trim_end_matches(['/', '\\'])
-    );
+        generator.generate(&mut package, args.clean)?;
 
-    let problems = parse_errors.len() + generator.warning_count();
+        status!(
+            "\n\x1b[32;1m✔ Documentation generated at {}/index.html\x1b[0m",
+            out.trim_end_matches(['/', '\\'])
+        );
+        problems += generator.warning_count();
+    } else {
+        status!("\x1b[36;1m[2/2]\x1b[0m Measuring documentation coverage (no site is written)...");
+    }
+
+    let mut failures = Vec::new();
+    if let (Some(report), Some(settings)) = (&report, &args.coverage) {
+        match settings.format {
+            CoverageFormat::Json => println!("{}", report.to_json(settings.fail_under)),
+            CoverageFormat::Text => println!("\n{}", report.to_text().trim_end()),
+        }
+        if let Some(threshold) = settings.fail_under
+            && !report.passes(Some(threshold))
+        {
+            // Floored, so a value just under the threshold never prints as equal to it.
+            let actual = (report.total.percent() * 100.0).floor() / 100.0;
+            failures.push(format!(
+                "documentation coverage is {actual:.2}%, below --fail-under {threshold}%"
+            ));
+        }
+    }
     if args.strict && problems > 0 {
-        bail!("{} problem(s) found and --strict is set", problems);
+        failures.push(format!("{problems} problem(s) found and --strict is set"));
+    }
+    if !failures.is_empty() {
+        bail!("{}", failures.join("; "));
     }
     Ok(())
 }
