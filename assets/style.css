@@ -682,6 +682,10 @@ a:hover > .nav-icon,
     text-decoration: none;
     font-size: 0.85rem;
     display: block;
+    /* WCAG 2.5.8 target size. Set explicitly: padding plus line-height
+       alone lands at 23px with some system fonts. */
+    box-sizing: border-box;
+    min-height: 24px;
     padding: 4px 8px;
     border-left: 2px solid transparent;
     border-radius: 3px;
