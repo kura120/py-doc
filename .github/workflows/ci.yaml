@@ -41,3 +41,36 @@ jobs:
         run: cargo build --locked
       - name: Test
         run: cargo test --locked
+
+  a11y:
+    name: Accessibility (axe-core, keyboard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/a11y/package-lock.json
+      - name: Generate the fixture sites
+        # An empty --config keeps the repository's own pyproject.toml out.
+        run: |
+          cargo build --locked
+          ./target/debug/py-doc --config /dev/null --src tests/fixtures/sample --out "$RUNNER_TEMP/sample-site" --name demo
+          ./target/debug/py-doc --config /dev/null --src tests/fixtures/variables --out "$RUNNER_TEMP/variables-site" --name variables
+      - name: Install axe-core and Playwright
+        working-directory: tests/a11y
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: axe-core, WCAG 2.2 AA (3 layouts x light and dark)
+        working-directory: tests/a11y
+        run: node audit.js "$RUNNER_TEMP/sample-site" "$RUNNER_TEMP/variables-site" --quick
+      - name: Keyboard
+        working-directory: tests/a11y
+        run: node keyboard.js "$RUNNER_TEMP/sample-site"
+      - name: Landmarks and headings
+        working-directory: tests/a11y
+        run: node structure.js "$RUNNER_TEMP/sample-site" "$RUNNER_TEMP/variables-site"
