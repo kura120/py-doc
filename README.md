@@ -87,6 +87,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
+| `--include-private` | Also document private names and modules. See [Public API](#public-api). |
 | `--config <FILE>` | The `pyproject.toml` to read. By default it is found automatically (see below). |
 | `-V`, `--version` | Print the py-doc version. |
 | `-h`, `--help` | Print help. |
@@ -141,6 +142,16 @@ Every `.py` file under `--src` is documented, except:
 * anything named with `--exclude`.
 
 Files with syntax errors are reported and skipped; the rest of the site is still generated.
+
+### Public API
+
+By default only the public API is documented, the way pdoc does it:
+
+* If a module defines `__all__`, only the names listed there are shown. A listed `_name` is shown too. `__all__` must be a literal list or tuple of strings; `+=`, `.extend(...)` and `.append(...)` with literals are followed. If it is built any other way, it is ignored.
+* Otherwise, names starting with `_` are hidden. Dunder methods such as `__init__` and `__call__` are always shown.
+* A module whose name starts with `_` is hidden, and so is everything inside a package whose name starts with `_`.
+
+Hidden items get no page and do not appear in the navigation or search. A `#pd-doc-link` to one is reported as a warning instead of being linked. Pass `--include-private` to document everything.
 
 ### Keeping the output folder tidy
 
