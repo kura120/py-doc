@@ -502,6 +502,16 @@ impl SiteGenerator {
                         escape_html(&link),
                         label
                     ),
+                    None if ctx.resolver.is_hidden(target) => {
+                        self.warn(
+                            ctx.origin,
+                            &format!(
+                                "#pd-doc-link target '{}' is private and hidden from the docs (see --include-private)",
+                                target
+                            ),
+                        );
+                        format!("{} <em>(not found)</em>", label)
+                    }
                     None => {
                         self.warn(
                             ctx.origin,

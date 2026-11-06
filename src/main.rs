@@ -142,6 +142,11 @@ pub struct Args {
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub clean: Option<bool>,
 
+    /// Also document private names (`_name`), private modules and names left
+    /// out of `__all__`
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub include_private: Option<bool>,
+
     /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
     /// it is looked for in --src (or the current directory) and its parents,
     /// stopping at the repository root.
@@ -220,6 +225,7 @@ fn run_generation(args: &Config) -> Result<()> {
     let mut package = PythonPackage {
         name: args.name.clone(),
         modules: Vec::new(),
+        hidden: Vec::new(),
     };
 
     let pb = ProgressBar::new(py_files.len() as u64);
@@ -264,6 +270,10 @@ fn run_generation(args: &Config) -> Result<()> {
         for err in &parse_errors {
             eprintln!("    - {}", err);
         }
+    }
+
+    if !args.include_private {
+        package.hide_private();
     }
 
     println!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");

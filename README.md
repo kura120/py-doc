@@ -89,6 +89,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
+| `--include-private` | Also document private names and modules. See [Public API](#public-api). |
 | `--config <FILE>` | The `pyproject.toml` to read. By default it is found automatically (see below). |
 | `-V`, `--version` | Print the py-doc version. |
 | `-h`, `--help` | Print help. |
@@ -144,6 +145,16 @@ Every `.py` file under `--src` is documented, except:
 
 Files with syntax errors are reported and skipped; the rest of the site is still generated.
 
+### Public API
+
+By default only the public API is documented, the way pdoc does it:
+
+* If a module defines `__all__`, only the names listed there are shown. A listed `_name` is shown too. `__all__` must be a literal list or tuple of strings; `+=`, `.extend(...)` and `.append(...)` with literals are followed. If it is built any other way, it is ignored.
+* Otherwise, names starting with `_` are hidden. Dunder methods such as `__init__` and `__call__` are always shown.
+* A module whose name starts with `_` is hidden, and so is everything inside a package whose name starts with `_`.
+
+Hidden items get no page and do not appear in the navigation or search. A `#pd-doc-link` to one is reported as a warning instead of being linked. Pass `--include-private` to document everything.
+
 ### Keeping the output folder tidy
 
 Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything py-doc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
@@ -154,6 +165,75 @@ Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--cle
 py-doc --src . --out docs --name myproject \
   --source-url https://github.com/me/myproject/blob/main
 ```
+
+### GitHub Actions
+
+The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64 or arm64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. From v0.5.1 on, a missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
+
+This workflow builds the docs and publishes them to GitHub Pages. In the repository settings, set Pages to deploy from GitHub Actions.
+
+```yaml
+name: Docs
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kura120/py-doc@master
+        with:
+          src: src/myproject
+          out: site
+          name: myproject
+          args: --strict --source-url https://github.com/${{ github.repository }}/blob/${{ github.sha }}
+          upload-pages-artifact: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+| Input | Meaning |
+| --- | --- |
+| `version` | Release to install, such as `0.5.1`. Default `latest`. |
+| `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. Releases up to v0.5.1 have no Linux arm64 binary, so use `source` there for those versions. |
+| `src` | `--src`. Default `.`, or `src` from `[tool.py-doc]` when `pyproject.toml` configures py-doc. |
+| `out` | `--out`. Default `site`. |
+| `name` | `--name`. Defaults to the repository name, or the name from `pyproject.toml` when it configures py-doc. |
+| `args` | Any other flags, passed through. Quotes group words. |
+| `upload-pages-artifact` | `true` uploads `out` with `actions/upload-pages-artifact`. Default `false`. |
+
+The action's outputs are `version` (the py-doc version installed) and `out`. Once a release includes the action and the hook, pin its tag instead of `master` here and in the pre-commit config below.
+
+### pre-commit
+
+The hook runs `py-doc --strict` into a temporary directory, so a file that fails to parse, or a doc-link, macro or image that cannot be resolved, fails the commit. It does not install py-doc: install it first (see [Installation](#installation)) so `py-doc` is on `PATH`.
+
+```yaml
+repos:
+  - repo: https://github.com/kura120/py-doc
+    rev: master
+    hooks:
+      - id: py-doc
+        args: [--src, src/myproject, --name, myproject]
+```
+
+`--src` defaults to `.` and `--name` to the folder name, unless `pyproject.toml` has a `[tool.py-doc]` table, in which case both come from it. Any other args are passed to py-doc.
 
 ---
 
