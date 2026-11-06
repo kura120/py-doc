@@ -25,6 +25,7 @@ impl Project {
         let _ = fs::remove_dir_all(&root);
         let src = root.join("src");
         fs::create_dir_all(src.join("pkg")).unwrap();
+        fs::write(root.join("empty-pyproject.toml"), "").unwrap();
         let project = Project {
             out: root.join("site"),
             root,
@@ -92,7 +93,11 @@ def helper(x):
     }
 
     fn run(&self, out: &Path, extra: &[&str]) -> Output {
+        // An empty --config: the pyproject.toml above the target folder
+        // must not leak into these builds.
         Command::new(env!("CARGO_BIN_EXE_py-doc"))
+            .arg("--config")
+            .arg(self.root.join("empty-pyproject.toml"))
             .arg("--src")
             .arg(&self.src)
             .arg("--out")
@@ -480,4 +485,60 @@ fn private_names_stay_hidden_across_incremental_builds() {
     let out = project.build_and_compare(&[]);
     assert_eq!(unchanged_pages(&out), 0);
     assert!(!project.out.join("pkg/_internal.html").exists());
+}
+
+#[test]
+fn css_files_and_variable_docstrings() {
+    let mut project = Project::new("css_variables");
+    let css = project.root.join("extra.css");
+    fs::write(&css, ":root { --accent: red; }").unwrap();
+    let css_arg = css.to_string_lossy().into_owned();
+    project.edit(
+        "pkg/engine.py",
+        "\n\nclass Engine:",
+        "\n\nLIMIT = 3\n\"\"\"The limit.\n\nMore text.\n\"\"\"\n\n\nclass Engine:",
+    );
+
+    let first = project.build_and_compare(&["--css", &css_arg]);
+    let pages = total_pages(&first);
+
+    // The stylesheet's content is part of the key, not just its path.
+    fs::write(&css, ":root { --accent: blue; }").unwrap();
+    let out = project.build_and_compare(&["--css", &css_arg]);
+    assert_eq!(unchanged_pages(&out), 0);
+
+    // A variable's docstring body only changes its own page and the index.
+    project.edit("pkg/engine.py", "More text.", "Other text.");
+    let out = project.build_and_compare(&["--css", &css_arg]);
+    assert_eq!(unchanged_pages(&out), pages - 2);
+}
+
+#[test]
+fn coverage_runs_do_not_use_the_cache() {
+    let mut project = Project::new("coverage");
+    project.build_and_compare(&[]);
+    let cache = project.out.join(CACHE);
+    let before = fs::read(&cache).unwrap();
+    let modified = fs::metadata(&cache).unwrap().modified().unwrap();
+
+    // Check-only: no --out, so no cache is read or written.
+    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        .arg("--config")
+        .arg(project.root.join("empty-pyproject.toml"))
+        .arg("--src")
+        .arg(&project.src)
+        .args(["--name", "demo", "--coverage"])
+        .current_dir(&project.root)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(fs::metadata(&cache).unwrap().modified().unwrap(), modified);
+    assert!(!project.root.join(CACHE).exists());
+
+    // With --out, every file is parsed for the report (the cache is not
+    // read), and the site is still the same as a cold build.
+    let out = project.build_and_compare(&["--coverage"]);
+    assert_eq!(unchanged_files(&out), 0);
+    assert!(stdout(&out).contains("coverage") || stdout(&out).contains("Coverage"));
+    assert_eq!(fs::read(&cache).unwrap(), before);
 }

@@ -5,7 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 use std::fs;
 use std::path::Path;
 
-use crate::models::{PythonClass, PythonFunction, PythonModule};
+use crate::models::{PythonClass, PythonFunction, PythonModule, PythonVariable};
 
 /// Splits an ordering prefix off a folder name: "01_getting started" ->
 /// (Some(1), "getting started"). Names without a numeric prefix are returned as-is.
@@ -148,6 +148,224 @@ impl<'a> Source<'a> {
             .unwrap_or("Any");
         text.split_whitespace().collect::<Vec<_>>().join(" ")
     }
+
+    /// Like `slice`, but stops after `limit` characters (so a huge literal
+    /// is never copied in full). The flag says whether it was cut short.
+    fn slice_limited(&self, range: TextRange, limit: usize) -> (String, bool) {
+        let text = self
+            .text
+            .get(range.start().to_usize()..range.end().to_usize())
+            .unwrap_or("");
+        let mut out = String::new();
+        let mut chars = 0;
+        for word in text.split_whitespace() {
+            if !out.is_empty() {
+                out.push(' ');
+                chars += 1;
+            }
+            for c in word.chars() {
+                if chars == limit {
+                    return (out.trim_end().to_string(), true);
+                }
+                out.push(c);
+                chars += 1;
+            }
+        }
+        (out, false)
+    }
+
+    /// The text of a 1-based line, without its line break.
+    fn line(&self, line: usize) -> &'a str {
+        let start = self.line_starts.get(line - 1).copied().unwrap_or(0);
+        let end = self
+            .line_starts
+            .get(line)
+            .copied()
+            .unwrap_or(self.text.len());
+        self.text
+            .get(start..end)
+            .unwrap_or("")
+            .trim_end_matches(['\n', '\r'])
+    }
+}
+
+/// Values longer than this (after collapsing whitespace) are cut short.
+const VALUE_LIMIT: usize = 80;
+
+/// Special attributes that are never worth documenting, even with
+/// `--include-private`.
+const UNDOCUMENTED_NAMES: [&str; 6] = [
+    "__all__",
+    "__slots__",
+    "__match_args__",
+    "__annotations__",
+    "__doc__",
+    "__module__",
+];
+
+/// What kind of class the attributes belong to, for their badges.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ClassKind {
+    Module,
+    Plain,
+    Enum,
+    Dataclass,
+}
+
+fn class_kind(class_def: &ast::StmtClassDef, source: &Source) -> ClassKind {
+    let last_segment = |text: &str| {
+        let callee = text.split('(').next().unwrap_or(text).trim();
+        callee.rsplit('.').next().unwrap_or(callee).to_string()
+    };
+    let is_enum = class_def.arguments.as_ref().is_some_and(|arguments| {
+        arguments.args.iter().any(|base| {
+            matches!(
+                last_segment(&source.slice(base.range())).as_str(),
+                "Enum" | "IntEnum" | "StrEnum" | "Flag" | "IntFlag" | "ReprEnum"
+            )
+        })
+    });
+    if is_enum {
+        return ClassKind::Enum;
+    }
+    let is_dataclass = class_def.decorator_list.iter().any(|d| {
+        let text = source.slice(d.expression.range());
+        let callee = text.split('(').next().unwrap_or(&text).trim();
+        matches!(
+            callee,
+            "attr.s"
+                | "attr.attrs"
+                | "attr.define"
+                | "attr.frozen"
+                | "attrs.define"
+                | "attrs.frozen"
+        ) || last_segment(callee) == "dataclass"
+    });
+    if is_dataclass {
+        ClassKind::Dataclass
+    } else {
+        ClassKind::Plain
+    }
+}
+
+/// The docstring of an attribute: a string literal statement right after it
+/// (PEP 257), or else `#:` comments on the lines above it or after it on
+/// its last line (the Sphinx convention).
+fn attribute_docstring(stmt: &Stmt, next: Option<&Stmt>, source: &Source) -> Option<String> {
+    if let Some(Stmt::Expr(expr)) = next
+        && let Expr::StringLiteral(string_lit) = &*expr.value
+    {
+        return Some(string_lit.value.to_string());
+    }
+
+    let first_line = source.line_of(stmt.range().start().to_usize());
+    let mut comments = Vec::new();
+    let mut line = first_line;
+    while line > 1 {
+        line -= 1;
+        match source.line(line).trim_start().strip_prefix("#:") {
+            Some(text) => comments.push(text.strip_prefix(' ').unwrap_or(text)),
+            None => break,
+        }
+    }
+    comments.reverse();
+    if comments.is_empty() {
+        let end = stmt.range().end().to_usize();
+        let rest = source.text.get(end..).unwrap_or("");
+        let rest = rest.split('\n').next().unwrap_or("").trim();
+        if let Some(text) = rest.strip_prefix("#:") {
+            comments.push(text.trim());
+        }
+    }
+    (!comments.is_empty()).then(|| comments.join("\n"))
+}
+
+/// Variables assigned directly in `body` (a module or class body), in
+/// source order. A name assigned twice is documented once, where it first
+/// appears. `is_private` decides visibility from the name.
+fn extract_variables(
+    body: &[Stmt],
+    source: &Source,
+    kind: ClassKind,
+    is_private: impl Fn(&str) -> bool,
+) -> Vec<PythonVariable> {
+    let mut variables: Vec<PythonVariable> = Vec::new();
+    for (index, stmt) in body.iter().enumerate() {
+        // (target, annotation, value, is_type_alias)
+        let mut found: Vec<(&Expr, Option<&Expr>, Option<&Expr>, bool)> = Vec::new();
+        match stmt {
+            Stmt::Assign(assign) => {
+                for target in &assign.targets {
+                    match target {
+                        Expr::Name(_) => found.push((target, None, Some(&assign.value), false)),
+                        Expr::Tuple(ast::ExprTuple { elts, .. })
+                        | Expr::List(ast::ExprList { elts, .. }) => {
+                            found.extend(elts.iter().map(|elt| (elt, None, None, false)))
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Stmt::AnnAssign(assign) => {
+                found.push((
+                    &assign.target,
+                    Some(&assign.annotation),
+                    assign.value.as_deref(),
+                    false,
+                ));
+            }
+            Stmt::TypeAlias(alias) => found.push((&alias.name, None, Some(&alias.value), true)),
+            _ => continue,
+        }
+
+        let mut docstring: Option<Option<String>> = None;
+        for (target, annotation, value, is_type_alias) in found {
+            let Expr::Name(name) = target else { continue };
+            let name = name.id.as_str();
+            if UNDOCUMENTED_NAMES.contains(&name) || variables.iter().any(|v| v.name == name) {
+                continue;
+            }
+            let annotation = annotation.map(|a| annotation_to_string(a, source));
+            let (value, value_truncated) = match value {
+                Some(value) => {
+                    let (text, truncated) = source.slice_limited(value.range(), VALUE_LIMIT);
+                    (Some(text), truncated)
+                }
+                None => (None, false),
+            };
+            let private = is_private(name);
+            let mut badges = Vec::new();
+            match kind {
+                ClassKind::Enum if value.is_some() && !private && !is_type_alias => {
+                    badges.push("enum".to_string())
+                }
+                ClassKind::Dataclass
+                    if annotation.as_deref().is_some_and(|a| {
+                        !a.starts_with("ClassVar") && !a.contains(".ClassVar")
+                    }) =>
+                {
+                    badges.push("field".to_string())
+                }
+                _ => {}
+            }
+            let docstring = docstring
+                .get_or_insert_with(|| attribute_docstring(stmt, body.get(index + 1), source))
+                .clone();
+            variables.push(PythonVariable {
+                name: name.to_string(),
+                annotation,
+                value,
+                value_truncated,
+                is_type_alias,
+                badges,
+                line: source.line_of(target.range().start().to_usize()),
+                docstring,
+                summary: None,
+                is_private: private,
+            });
+        }
+    }
+    variables
 }
 
 pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
@@ -205,6 +423,7 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         summary: None,
         classes: Vec::new(),
         functions: Vec::new(),
+        variables: Vec::new(),
         z_index: i32::MAX,
         folder,
         dir,
@@ -217,6 +436,9 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
     let syntax_body = parsed.into_syntax().body;
     module.docstring = leading_docstring(&syntax_body);
     module.all = read_dunder_all(&syntax_body);
+    module.variables = extract_variables(&syntax_body, &source, ClassKind::Module, |name| {
+        !is_public_name(name, module.all.as_deref())
+    });
 
     for stmt in &syntax_body {
         match stmt {
@@ -391,6 +613,14 @@ fn extract_class(class_def: &ast::StmtClassDef, source: &Source) -> PythonClass 
         })
         .unwrap_or_default();
 
+    // Class attributes follow the underscore rule, and dunders are private.
+    let variables = extract_variables(
+        &class_def.body,
+        source,
+        class_kind(class_def, source),
+        |name| name.starts_with('_'),
+    );
+
     PythonClass {
         name: class_def.name.to_string(),
         bases,
@@ -398,6 +628,7 @@ fn extract_class(class_def: &ast::StmtClassDef, source: &Source) -> PythonClass 
         docstring: leading_docstring(&class_def.body),
         summary: None,
         functions,
+        variables,
         is_private: false,
     }
 }
@@ -469,5 +700,133 @@ mod tests {
         assert!(is_private_module(&["_internal", "__init__"]));
         assert!(is_private_module(&["_internal", "core"]));
         assert!(is_private_module(&["pkg", "_impl", "core"]));
+    }
+
+    fn module_vars(code: &str) -> Vec<PythonVariable> {
+        let source = Source::new(code);
+        let body = parse_module(code).unwrap().into_syntax().body;
+        let all = read_dunder_all(&body);
+        extract_variables(&body, &source, ClassKind::Module, |name| {
+            !is_public_name(name, all.as_deref())
+        })
+    }
+
+    fn class_of(code: &str) -> PythonClass {
+        let source = Source::new(code);
+        let body = parse_module(code).unwrap().into_syntax().body;
+        let Some(Stmt::ClassDef(class_def)) = body.first() else {
+            panic!("no class")
+        };
+        extract_class(class_def, &source)
+    }
+
+    fn summary(vars: &[PythonVariable]) -> Vec<String> {
+        vars.iter()
+            .map(|v| {
+                format!(
+                    "{}{}{}{}{}{}",
+                    if v.is_type_alias { "type " } else { "" },
+                    v.name,
+                    v.annotation
+                        .as_ref()
+                        .map(|a| format!(": {}", a))
+                        .unwrap_or_default(),
+                    v.value
+                        .as_ref()
+                        .map(|a| format!(" = {}", a))
+                        .unwrap_or_default(),
+                    if v.value_truncated { "..." } else { "" },
+                    if v.is_private { " (private)" } else { "" },
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn module_variables_in_every_form() {
+        let vars = module_vars(
+            "X = 1\nY: int\nZ: str = 'z'\ntype T = list[int]\na = b = 2\nc, d = 1, 2\n\
+             obj.attr = 3\n_hidden = 4\n__version__ = '1'\n__all__ = ['X']\n__all__ += ['Y']",
+        );
+        // `__all__` is never documented; with it, only X and Y are public.
+        assert_eq!(
+            summary(&vars),
+            [
+                "X = 1",
+                "Y: int",
+                "Z: str = 'z' (private)",
+                "type T = list[int] (private)",
+                "a = 2 (private)",
+                "b = 2 (private)",
+                "c (private)",
+                "d (private)",
+                "_hidden = 4 (private)",
+                "__version__ = '1' (private)",
+            ]
+        );
+
+        let vars = module_vars("_hidden = 1\n__version__ = '1'\nshown = 2\nshown = 3");
+        assert_eq!(
+            summary(&vars),
+            ["_hidden = 1 (private)", "__version__ = '1'", "shown = 2"]
+        );
+    }
+
+    #[test]
+    fn long_values_are_cut_short() {
+        let long = format!("[{}]", "1, ".repeat(40));
+        let vars = module_vars(&format!("LONG = {}\nSHORT = (\n    1,\n    2,\n)", long));
+        assert!(vars[0].value_truncated);
+        assert_eq!(vars[0].value.as_ref().unwrap().chars().count(), VALUE_LIMIT);
+        assert!(!vars[1].value_truncated);
+        assert_eq!(vars[1].value.as_deref(), Some("( 1, 2, )"));
+    }
+
+    #[test]
+    fn attribute_docstrings() {
+        let vars = module_vars(
+            "A = 1\n\"\"\"Doc of A.\"\"\"\n\
+             #: First line\n#: second line\nB = 2\n\
+             C = 3  #: Inline.\n\
+             # plain comment\nD = 4\n\
+             #: Comment loses to the string.\nE = 5\n\"\"\"String.\"\"\"\n",
+        );
+        let docs: Vec<_> = vars.iter().map(|v| v.docstring.as_deref()).collect();
+        assert_eq!(
+            docs,
+            [
+                Some("Doc of A."),
+                Some("First line\nsecond line"),
+                Some("Inline."),
+                None,
+                Some("String."),
+            ]
+        );
+    }
+
+    #[test]
+    fn class_attributes_enums_and_dataclasses() {
+        let plain = class_of(
+            "class C:\n    \"\"\"Class doc.\"\"\"\n    x = 1\n    _y = 2\n    __hash__ = None\n\
+             \x20   __slots__ = ('x',)\n    __match_args__ = ('x',)\n    __doc__ = 'd'\n\
+             \x20   def f(self): pass\n",
+        );
+        assert_eq!(
+            summary(&plain.variables),
+            ["x = 1", "_y = 2 (private)", "__hash__ = None (private)"]
+        );
+        assert!(plain.variables.iter().all(|v| v.badges.is_empty()));
+
+        let color =
+            class_of("class Color(enum.Enum):\n    RED = 1\n    GREEN = 2\n    _ignore_ = []\n");
+        let badges: Vec<_> = color.variables.iter().map(|v| v.badges.clone()).collect();
+        assert_eq!(badges, [vec!["enum"], vec!["enum"], vec![]]);
+
+        let point = class_of(
+            "@dataclasses.dataclass(frozen=True)\nclass P:\n    x: int\n    y: int = 0\n\
+             \x20   z = 1\n    k: ClassVar[int] = 0\n",
+        );
+        let badges: Vec<_> = point.variables.iter().map(|v| v.badges.clone()).collect();
+        assert_eq!(badges, [vec!["field"], vec!["field"], vec![], vec![]]);
     }
 }

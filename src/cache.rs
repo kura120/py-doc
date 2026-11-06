@@ -11,6 +11,12 @@
 //! The whole cache is dropped when its key changes. The key covers the
 //! py-doc version, every option that can change the output and the theme
 //! files, so an option or template change is a full rebuild.
+//!
+//! The file is in postcard, a compact binary serde format: strings are
+//! copied, not escaped, so writing and reading it costs a few milliseconds
+//! where JSON of the rendered HTML cost tens. It is the key, then the
+//! module entries, then the page entries, each encoded on its own so the
+//! key can be checked before the rest is decoded.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -23,7 +29,7 @@ use crate::models::PythonModule;
 pub const CACHE_NAME: &str = ".py-doc-cache";
 
 /// Bump when the cache layout or what it records changes.
-const FORMAT: u32 = 2;
+const FORMAT: u32 = 3;
 
 /// A 128-bit content hash as hex.
 pub fn hash_bytes(bytes: &[u8]) -> String {
@@ -112,9 +118,8 @@ pub struct PageEntry {
     pub output: String,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default)]
 pub struct Cache {
-    pub key: String,
     /// By `source_path`.
     pub modules: BTreeMap<String, ModuleEntry>,
     /// By site path.
@@ -130,16 +135,26 @@ impl Cache {
     /// Any problem just means a full build.
     pub fn load(out_dir: &Path, key: &str) -> Option<Cache> {
         let bytes = fs::read(Self::path(out_dir)).ok()?;
-        let mut cache: Cache = serde_json::from_slice(&bytes).ok()?;
-        if cache.key != key {
+        let (stored_key, rest): (String, _) = postcard::take_from_bytes(&bytes).ok()?;
+        if stored_key != key {
             return None;
         }
-        for entry in cache.modules.values_mut() {
-            if let Some(module) = entry.module.as_mut() {
-                module.dir = entry.dir.clone();
-            }
+        let (entries, rest): (Vec<ModuleEntry>, _) = postcard::take_from_bytes(rest).ok()?;
+        let (pages, rest): (BTreeMap<String, PageEntry>, _) =
+            postcard::take_from_bytes(rest).ok()?;
+        if !rest.is_empty() {
+            return None;
         }
-        Some(cache)
+        let modules = entries
+            .into_iter()
+            .map(|mut entry| {
+                if let Some(module) = entry.module.as_mut() {
+                    module.dir = entry.dir.clone();
+                }
+                (entry.source_path.clone(), entry)
+            })
+            .collect();
+        Some(Cache { modules, pages })
     }
 
     /// Whether `source_path` is cached with this content hash.
@@ -151,85 +166,64 @@ impl Cache {
 
     /// Writes this cache (used by tests; a run writes with [`write`]).
     #[cfg(test)]
-    pub fn save(&self, out_dir: &Path) -> Result<()> {
-        let entries = self
+    pub fn save(&self, out_dir: &Path, key: &str) -> Result<()> {
+        let entries: Vec<ModuleEntryRef> = self
             .modules
             .values()
-            .map(|entry| {
-                let module_json = entry
-                    .module
-                    .as_ref()
-                    .map(serde_json::to_string)
-                    .transpose()?;
-                entry_json(&EntryParts {
-                    source_path: &entry.source_path,
-                    source_hash: &entry.source_hash,
-                    dir: &entry.dir,
-                    module_json: module_json.as_deref(),
-                    hidden: entry.hidden.as_ref(),
-                    deps: &entry.deps,
-                    full_hash: &entry.full_hash,
-                    shared_hash: &entry.shared_hash,
-                })
+            .map(|entry| ModuleEntryRef {
+                source_path: &entry.source_path,
+                source_hash: &entry.source_hash,
+                dir: &entry.dir,
+                module: entry.module.as_ref(),
+                hidden: entry.hidden.as_ref(),
+                deps: &entry.deps,
+                full_hash: &entry.full_hash,
+                shared_hash: &entry.shared_hash,
             })
-            .collect::<Result<Vec<_>>>()?;
-        write(out_dir, &self.key, &modules_json(&entries), &self.pages)
+            .collect();
+        write(out_dir, key, &encode_modules(&entries)?, &self.pages)
     }
 }
 
-/// The fields of one [`ModuleEntry`], with the module already serialized:
-/// a run has its JSON from hashing it, so it is not serialized twice.
-pub struct EntryParts<'a> {
+/// A [`ModuleEntry`] by reference, so a run can save without copying
+/// modules. Encodes exactly like `ModuleEntry`: same fields, same order.
+#[derive(Serialize)]
+pub struct ModuleEntryRef<'a> {
     pub source_path: &'a str,
     pub source_hash: &'a str,
     pub dir: &'a str,
-    pub module_json: Option<&'a str>,
+    pub module: Option<&'a PythonModule>,
     pub hidden: Option<&'a PythonModule>,
     pub deps: &'a ModuleDeps,
     pub full_hash: &'a str,
     pub shared_hash: &'a str,
 }
 
-/// One `"source_path": {entry}` member of the `modules` map, as JSON.
-pub fn entry_json(parts: &EntryParts) -> Result<String> {
-    let text = |value: &str| serde_json::to_string(value);
-    Ok(format!(
-        "{}:{{\"source_path\":{},\"source_hash\":{},\"dir\":{},\"module\":{},\"hidden\":{},\"deps\":{},\"full_hash\":{},\"shared_hash\":{}}}",
-        text(parts.source_path)?,
-        text(parts.source_path)?,
-        text(parts.source_hash)?,
-        text(parts.dir)?,
-        parts.module_json.unwrap_or("null"),
-        serde_json::to_string(&parts.hidden)?,
-        serde_json::to_string(parts.deps)?,
-        text(parts.full_hash)?,
-        text(parts.shared_hash)?,
-    ))
-}
-
-/// The `modules` map of a cache file from its members.
-pub fn modules_json(entries: &[String]) -> String {
-    format!("{{{}}}", entries.join(","))
+/// The module part of a cache file.
+pub fn encode_modules(entries: &[ModuleEntryRef]) -> Result<Vec<u8>> {
+    postcard::to_allocvec(entries).context("Failed to encode the build cache")
 }
 
 /// Writes the cache file next to the site, replacing the old one in one step.
 pub fn write(
     out_dir: &Path,
     key: &str,
-    modules_json: &str,
+    modules: &[u8],
     pages: &BTreeMap<String, PageEntry>,
 ) -> Result<()> {
-    let body = format!(
-        "{{\"key\":{},\"modules\":{},\"pages\":{}}}",
-        serde_json::to_string(key)?,
-        modules_json,
-        serde_json::to_string(pages)?
-    );
+    let mut body = postcard::to_allocvec(key).context("Failed to encode the build cache")?;
+    body.extend_from_slice(modules);
+    body.extend(postcard::to_allocvec(pages).context("Failed to encode the build cache")?);
     let path = Cache::path(out_dir);
     let temporary = out_dir.join(format!("{}.tmp", CACHE_NAME));
     fs::write(&temporary, body).with_context(|| format!("Failed to write {:?}", temporary))?;
     fs::rename(&temporary, &path).with_context(|| format!("Failed to write {:?}", path))?;
     Ok(())
+}
+
+/// A compact, deterministic encoding of a value, for hashing.
+pub fn encode<T: Serialize + ?Sized>(value: &T) -> Result<Vec<u8>> {
+    postcard::to_allocvec(value).context("Failed to encode for the build cache")
 }
 
 #[cfg(test)]
@@ -260,15 +254,110 @@ mod tests {
     fn a_cache_with_another_key_is_ignored() {
         let dir = std::env::temp_dir().join(format!("py-doc-cache-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
-        let cache = Cache {
-            key: "one".into(),
-            ..Default::default()
-        };
-        cache.save(&dir).unwrap();
+        Cache::default().save(&dir, "one").unwrap();
         assert!(Cache::load(&dir, "one").is_some());
         assert!(Cache::load(&dir, "two").is_none());
-        fs::write(Cache::path(&dir), "not json").unwrap();
+        fs::write(Cache::path(&dir), "not a cache").unwrap();
         assert!(Cache::load(&dir, "one").is_none());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Postcard is not self-describing: a field that is written only
+    /// sometimes (`skip_serializing_if`) would break decoding. Every field
+    /// of every model is set here, and a cached module must come back whole.
+    #[test]
+    fn a_module_survives_the_cache_whole() {
+        use crate::models::{PythonClass, PythonFunction, PythonVariable};
+        let function = PythonFunction {
+            name: "f".into(),
+            args: vec!["x: int".into()],
+            return_type: Some("int".into()),
+            decorators: vec!["staticmethod".into()],
+            badges: vec!["static".into()],
+            is_async: true,
+            line: 3,
+            docstring: Some("<p>Doc.</p>".into()),
+            summary: Some("Doc.".into()),
+            is_private: false,
+        };
+        let variable = PythonVariable {
+            name: "LIMIT".into(),
+            annotation: Some("int".into()),
+            value: Some("3".into()),
+            value_truncated: true,
+            is_type_alias: false,
+            badges: vec!["field".into()],
+            line: 1,
+            docstring: Some("<p>Limit.</p>".into()),
+            summary: None,
+            is_private: false,
+        };
+        let module = PythonModule {
+            name: "m".into(),
+            source_path: "a/m.py".into(),
+            qualname: "a.m".into(),
+            docstring: Some("<p>Module.</p>".into()),
+            summary: Some("Module.".into()),
+            classes: vec![PythonClass {
+                name: "C".into(),
+                bases: vec!["Base".into()],
+                line: 5,
+                docstring: None,
+                summary: None,
+                functions: vec![function.clone()],
+                variables: vec![variable.clone()],
+                is_private: false,
+            }],
+            functions: vec![function],
+            variables: vec![variable],
+            z_index: 2,
+            folder: Some("a".into()),
+            dir: "a".into(),
+            link_path: "a/m.html".into(),
+            is_document: false,
+            all: Some(vec!["C".into()]),
+            is_private: false,
+        };
+        let deps = ModuleDeps {
+            links: vec![("t".into(), Some("x.html".into()), false)],
+            images: vec![("i.png".into(), "ok h i.png".into())],
+            warnings: vec!["w".into()],
+        };
+        let entry = ModuleEntryRef {
+            source_path: "a/m.py",
+            source_hash: "h",
+            dir: "a",
+            module: Some(&module),
+            hidden: Some(&module),
+            deps: &deps,
+            full_hash: "f",
+            shared_hash: "s",
+        };
+        let dir =
+            std::env::temp_dir().join(format!("py-doc-cache-roundtrip-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let mut pages = BTreeMap::new();
+        pages.insert(
+            "a/m.html".to_string(),
+            PageEntry {
+                inputs: "i".into(),
+                output: "o".into(),
+            },
+        );
+        write(&dir, "key", &encode_modules(&[entry]).unwrap(), &pages).unwrap();
+        let cache = Cache::load(&dir, "key").expect("the cache loads");
+        let _ = fs::remove_dir_all(&dir);
+
+        let loaded = &cache.modules["a/m.py"];
+        let json = |m: &PythonModule| serde_json::to_string(m).unwrap();
+        assert_eq!(json(loaded.module.as_ref().unwrap()), json(&module));
+        assert_eq!(loaded.module.as_ref().unwrap().dir, "a");
+        assert_eq!(json(loaded.hidden.as_ref().unwrap()), json(&module));
+        assert_eq!(loaded.deps, deps);
+        assert_eq!(
+            (loaded.full_hash.as_str(), loaded.shared_hash.as_str()),
+            ("f", "s")
+        );
+        assert_eq!(cache.pages, pages);
     }
 }

@@ -1,4 +1,4 @@
-use anyhow::{Context as AnyhowContext, Result, anyhow};
+use anyhow::{Context as AnyhowContext, Result, anyhow, bail};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use rayon::prelude::*;
 use std::cell::RefCell;
@@ -10,9 +10,9 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 use tera::{Context as TeraContext, Kwargs, State, Tera, Value};
 
-use crate::cache::{self, Cache, EntryParts, ModuleDeps, PageEntry, hash_bytes, hash_parts};
+use crate::cache::{self, Cache, ModuleDeps, ModuleEntryRef, PageEntry, hash_bytes, hash_parts};
 use crate::highlight::highlight_python;
-use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage};
+use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage, PythonVariable};
 use crate::parser::{self, split_order_prefix};
 use crate::resolver::Resolver;
 
@@ -39,6 +39,8 @@ const TEMPLATE_NAMES: [&str; 5] = [
 /// Tera falls back to it for any name the custom directory does not provide.
 const BUNDLED_PREFIX: &str = "py-doc/";
 const STATIC_NAMES: [&str; 2] = ["style.css", "app.js"];
+/// Written next to the ejected theme to explain how to use it.
+const THEME_README: &str = include_str!("../assets/theme-README.md");
 /// Lists every file a run wrote, so a later `--clean` run can remove the
 /// ones that are no longer produced without touching anything else.
 const MANIFEST_NAME: &str = ".py-doc-manifest";
@@ -112,6 +114,16 @@ fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
     }
 
     (z_index, cleaned_lines.join("\n"))
+}
+
+fn starts_with_pd_write(cleaned_doc: &str) -> bool {
+    cleaned_doc.trim_start().starts_with("#pd-write")
+}
+
+/// True when a raw module docstring marks a doc-only page (`#pd-write`,
+/// possibly after a `#pd-z-index` line). Shared with the coverage report.
+pub fn is_document_docstring(raw_doc: &str) -> bool {
+    starts_with_pd_write(&extract_z_index_and_clean(raw_doc).1)
 }
 
 /// First meaningful line of a raw docstring as plain text, for cards and search.
@@ -235,9 +247,6 @@ struct Rendered {
     deps: ModuleDeps,
     full_hash: String,
     shared_hash: String,
-    /// The module's JSON when it was rendered in this run (it is what the
-    /// full hash is taken over, and goes into the cache as is).
-    json: Option<String>,
 }
 
 /// A public module's file during a run.
@@ -288,6 +297,8 @@ pub struct SiteGenerator {
     custom_templates: bool,
     /// The "Using custom templates" line, printed by `announce_templates`.
     templates_note: Option<String>,
+    /// `--css` files as (site path, contents), linked after style.css.
+    extra_css: Vec<(String, String)>,
 }
 
 /// Where a module's page is written, relative to the site root.
@@ -413,19 +424,53 @@ impl SiteGenerator {
             theme_fingerprint,
             custom_templates: !custom.is_empty(),
             templates_note,
+            extra_css: Vec::new(),
         })
     }
 
     /// Prints which custom templates are used, if --templates was given.
     pub fn announce_templates(&self) {
         if let Some(note) = &self.templates_note {
-            println!("{}", note);
+            status!("{}", note);
         }
     }
 
     /// Hash of the template and static files, for the cache key.
     pub fn theme_fingerprint(&self) -> &str {
         &self.theme_fingerprint
+    }
+
+    /// Adds `--css` stylesheets. Each is copied to `custom/<n>-<name>`: the
+    /// index keeps the order they were given in and keeps two files with
+    /// the same name apart. A file that cannot be read is an error.
+    pub fn with_extra_css(mut self, files: &[String]) -> Result<Self> {
+        for (index, file) in files.iter().enumerate() {
+            let path = Path::new(file);
+            if !path.is_file() {
+                bail!("the CSS file '{}' given with --css does not exist", file);
+            }
+            let contents = fs::read_to_string(path)
+                .with_context(|| format!("Failed to read CSS file '{}'", file))?;
+            let name: String = path
+                .file_name()
+                .map(|name| name.to_string_lossy())
+                .unwrap_or_default()
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                        c
+                    } else {
+                        '-'
+                    }
+                })
+                .collect();
+            // The stylesheet is part of the cache key, like the theme.
+            self.theme_fingerprint =
+                hash_parts([self.theme_fingerprint.as_str(), file.as_str(), &contents]);
+            self.extra_css
+                .push((format!("custom/{}-{}", index, name), contents));
+        }
+        Ok(self)
     }
 
     /// Number of non-fatal problems found (missing images, unresolved doc-links).
@@ -454,7 +499,7 @@ impl SiteGenerator {
 
         let previous = fs::read_to_string(&manifest_path).ok();
         if clean && previous.is_none() {
-            println!(
+            status!(
                 "  --clean: this folder has no {} from an earlier run, so nothing was removed.",
                 MANIFEST_NAME
             );
@@ -855,7 +900,7 @@ impl SiteGenerator {
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
             module.z_index = z_val;
             // Must be decided on the raw docstring: render_markdown strips the marker.
-            module.is_document = cleaned_doc.trim_start().starts_with("#pd-write")
+            module.is_document = starts_with_pd_write(&cleaned_doc)
                 && module.classes.is_empty()
                 && module.functions.is_empty();
             module.summary = summarize(&cleaned_doc);
@@ -869,14 +914,23 @@ impl SiteGenerator {
             }
         };
 
+        let render_variable = |var: &mut PythonVariable| {
+            if let Some(doc) = var.docstring.take() {
+                var.summary = summarize(&doc);
+                var.docstring = Some(self.render_markdown(&doc, &ctx));
+            }
+        };
+
         for class in module.classes.iter_mut() {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
                 class.docstring = Some(self.render_markdown(&doc, &ctx));
             }
             class.functions.iter_mut().for_each(render_function);
+            class.variables.iter_mut().for_each(render_variable);
         }
         module.functions.iter_mut().for_each(render_function);
+        module.variables.iter_mut().for_each(render_variable);
         ctx.deps.into_inner()
     }
 
@@ -986,6 +1040,12 @@ impl SiteGenerator {
         context.insert("version", &self.version);
         context.insert("root_path", root_path);
         context.insert("layout", &self.layout);
+        let extra_css: Vec<&str> = self
+            .extra_css
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect();
+        context.insert("extra_css", &extra_css);
         if let Some(theme) = &self.theme {
             context.insert("theme", theme);
         }
@@ -1091,7 +1151,6 @@ impl SiteGenerator {
                             deps: entry.deps,
                             full_hash: entry.full_hash,
                             shared_hash: entry.shared_hash,
-                            json: None,
                         });
                         (entry.module, entry.hidden, rendered)
                     }
@@ -1168,12 +1227,12 @@ impl SiteGenerator {
                     Some(rendered) => self.replay(module, &rendered.deps)?,
                     None => {
                         let deps = self.render_module(module, &resolver);
-                        let (json, full_hash, shared_hash) = module_hashes(module)?;
+                        let full_hash = rendered_hash(&slot.source_hash, &deps, module)?;
+                        let shared_hash = shared_hash(module)?;
                         slot.rendered = Some(Rendered {
                             deps,
                             full_hash,
                             shared_hash,
-                            json: Some(json),
                         });
                     }
                 }
@@ -1280,52 +1339,36 @@ impl SiteGenerator {
 
         // The module part of the new cache is built while pages render.
         let no_deps = ModuleDeps::default();
-        let (modules_json, pages) =
+        let (modules_encoded, pages) =
             rayon::join(
-                || -> Option<Result<String>> {
+                || -> Option<Result<Vec<u8>>> {
                     if !cache_changed {
                         return None;
                     }
-                    let public = package.modules.par_iter().zip(rendered.par_iter()).map(
-                        |(module, info)| {
-                            let serialized;
-                            let module_json = match &info.rendered.json {
-                                Some(json) => json.as_str(),
-                                None => {
-                                    serialized = serde_json::to_string(module)?;
-                                    serialized.as_str()
-                                }
-                            };
-                            cache::entry_json(&EntryParts {
-                                source_path: &info.source_path,
-                                source_hash: &info.source_hash,
-                                dir: &module.dir,
-                                module_json: Some(module_json),
-                                hidden: info.hidden.as_ref(),
-                                deps: &info.rendered.deps,
-                                full_hash: &info.rendered.full_hash,
-                                shared_hash: &info.rendered.shared_hash,
-                            })
-                        },
-                    );
-                    let private = private_files.par_iter().map(|file| {
-                        cache::entry_json(&EntryParts {
-                            source_path: &file.source_path,
-                            source_hash: &file.source_hash,
-                            dir: "",
-                            module_json: None,
-                            hidden: file.hidden.as_ref(),
-                            deps: &no_deps,
-                            full_hash: "",
-                            shared_hash: "",
-                        })
+                    let public = package.modules.iter().zip(&rendered).map(|(module, info)| {
+                        ModuleEntryRef {
+                            source_path: &info.source_path,
+                            source_hash: &info.source_hash,
+                            dir: &module.dir,
+                            module: Some(module),
+                            hidden: info.hidden.as_ref(),
+                            deps: &info.rendered.deps,
+                            full_hash: &info.rendered.full_hash,
+                            shared_hash: &info.rendered.shared_hash,
+                        }
                     });
-                    Some(
-                        public
-                            .chain(private)
-                            .collect::<Result<Vec<_>>>()
-                            .map(|entries| cache::modules_json(&entries)),
-                    )
+                    let private = private_files.iter().map(|file| ModuleEntryRef {
+                        source_path: &file.source_path,
+                        source_hash: &file.source_hash,
+                        dir: "",
+                        module: None,
+                        hidden: file.hidden.as_ref(),
+                        deps: &no_deps,
+                        full_hash: "",
+                        shared_hash: "",
+                    });
+                    let entries: Vec<ModuleEntryRef> = public.chain(private).collect();
+                    Some(cache::encode_modules(&entries))
                 },
                 || -> Result<(PageEntry, Vec<PageEntry>)> {
                     // Render index page
@@ -1343,7 +1386,9 @@ impl SiteGenerator {
                                 index_context.insert("package_docstring", doc);
                             }
                             if let Some(root) = root_init
-                                && (!root.classes.is_empty() || !root.functions.is_empty())
+                                && (!root.classes.is_empty()
+                                    || !root.functions.is_empty()
+                                    || !root.variables.is_empty())
                             {
                                 index_context.insert("package_link_path", &root.link_path);
                             }
@@ -1394,7 +1439,7 @@ impl SiteGenerator {
             );
         let (index_entry, page_entries) = pages?;
 
-        println!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
+        status!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
         self.write_if_changed(
             "search-index.js",
@@ -1405,6 +1450,13 @@ impl SiteGenerator {
             format!("const navData = {};", nav_data_json(&nav_groups)).as_bytes(),
         )?;
 
+        if !self.extra_css.is_empty() {
+            fs::create_dir_all(Path::new(&self.output_dir).join("custom"))?;
+        }
+        for (site_path, contents) in &self.extra_css {
+            self.write_if_changed(site_path, contents.as_bytes())?;
+        }
+
         for name in STATIC_NAMES {
             let (body, _) = load_asset(self.template_dir.as_deref(), name)?;
             self.write_if_changed(name, body.as_bytes())?;
@@ -1412,20 +1464,21 @@ impl SiteGenerator {
 
         let removed = self.update_manifest(clean)?;
         if removed > 0 {
-            println!(
+            status!(
                 "  \x1b[32m✔\x1b[0m Removed {} stale file{} from an earlier run",
                 removed,
                 if removed == 1 { "" } else { "s" }
             );
         }
 
-        if let Some(modules_json) = modules_json {
+        if let Some(modules_encoded) = modules_encoded {
             let mut pages = BTreeMap::new();
             pages.insert("index.html".to_string(), index_entry);
             for (module, page) in package.modules.iter().zip(page_entries) {
                 pages.insert(module.link_path.clone(), page);
             }
-            let saved = modules_json.and_then(|json| cache::write(out, cache_key, &json, &pages));
+            let saved =
+                modules_encoded.and_then(|bytes| cache::write(out, cache_key, &bytes, &pages));
             if let Err(e) = saved {
                 eprintln!("  \x1b[33m⚠\x1b[0m could not save the build cache: {:#}", e);
             }
@@ -1436,7 +1489,7 @@ impl SiteGenerator {
         } else {
             String::new()
         };
-        println!(
+        status!(
             "  \x1b[32m✔\x1b[0m Generated {} pages in {:.2?}{}",
             page_count,
             compile_start.elapsed(),
@@ -1447,54 +1500,59 @@ impl SiteGenerator {
     }
 }
 
-/// A rendered module's JSON, the hash of it, and the hash of only the part
-/// other pages can show (docstrings reduced to whether there is one). The
-/// docstrings are blanked in place and put back, rather than cloning.
-fn module_hashes(module: &mut PythonModule) -> Result<(String, String, String)> {
-    let json = serde_json::to_string(&*module)?;
-    let full = hash_bytes(json.as_bytes());
+/// Calls `f` on every docstring of a module: its own and those of its
+/// classes, methods, attributes, functions and variables.
+fn for_each_docstring(module: &mut PythonModule, f: &mut impl FnMut(&mut Option<String>)) {
+    f(&mut module.docstring);
+    for class in module.classes.iter_mut() {
+        f(&mut class.docstring);
+        class.functions.iter_mut().for_each(|x| f(&mut x.docstring));
+        class.variables.iter_mut().for_each(|x| f(&mut x.docstring));
+    }
+    module
+        .functions
+        .iter_mut()
+        .for_each(|x| f(&mut x.docstring));
+    module
+        .variables
+        .iter_mut()
+        .for_each(|x| f(&mut x.docstring));
+}
 
+/// The full hash of a rendered module. Rendering is determined by the
+/// file (its path and bytes, which `source_hash` covers), the options and
+/// theme (the cache key, part of every page's inputs) and what it looked
+/// up (`deps`), so the hash is taken over those instead of serializing the
+/// rendered module. Without a source hash the module itself is hashed.
+fn rendered_hash(source_hash: &str, deps: &ModuleDeps, module: &PythonModule) -> Result<String> {
+    if source_hash.is_empty() {
+        return Ok(hash_bytes(&cache::encode(module)?));
+    }
+    Ok(hash_parts([
+        source_hash,
+        &hash_bytes(&cache::encode(deps)?),
+    ]))
+}
+
+/// Hash of the part of a rendered module that other pages can show: all of
+/// it with docstrings reduced to whether there is one. The docstrings are
+/// blanked in place and put back, rather than cloning the module.
+fn shared_hash(module: &mut PythonModule) -> Result<String> {
     let mut saved: Vec<String> = Vec::new();
-    let mut blank = |doc: &mut Option<String>| {
+    for_each_docstring(module, &mut |doc| {
         if let Some(text) = doc.as_mut() {
             saved.push(std::mem::take(text));
         }
-    };
-    blank(&mut module.docstring);
-    for class in module.classes.iter_mut() {
-        blank(&mut class.docstring);
-        class
-            .functions
-            .iter_mut()
-            .for_each(|f| blank(&mut f.docstring));
-    }
-    module
-        .functions
-        .iter_mut()
-        .for_each(|f| blank(&mut f.docstring));
-    let shared = serde_json::to_vec(&*module).map(|bytes| hash_bytes(&bytes));
-
-    // Put the docstrings back in the same order they were taken.
+    });
+    let shared = cache::encode(&*module).map(|bytes| hash_bytes(&bytes));
+    // Put the docstrings back, visiting them in the same order.
     let mut saved = saved.into_iter();
-    let mut restore = |doc: &mut Option<String>| {
+    for_each_docstring(module, &mut |doc| {
         if let Some(text) = doc.as_mut() {
             *text = saved.next().unwrap_or_default();
         }
-    };
-    restore(&mut module.docstring);
-    for class in module.classes.iter_mut() {
-        restore(&mut class.docstring);
-        class
-            .functions
-            .iter_mut()
-            .for_each(|f| restore(&mut f.docstring));
-    }
-    module
-        .functions
-        .iter_mut()
-        .for_each(|f| restore(&mut f.docstring));
-
-    Ok((json, full, shared?))
+    });
+    shared
 }
 
 /// Splits a parsed module into its public part (None when the whole module
@@ -1515,20 +1573,7 @@ fn split_private(
     };
     one.hide_private();
     let hidden = one.hidden.pop().map(|mut hidden| {
-        hidden.docstring = None;
-        hidden.summary = None;
-        for class in hidden.classes.iter_mut() {
-            class.docstring = None;
-            class.summary = None;
-            for function in class.functions.iter_mut() {
-                function.docstring = None;
-                function.summary = None;
-            }
-        }
-        for function in hidden.functions.iter_mut() {
-            function.docstring = None;
-            function.summary = None;
-        }
+        for_each_docstring(&mut hidden, &mut |doc| *doc = None);
         hidden
     });
     (one.modules.pop(), hidden)
@@ -1546,6 +1591,42 @@ fn load_asset(template_dir: Option<&Path>, name: &str) -> Result<(String, bool)>
         }
     }
     Ok((bundled_asset(name)?.to_string(), false))
+}
+
+/// `py-doc theme eject`: writes the bundled theme, exactly as compiled into
+/// this binary, plus a README into `dir`, as a starting point for
+/// `--templates`. Unless `force` is set, nothing is written when any of the
+/// files already exists. Returns the paths written.
+pub fn eject_theme(dir: &Path, force: bool) -> Result<Vec<PathBuf>> {
+    let files: Vec<(&str, &str)> = EMBEDDED_ASSETS
+        .iter()
+        .copied()
+        .chain(std::iter::once(("README.md", THEME_README)))
+        .collect();
+
+    if !force {
+        let existing: Vec<String> = files
+            .iter()
+            .map(|(name, _)| dir.join(name))
+            .filter(|path| path.exists())
+            .map(|path| path.display().to_string())
+            .collect();
+        if !existing.is_empty() {
+            bail!(
+                "these files already exist, so nothing was written (pass --force to overwrite them):\n  {}",
+                existing.join("\n  ")
+            );
+        }
+    }
+
+    fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    let mut written = Vec::with_capacity(files.len());
+    for (name, body) in files {
+        let path = dir.join(name);
+        fs::write(&path, body).with_context(|| format!("Failed to write {}", path.display()))?;
+        written.push(path);
+    }
+    Ok(written)
 }
 
 fn bundled_asset(name: &str) -> Result<&'static str> {
@@ -1668,22 +1749,35 @@ fn function_entries(functions: &[PythonFunction], with_summary: bool) -> Vec<ser
 
 /// A deliberately small search payload: names, links and one-line
 /// summaries only. No rendered HTML and no build-machine paths.
+/// Adds `"variables"` to a search entry, only when there are any, so
+/// projects without documented variables keep the same payload.
+fn with_variables(mut entry: serde_json::Value, variables: &[PythonVariable]) -> serde_json::Value {
+    if !variables.is_empty() {
+        entry["variables"] = variables
+            .iter()
+            .map(|v| serde_json::json!({ "name": v.name, "summary": v.summary }))
+            .collect();
+    }
+    entry
+}
+
 fn search_index_json(package: &PythonPackage) -> serde_json::Value {
     let modules: Vec<serde_json::Value> = package
         .modules
         .iter()
         .map(|m| {
-            serde_json::json!({
+            let entry = serde_json::json!({
                 "name": if m.qualname.is_empty() { &package.name } else { &m.qualname },
                 "link_path": m.link_path,
                 "summary": m.summary,
-                "classes": m.classes.iter().map(|c| serde_json::json!({
+                "classes": m.classes.iter().map(|c| with_variables(serde_json::json!({
                     "name": c.name,
                     "summary": c.summary,
                     "functions": function_entries(&c.functions, true),
-                })).collect::<Vec<_>>(),
+                }), &c.variables)).collect::<Vec<_>>(),
                 "functions": function_entries(&m.functions, true),
-            })
+            });
+            with_variables(entry, &m.variables)
         })
         .collect();
 
