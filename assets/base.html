@@ -9,6 +9,9 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e8944a'/%3E%3Cpath d='M9 8h9l5 5v11H9z' fill='none' stroke='%2314171c' stroke-width='2.2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h6M13 20h6' stroke='%2314171c' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
     {% block stylesheets %}
     <link rel="stylesheet" href="{{ root_path }}style.css">
+    {% for href in extra_css %}
+    <link rel="stylesheet" href="{{ root_path }}{{ href }}">
+    {% endfor %}
     {% endblock stylesheets %}
     <script>(function(){try{var d=document.documentElement,l=localStorage.getItem("layout"),t=localStorage.getItem("theme")||d.getAttribute("data-theme")||"auto";if(l)d.setAttribute("data-layout",l);d.setAttribute("data-theme-pref",t);if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",t);}catch(e){}})();</script>
     {% endblock head %}
