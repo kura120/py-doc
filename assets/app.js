@@ -47,13 +47,21 @@ function renderModuleEntry(mod, rootPath, currentPath) {
         </div>`;
     }
 
-    return `<details class="nav-group" id="nav-group-${slug}" ${isActive ? "open" : ""}>
-        <summary class="nav-header ${isActive ? "active-mod" : ""}">
-            <a href="${targetUrl}"><span class="nav-icon">${ICONS.file}</span>${escapeHtml(mod.name)}</a>
-            <span class="nav-chevron">${ICONS.chevron}</span>
-        </summary>
-        <ul>${renderSymbolItems(targetUrl, mod.classes, mod.functions, "li", null)}</ul>
-    </details>`;
+    const name = escapeHtml(mod.name);
+    return `<div class="nav-group${isActive ? " is-open" : ""}" id="nav-group-${slug}">
+        <div class="nav-header ${isActive ? "active-mod" : ""}">
+            <a href="${targetUrl}"${isActive ? ' aria-current="page"' : ""}><span class="nav-icon">${ICONS.file}</span>${name}</a>
+            ${disclosureButton(`nav-items-${slug}`, isActive, `Symbols in ${name}`)}
+        </div>
+        <ul id="nav-items-${slug}"${isActive ? "" : " hidden"}>${renderSymbolItems(targetUrl, mod.classes, mod.functions, "li", null)}</ul>
+    </div>`;
+}
+
+// The expand/collapse control of a nav row: a real button, so it is
+// reachable with Tab and works with Enter and Space, and screen readers
+// hear whether the list is open.
+function disclosureButton(controls, expanded, label) {
+    return `<button type="button" class="nav-chevron" aria-expanded="${expanded ? "true" : "false"}" aria-controls="${controls}" aria-label="${label}">${ICONS.chevron}</button>`;
 }
 
 // Folder groups arrive flat, named by path ("core", "core/sub"). Nest each
@@ -92,8 +100,9 @@ function renderNavGroup(group, rootPath, currentPath) {
     const label = escapeHtml(group.label || group.name);
 
     const headerInner = folderUrl
-        ? `<a href="${folderUrl}"><span class="nav-icon">${ICONS.folder}</span>${label}</a>`
+        ? `<a href="${folderUrl}"${folderIsActive ? ' aria-current="page"' : ""}><span class="nav-icon">${ICONS.folder}</span>${label}</a>`
         : `<span><span class="nav-icon">${ICONS.folder}</span>${label}</span>`;
+    const contentsId = `nav-folder-${slugifyLinkPath(group.name)}`;
 
     const symbolsInner = folderUrl
         ? renderSymbolItems(folderUrl, group.classes, group.functions, "div", "nav-group-flat")
@@ -102,10 +111,10 @@ function renderNavGroup(group, rootPath, currentPath) {
     const modulesInner = (group.modules || []).map(mod => renderModuleEntry(mod, rootPath, currentPath)).join("");
     const childrenInner = (group.children || []).map(child => renderNavGroup(child, rootPath, currentPath)).join("");
 
-    return `<details class="nav-folder" open>
-        <summary class="folder-header ${folderIsActive ? "active-mod" : ""}">${headerInner}<span class="nav-chevron">${ICONS.chevron}</span></summary>
-        <div class="folder-contents">${symbolsInner}${modulesInner}${childrenInner}</div>
-    </details>`;
+    return `<div class="nav-folder is-open">
+        <div class="folder-header ${folderIsActive ? "active-mod" : ""}">${headerInner}${disclosureButton(contentsId, true, `${label} folder`)}</div>
+        <div class="folder-contents" id="${contentsId}">${symbolsInner}${modulesInner}${childrenInner}</div>
+    </div>`;
 }
 
 function renderNavTree(navData, rootPath, currentPath) {
@@ -268,18 +277,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const navContainer = document.getElementById("nav-tree");
     const rootPath = (navContainer && navContainer.dataset.rootPath) || "./";
 
+    // Opens or closes a nav row (a module's symbols or a folder's contents).
+    function setNavOpen(group, open) {
+        const button = group.querySelector(":scope > .nav-header > .nav-chevron, :scope > .folder-header > .nav-chevron");
+        if (!button) return;
+        const list = document.getElementById(button.getAttribute("aria-controls"));
+        button.setAttribute("aria-expanded", open ? "true" : "false");
+        group.classList.toggle("is-open", open);
+        if (list) list.hidden = !open;
+    }
+
     function bindCollapseState() {
-        const detailsElements = document.querySelectorAll("details.nav-group");
-        detailsElements.forEach(details => {
-            const id = details.getAttribute("id");
-            const savedState = stored(id);
-            if (savedState !== null) {
-                if (savedState === "open") details.setAttribute("open", "");
-                else details.removeAttribute("open");
-            }
-            details.addEventListener("toggle", () => {
-                store(id, details.open ? "open" : "closed");
-            });
+        // Module rows remember whether the reader left them open.
+        document.querySelectorAll(".nav-group[id]").forEach(group => {
+            const savedState = stored(group.id);
+            if (savedState !== null) setNavOpen(group, savedState === "open");
+        });
+        navContainer.addEventListener("click", (e) => {
+            const header = e.target.closest(".nav-header, .folder-header");
+            // The chevron button, or a click on the row outside its link.
+            if (!header || (e.target.closest("a") && !e.target.closest(".nav-chevron"))) return;
+            const group = header.parentElement;
+            const open = !group.classList.contains("is-open");
+            setNavOpen(group, open);
+            if (group.classList.contains("nav-group") && group.id) store(group.id, open ? "open" : "closed");
         });
     }
 
@@ -305,8 +326,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const isMatch = !!link.hash && target === here;
             link.classList.toggle("active-item", isMatch);
             if (isMatch) {
-                const parentDetails = link.closest("details");
-                if (parentDetails) parentDetails.open = true;
+                const group = link.closest(".nav-group, .nav-folder");
+                if (group) setNavOpen(group, true);
             }
         });
     }
@@ -359,6 +380,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const items = () => Array.from(resultsList.querySelectorAll(".search-item"));
+        // Loading, "no results" and "N more" messages. Templates from before
+        // there was a status line get them inside the results list instead.
+        const searchStatus = document.getElementById("search-status");
+
+        // The input is a combobox that owns the results listbox: focus stays
+        // in the input and the active option is announced through
+        // aria-activedescendant.
+        searchInput.setAttribute("role", "combobox");
+        searchInput.setAttribute("aria-autocomplete", "list");
+        searchInput.setAttribute("aria-controls", resultsList.id);
+        searchInput.setAttribute("aria-expanded", "false");
+
+        function showStatus(html) {
+            if (searchStatus) {
+                searchStatus.innerHTML = html;
+            } else if (html) {
+                resultsList.insertAdjacentHTML("beforeend", html);
+            }
+        }
+
+        function openPanel() {
+            positionPanel();
+            searchResults.classList.add("is-open");
+            searchInput.setAttribute("aria-expanded", "true");
+        }
 
         function positionPanel() {
             const box = searchInput.getBoundingClientRect();
@@ -380,10 +426,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 item.setAttribute("aria-selected", isActive ? "true" : "false");
                 if (isActive) item.scrollIntoView({ block: "nearest" });
             });
+            if (activeIndex >= 0) searchInput.setAttribute("aria-activedescendant", all[activeIndex].id);
+            else searchInput.removeAttribute("aria-activedescendant");
         }
 
         function closeSearch() {
             searchResults.classList.remove("is-open");
+            searchInput.setAttribute("aria-expanded", "false");
+            searchInput.removeAttribute("aria-activedescendant");
             activeIndex = -1;
         }
 
@@ -396,35 +446,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!entries) {
                 // The index is still on its way; the query runs when it arrives.
-                resultsList.innerHTML = loadFailed
-                    ? `<p class="search-empty">The search index could not be loaded.</p>`
-                    : `<p class="search-empty search-loading">Loading search…</p>`;
-                positionPanel();
-                searchResults.classList.add("is-open");
-                activeIndex = -1;
+                resultsList.innerHTML = "";
+                showStatus(loadFailed
+                    ? `<span class="search-empty">The search index could not be loaded.</span>`
+                    : `<span class="search-empty search-loading">Loading search…</span>`);
+                openPanel();
+                setActive(-1);
                 ensureIndex();
                 return;
             }
 
             const matches = findMatches(entries, query);
+            const shown = matches.slice(0, SEARCH_LIMIT);
+            resultsList.innerHTML = shown.map((item, i) => `
+                <a class="search-item" id="search-option-${i}" role="option" aria-selected="false" tabindex="-1" href="${rootPath}${escapeHtml(item.link)}">
+                    <span class="search-item-type">${item.type}</span>
+                    <span class="search-item-name">${highlightMatch(item.name, query)}</span>
+                    ${item.summary ? `<span class="search-item-summary">${highlightMatch(item.summary, query)}</span>` : ""}
+                </a>`).join("");
             if (matches.length === 0) {
-                resultsList.innerHTML = `<p class="search-empty">No results for “${escapeHtml(searchInput.value.trim())}”.</p>`;
+                showStatus(`<span class="search-empty">No results for “${escapeHtml(searchInput.value.trim())}”.</span>`);
+            } else if (matches.length > shown.length) {
+                showStatus(`<span class="search-empty">${matches.length} results, showing ${shown.length}. Keep typing to narrow down.</span>`);
             } else {
-                const shown = matches.slice(0, SEARCH_LIMIT);
-                let html = shown.map(item => `
-                    <a class="search-item" role="option" aria-selected="false" href="${rootPath}${escapeHtml(item.link)}">
-                        <span class="search-item-type">${item.type}</span>
-                        <span class="search-item-name">${highlightMatch(item.name, query)}</span>
-                        ${item.summary ? `<span class="search-item-summary">${highlightMatch(item.summary, query)}</span>` : ""}
-                    </a>`).join("");
-                if (matches.length > shown.length) {
-                    html += `<p class="search-empty">${matches.length - shown.length} more — keep typing to narrow down.</p>`;
-                }
-                resultsList.innerHTML = html;
+                showStatus(`<span class="visually-hidden">${matches.length} result${matches.length === 1 ? "" : "s"}.</span>`);
             }
 
-            positionPanel();
-            searchResults.classList.add("is-open");
+            openPanel();
             setActive(matches.length ? 0 : -1);
         }
 
@@ -437,23 +485,30 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         searchInput.addEventListener("keydown", (e) => {
-            if (e.key === "ArrowDown") {
+            const open = searchResults.classList.contains("is-open");
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
-                setActive(activeIndex + 1);
-            } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setActive(activeIndex - 1);
+                if (!open) {
+                    runSearch();
+                } else {
+                    setActive(activeIndex + (e.key === "ArrowDown" ? 1 : -1));
+                }
             } else if (e.key === "Enter") {
                 const target = items()[activeIndex];
-                if (target) {
+                if (target && open) {
                     e.preventDefault();
                     closeSearch();
                     window.location.href = target.href;
                 }
             } else if (e.key === "Escape") {
-                searchInput.value = "";
-                closeSearch();
-                searchInput.blur();
+                // First Esc closes the results, the next clears the box.
+                // Focus stays in the search box either way.
+                e.preventDefault();
+                if (open) {
+                    closeSearch();
+                } else {
+                    searchInput.value = "";
+                }
             }
         });
 
