@@ -74,6 +74,7 @@ fn writes_every_file_the_pages_load() {
         "utils/helpers.html",
         "nav-data.js",
         "search-index.js",
+        "search-index.json",
         "style.css",
         "app.js",
     ] {
@@ -209,7 +210,13 @@ fn layout_and_theme_are_baked_into_the_page() {
 fn generated_data_holds_no_build_machine_paths() {
     let out = generate_sample("paths", &[]);
     let manifest_dir = env!("CARGO_MANIFEST_DIR").replace('\\', "/");
-    for file in ["search-index.js", "nav-data.js", "guide.html", "index.html"] {
+    for file in [
+        "search-index.js",
+        "search-index.json",
+        "nav-data.js",
+        "guide.html",
+        "index.html",
+    ] {
         let body = read(&out, file).replace("\\\\", "/").replace('\\', "/");
         assert!(!body.contains(&manifest_dir), "{} leaks a local path", file);
         assert!(!body.contains("filepath"), "{} has a filepath field", file);
@@ -309,6 +316,27 @@ fn normalize_whitespace(html: &str) -> String {
 /// `tests/snapshots/sample`. Set `PY_DOC_UPDATE_SNAPSHOTS=1` to rewrite them
 /// after an intended change to the default theme.
 fn assert_matches_sample_snapshots(out: &Path) {
+    assert_matches_sample_snapshots_after(out, |html| html.to_string());
+}
+
+/// Removes `<script src="...search-index.js" defer></script>` tags, which
+/// templates written before the index was loaded lazily still carry.
+fn without_eager_search_index(html: &str) -> String {
+    const TAIL: &str = "search-index.js\" defer></script> ";
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(end) = rest.find(TAIL) {
+        let start = rest[..end].rfind("<script src=\"").expect("script tag");
+        out.push_str(&rest[..start]);
+        rest = &rest[end + TAIL.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Like [`assert_matches_sample_snapshots`], after applying `adjust` to
+/// each normalized page.
+fn assert_matches_sample_snapshots_after(out: &Path, adjust: fn(&str) -> String) {
     let snapshots = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("snapshots")
@@ -327,7 +355,7 @@ fn assert_matches_sample_snapshots(out: &Path) {
     for page in &pages {
         let expected = fs::read_to_string(snapshots.join(page)).unwrap();
         assert_eq!(
-            normalize_whitespace(&read(out, page)),
+            adjust(&normalize_whitespace(&read(out, page))),
             expected.trim_end(),
             "{} differs from tests/snapshots/sample/{}",
             page,
@@ -395,6 +423,30 @@ fn without_javascript_every_module_is_two_clicks_away() {
 }
 
 #[test]
+fn the_search_index_is_loaded_on_demand() {
+    let out = generate_sample("lazy_search", &[]);
+    // Pages do not load it; app.js does, on the first search.
+    for page in html_pages(&out) {
+        let html = read(&out, &page);
+        assert!(
+            !html.contains("search-index"),
+            "{page} loads the search index"
+        );
+        assert!(html.contains("app.js"), "{page}");
+    }
+    // The JSON (fetched over HTTP) and the script (file://) carry the same index.
+    let json = read(&out, "search-index.json");
+    let script = read(&out, "search-index.js");
+    assert_eq!(script, format!("const searchIndex = {json};"));
+    assert!(json.starts_with('{') && json.contains("slugify"));
+    // Both are in the manifest, so --clean manages them.
+    let manifest = read(&out, ".py-doc-manifest");
+    for file in ["search-index.js", "search-index.json"] {
+        assert!(manifest.lines().any(|line| line == file), "{file}");
+    }
+}
+
+#[test]
 fn default_output_matches_the_snapshots() {
     let out = generate_sample("default_snapshots", &[]);
     assert_matches_sample_snapshots(&out);
@@ -422,7 +474,9 @@ fn whole_file_template_overrides_still_work() {
         "the custom templates were not used:\n{}",
         String::from_utf8_lossy(&output.stdout)
     );
-    assert_matches_sample_snapshots(&out);
+    // They still load search-index.js on every page, which app.js accepts;
+    // the bundled theme now loads it on the first search instead.
+    assert_matches_sample_snapshots_after(&out, without_eager_search_index);
 
     // A standalone page that shares nothing with the bundled theme.
     let templates = out_dir("standalone_templates_src");
