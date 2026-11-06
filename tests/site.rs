@@ -315,8 +315,9 @@ fn normalize_whitespace(html: &str) -> String {
 /// Compares every page of a generated sample site with the snapshots in
 /// `tests/snapshots/sample`. Set `PY_DOC_UPDATE_SNAPSHOTS=1` to rewrite them
 /// after an intended change to the default theme.
-fn assert_matches_sample_snapshots(out: &Path) {
-    assert_matches_sample_snapshots_after(out, |html| html.to_string());
+/// Pages listed in `skip` must exist but are not compared.
+fn assert_matches_sample_snapshots(out: &Path, skip: &[&str]) {
+    assert_matches_sample_snapshots_after(out, skip, |html| html.to_string());
 }
 
 /// Removes `<script src="...search-index.js" defer></script>` tags, which
@@ -336,7 +337,7 @@ fn without_eager_search_index(html: &str) -> String {
 
 /// Like [`assert_matches_sample_snapshots`], after applying `adjust` to
 /// each normalized page.
-fn assert_matches_sample_snapshots_after(out: &Path, adjust: fn(&str) -> String) {
+fn assert_matches_sample_snapshots_after(out: &Path, skip: &[&str], adjust: fn(&str) -> String) {
     let snapshots = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("snapshots")
@@ -352,7 +353,7 @@ fn assert_matches_sample_snapshots_after(out: &Path, adjust: fn(&str) -> String)
         return;
     }
     assert_eq!(pages, html_pages(&snapshots), "the set of pages changed");
-    for page in &pages {
+    for page in pages.iter().filter(|p| !skip.contains(&p.as_str())) {
         let expected = fs::read_to_string(snapshots.join(page)).unwrap();
         assert_eq!(
             adjust(&normalize_whitespace(&read(out, page))),
@@ -449,7 +450,7 @@ fn the_search_index_is_loaded_on_demand() {
 #[test]
 fn default_output_matches_the_snapshots() {
     let out = generate_sample("default_snapshots", &[]);
-    assert_matches_sample_snapshots(&out);
+    assert_matches_sample_snapshots(&out, &[]);
 }
 
 #[test]
@@ -474,9 +475,18 @@ fn whole_file_template_overrides_still_work() {
         "the custom templates were not used:\n{}",
         String::from_utf8_lossy(&output.stdout)
     );
-    // They still load search-index.js on every page, which app.js accepts;
+    // engine.html has a class attribute, which the old module.html predates:
+    // it still renders, just without the Attributes list. The old templates
+    // also still load search-index.js on every page, which app.js accepts;
     // the bundled theme now loads it on the first search instead.
-    assert_matches_sample_snapshots_after(&out, without_eager_search_index);
+    assert_matches_sample_snapshots_after(
+        &out,
+        &["01_core/engine.html"],
+        without_eager_search_index,
+    );
+    let engine = read(&out, "01_core/engine.html");
+    assert!(engine.contains("id=\"class.Engine\""));
+    assert!(!engine.contains("attr.Engine.speed"));
 
     // A standalone page that shares nothing with the bundled theme.
     let templates = out_dir("standalone_templates_src");
