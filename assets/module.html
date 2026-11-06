@@ -31,17 +31,10 @@
             {% if module.variables %}
             <section class="item-section">
                 <h2>Variables</h2>
-                {% for var in module.variables %}
-                    <div class="item-card" id="var.{{ var.name }}">
-                        <div class="signature-box">
-                            <span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span>
-                            <span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ var.line }}</span>{% endif %}</span>
-                        </div>
-                        {% if var.docstring %}
-                            <div class="docstring">{{ var.docstring | safe }}</div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
+                {#- Cards are kept on one line each: large projects have thousands. -#}
+                {%- for var in module.variables %}
+                <div class="item-card" id="var.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
+                {%- endfor %}
             </section>
             {% endif %}
             {% endblock variables %}
@@ -63,17 +56,9 @@
                         {% if class.variables %}
                             <div class="method-list">
                                 <h3 class="method-list-title">Attributes</h3>
-                                {% for var in class.variables %}
-                                    <div class="method-item" id="attr.{{ class.name }}.{{ var.name }}">
-                                        <div class="signature-box">
-                                            <span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span>
-                                            <span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span>
-                                        </div>
-                                        {% if var.docstring %}
-                                            <div class="docstring">{{ var.docstring | safe }}</div>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
+                                {%- for var in class.variables %}
+                                <div class="method-item" id="attr.{{ class.name }}.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
+                                {%- endfor %}
                             </div>
                         {% endif %}
 
@@ -124,17 +109,17 @@
     <aside class="page-outline" aria-label="On this page">
         <div class="outline-title">On this page</div>
         <ul>
-            {% for var in module.variables %}
-                <li><a href="#var.{{ var.name }}">{{ var.name }}</a></li>
-            {% endfor %}
+            {%- for var in module.variables %}
+            <li><a href="#var.{{ var.name }}">{{ var.name }}</a></li>
+            {%- endfor %}
             {% for class in module.classes %}
                 <li>
                     <a href="#class.{{ class.name }}">{{ class.name }}</a>
                     {% if class.variables or class.functions %}
                         <ul>
-                            {% for var in class.variables %}
-                                <li><a href="#attr.{{ class.name }}.{{ var.name }}">{{ var.name }}</a></li>
-                            {% endfor %}
+                            {%- for var in class.variables %}
+                            <li><a href="#attr.{{ class.name }}.{{ var.name }}">{{ var.name }}</a></li>
+                            {%- endfor %}
                             {% for func in class.functions %}
                                 <li><a href="#method.{{ class.name }}.{{ func.name }}">{{ func.name }}</a></li>
                             {% endfor %}
