@@ -93,7 +93,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | --- | --- |
 | `-s`, `--src <PATH>` | Project directory, or a single `.py` file. Required unless set in `pyproject.toml`. |
 | `-o`, `--out <DIR>` | Where the site (and `api.json`) is written. Required unless set in `pyproject.toml`. |
-| `--format <html\|json>` | What to write to `--out`: the HTML site, `api.json`, or both. Repeatable. Default `html`. See [JSON output](#json-output). |
+| `--format <html\|json\|markdown>` | What to write to `--out`: the HTML site, `api.json`, Markdown pages, or any mix. Repeatable. Default `html`. See [JSON output](#json-output) and [Markdown output](#markdown-output). |
 | `-n`, `--name <NAME>` | Package name shown in the docs. Defaults to `[project] name`; required if there is none. |
 | `--doc-version <VERSION>` | Your project's version, shown in the sidebar. Defaults to `[project] version`, else `1.0.0`. |
 | `--layout <classic\|minimal\|modern>` | Layout the site opens with. Default `classic`. |
@@ -248,7 +248,7 @@ py-doc --src src/myproject --out build --format json                 # api.json 
 py-doc --src src/myproject --out build --format html --format json   # site and api.json
 ```
 
-With only `json`, no HTML is written: `--out` gets `api.json`, the `.py-doc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`. `markdown` is planned and rejected for now.
+With only `json`, no HTML is written: `--out` gets `api.json`, the `.py-doc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`.
 
 This is separate from a [coverage check](#documentation-coverage): `--coverage` without `--out` on the command line writes nothing at all, whatever `format` says.
 
@@ -291,6 +291,49 @@ Shortened (`"...": "..."` marks left-out fields):
 ```
 
 The full shape is in [`docs/api.schema.json`](docs/api.schema.json) (JSON Schema 2020-12). A test validates real output against it, so it cannot fall out of date. Modules are sorted by `qualname`, then `path`; members keep source order. The same input always gives a byte-identical file. `schema_version` changes only when a field is renamed, removed or changes type.
+
+### Markdown output
+
+`--format markdown` writes the API reference as Markdown, to drop into an existing MkDocs or Docusaurus site, a wiki, or an LLM's context:
+
+```bash
+py-doc --src src/myproject --out docs/api --format markdown
+```
+
+It writes one `.md` page per module at the same path as its HTML page (`core/engine.html` becomes `core/engine.md`, a package's `__init__.py` becomes `index.md` in its folder), plus:
+
+* `index.md`: the package docstring and a list of every module with its summary;
+* `llms.txt`: a short index in the [llms.txt](https://llmstxt.org) format, for AI tools;
+* `llms-full.txt`: every page in one file.
+
+Each page has the module docstring, then **Variables**, **Classes** (each with its attributes and methods) and **Functions**. Every symbol has a `python` code block with its signature, then its docstring as written (docstrings are Markdown already). The `#pd-` macros become plain Markdown:
+
+| Macro | Markdown |
+| --- | --- |
+| `#pd-note: text` | `> **Note:** text` |
+| `#pd-warning: text` | `> **Warning:** text` |
+| `#pd-doc-link: target` | `See reference: [target](../core/engine.md#class.Engine)` |
+| `#pd-image: path` | `![](../assets/path)`, with the image copied to `assets/` |
+| `#pd-code lang` | a fenced `lang` block |
+
+`>>>` doctest sessions are fenced as `pycon`. A doc-link or image that cannot be resolved stays as text, so no link is ever broken.
+
+Each symbol heading is preceded by an HTML anchor with the same id the HTML site uses: `class.Engine`, `method.Engine.run`, `attr.Engine.speed`, `fn.boot` and `var.TIMEOUT`. Doc-links point at these, and they work on GitHub, in MkDocs and in Docusaurus without any extension.
+
+With MkDocs, point `docs_dir` at the output, or write it into a folder of your docs. This config also makes `mkdocs build --strict` fail on any broken link or anchor:
+
+```yaml
+site_name: myproject
+docs_dir: docs/api
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+```
+
+Docusaurus 3 reads `.md` files as MDX by default, and MDX rejects some plain Markdown, such as a `{` or `<` in a docstring. Set `markdown: { format: 'detect' }` in `docusaurus.config.js` so `.md` files are read as CommonMark.
+
+The output is deterministic: the same input gives byte-identical files. Pages follow the site's order (`#pd-z-index`, then name).
 
 ### Keeping the output folder tidy
 

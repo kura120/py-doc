@@ -111,8 +111,7 @@ pub enum OutputFormat {
     Html,
     /// `api.json`: the parsed API, with raw and rendered docstrings
     Json,
-    /// Not supported yet (planned, #20)
-    #[value(hide = true)]
+    /// One `.md` page per module, `index.md`, `llms.txt` and `llms-full.txt`
     Markdown,
 }
 
@@ -429,19 +428,17 @@ fn run_generation(args: &Config) -> Result<()> {
                     written.push(format!("{out_shown}/index.html"));
                 }
                 OutputFormat::Json => {
-                    if !args.formats.contains(&OutputFormat::Html) {
-                        status!(
-                            "\x1b[36;1m[3/3]\x1b[0m Writing {}...",
-                            output::json::FILE_NAME
-                        );
-                    }
+                    status!("  Writing {}...", output::json::FILE_NAME);
                     let api =
                         output::json::to_string(&package, &args.doc_version, args.include_private);
                     generator.write_file(output::json::FILE_NAME, &api)?;
                     written.push(format!("{out_shown}/{}", output::json::FILE_NAME));
                 }
-                // Rejected by Config::resolve until #20 implements it.
-                OutputFormat::Markdown => bail!("format `markdown` is not supported yet"),
+                OutputFormat::Markdown => {
+                    status!("  Writing Markdown pages, {}...", output::markdown::LLMS);
+                    output::markdown::write(&generator, &package, &args.doc_version)?;
+                    written.push(format!("{out_shown}/{}", output::markdown::INDEX));
+                }
             }
         }
         generator.finish(args.clean)?;

@@ -1,0 +1,15 @@
+# demo
+
+Version 1.0.0
+
+Demo package root docstring.
+
+## Modules
+
+- [`guide`](./guide.md): Getting Started
+- [`core`](./01_core/index.md): Core package.
+- [`core.sub`](./01_core/sub/index.md)
+- [`demo`](./__init__.md): Demo package root docstring.
+- [`core.engine`](./01_core/engine.md): Engine module.
+- [`core.sub.engine`](./01_core/sub/engine.md): A second module that is also named engine.
+- [`utils.helpers`](./utils/helpers.md)
