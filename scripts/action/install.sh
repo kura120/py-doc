@@ -69,6 +69,7 @@ install_release() {
     local target fallback="" ext="tar.gz" exe="py-doc"
     case "$RUNNER_OS/$RUNNER_ARCH" in
         Linux/X64) target="x86_64-unknown-linux-gnu" ;;
+        Linux/ARM64) target="aarch64-unknown-linux-gnu" ;;
         macOS/ARM64)
             target="aarch64-apple-darwin"
             fallback="x86_64-apple-darwin"
@@ -108,7 +109,7 @@ install_release() {
     echo "Downloading py-doc $tag for $target..."
     if ! fetch "$url" "$WORK/$asset"; then
         if [ -z "$fallback" ]; then
-            echo "::error::Release $tag has no download for $target."
+            echo "::error::Release $tag has no download for $target. Use a newer version, or 'install: source' with a Rust toolchain."
             exit 1
         fi
         target="$fallback"

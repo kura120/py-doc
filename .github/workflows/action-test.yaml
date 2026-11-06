@@ -34,6 +34,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         install: [release, source]
+        # Linux arm64 binaries ship from the release after v0.5.1; until that
+        # is the latest release, only a source build can run there.
+        include:
+          - os: ubuntu-24.04-arm
+            install: source
     steps:
       - uses: actions/checkout@v4
 

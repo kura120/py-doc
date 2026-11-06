@@ -114,7 +114,7 @@ py-doc --src . --out docs --name myproject \
 
 ### GitHub Actions
 
-The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. From v0.5.1 on, a missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
+The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64 or arm64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. From v0.5.1 on, a missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
 
 This workflow builds the docs and publishes them to GitHub Pages. In the repository settings, set Pages to deploy from GitHub Actions.
 
@@ -157,7 +157,7 @@ jobs:
 | Input | Meaning |
 | --- | --- |
 | `version` | Release to install, such as `0.5.1`. Default `latest`. |
-| `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner; use it on Linux arm64, which has no release binary. |
+| `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. Releases up to v0.5.1 have no Linux arm64 binary, so use `source` there for those versions. |
 | `src` | `--src`. Default `.`. |
 | `out` | `--out`. Default `site`. |
 | `name` | `--name`. Defaults to the repository name. |
