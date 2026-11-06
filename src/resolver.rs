@@ -6,37 +6,31 @@ struct ModuleEntry {
     /// prefixes ("01_core.engine" and "core.engine").
     paths: Vec<String>,
     link_path: String,
-    /// Dotted path inside the module -> anchor: "f" -> "fn.f",
-    /// "Outer.Inner" -> "class.Outer.Inner", "Outer.run" -> "method.Outer.run".
-    symbols: HashMap<String, String>,
+    /// Dotted path inside the module -> anchor kind; the anchor is
+    /// "<kind>.<path>": "fn.f", "class.Outer.Inner", "method.Outer.run".
+    symbols: HashMap<String, &'static str>,
 }
 
 /// Adds a class, its members and its nested classes to `symbols`. Members
 /// are inserted before the nested classes, and attributes before methods,
 /// so a class wins over a method of the same name, and a method over an
 /// attribute.
-fn add_class(symbols: &mut HashMap<String, String>, class: &PythonClass) {
+fn add_class(symbols: &mut HashMap<String, &'static str>, class: &PythonClass) {
     let qualname = if class.qualname.is_empty() {
         &class.name
     } else {
         &class.qualname
     };
     for v in &class.variables {
-        symbols.insert(
-            format!("{}.{}", qualname, v.name),
-            format!("attr.{}.{}", qualname, v.name),
-        );
+        symbols.insert(format!("{}.{}", qualname, v.name), "attr");
     }
     for f in &class.functions {
-        symbols.insert(
-            format!("{}.{}", qualname, f.name),
-            format!("method.{}.{}", qualname, f.name),
-        );
+        symbols.insert(format!("{}.{}", qualname, f.name), "method");
     }
     for nested in &class.classes {
         add_class(symbols, nested);
     }
-    symbols.insert(qualname.clone(), format!("class.{}", qualname));
+    symbols.insert(qualname.clone(), "class");
 }
 
 /// Resolves `#pd-doc-link` targets against the modules that were actually parsed.
@@ -71,10 +65,10 @@ fn module_entries(modules: &[PythonModule]) -> Vec<ModuleEntry> {
             // later kind wins, as before.
             let mut symbols = HashMap::new();
             for v in &module.variables {
-                symbols.insert(v.name.clone(), format!("var.{}", v.name));
+                symbols.insert(v.name.clone(), "var");
             }
             for f in &module.functions {
-                symbols.insert(f.name.clone(), format!("fn.{}", f.name));
+                symbols.insert(f.name.clone(), "fn");
             }
             for class in &module.classes {
                 add_class(&mut symbols, class);
@@ -152,9 +146,9 @@ impl Resolver {
         while let Some(dot) = target[..split].rfind('.') {
             let (module_path, symbol) = (&target[..dot], &target[dot + 1..]);
             if let Some(module) = self.find_module(module_path)
-                && let Some(anchor) = module.symbols.get(symbol)
+                && let Some(kind) = module.symbols.get(symbol)
             {
-                return Some(format!("{}#{}", module.link_path, anchor));
+                return Some(format!("{}#{}.{}", module.link_path, kind, symbol));
             }
             split = dot;
         }
@@ -165,7 +159,7 @@ impl Resolver {
             module
                 .symbols
                 .get(target)
-                .map(|anchor| format!("{}#{}", module.link_path, anchor))
+                .map(|kind| format!("{}#{}.{}", module.link_path, kind, target))
         });
         let first = hits.next()?;
         hits.next().is_none().then_some(first)

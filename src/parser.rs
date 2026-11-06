@@ -407,45 +407,63 @@ fn dedupe<T>(
     badges: impl Fn(&mut T) -> &mut Vec<String>,
     merge_same_block: bool,
 ) -> Vec<T> {
-    let mut kept: Vec<(T, Origin)> = Vec::with_capacity(items.len());
-    // Name -> indexes into `kept`; rebuilt only on the rare replacement.
-    let mut by_name: std::collections::HashMap<String, Vec<usize>> =
-        std::collections::HashMap::new();
-    for (item, origin) in items {
-        let same = by_name.get(name(&item)).cloned().unwrap_or_default();
-        if same.is_empty()
-            || (!merge_same_block && same.iter().any(|&i| kept[i].1.block == origin.block))
-        {
-            by_name
-                .entry(name(&item).to_string())
-                .or_default()
-                .push(kept.len());
-            kept.push((item, origin));
-            continue;
-        }
-        if !origin.type_checking && same.iter().all(|&i| kept[i].1.type_checking) {
-            // A runtime definition wins over type-checking-only ones.
-            let at = same[0];
-            for &i in same.iter().rev() {
-                kept.remove(i);
-            }
-            kept.insert(at, (item, origin));
-            by_name.clear();
-            for (i, (k, _)) in kept.iter().enumerate() {
-                by_name.entry(name(k).to_string()).or_default().push(i);
-            }
-        } else if !origin.type_checking {
-            // A rival runtime definition: which one exists depends on the branch.
-            for &i in &same {
-                kept[i].1.conditional = true;
+    let n = items.len();
+    let mut keep = vec![true; n];
+    let mut conditional: Vec<bool> = items.iter().map(|(_, o)| o.conditional).collect();
+    // Output position; a runtime definition that replaces type-checking
+    // ones takes the place of the first of them.
+    let mut position: Vec<usize> = (0..n).collect();
+    let mut moved = false;
+    if n > 1 {
+        // Kept items with the same name form a chain: `heads` maps a name to
+        // (first, last) of its chain and `next` links it. No allocation per
+        // name, since most names appear once.
+        const END: usize = usize::MAX;
+        let mut heads: std::collections::HashMap<&str, (usize, usize)> =
+            std::collections::HashMap::with_capacity(n);
+        let mut next = vec![END; n];
+        for i in 0..n {
+            let origin = items[i].1;
+            let key = name(&items[i].0);
+            let Some(&(first, last)) = heads.get(key) else {
+                heads.insert(key, (i, i));
+                continue;
+            };
+            let chain = || {
+                let next = &next;
+                std::iter::successors(Some(first), move |&j| (next[j] != END).then(|| next[j]))
+            };
+            if !merge_same_block && chain().any(|j| items[j].1.block == origin.block) {
+                next[last] = i;
+                heads.insert(key, (first, i));
+            } else if !origin.type_checking && chain().all(|j| items[j].1.type_checking) {
+                // A runtime definition wins over type-checking-only ones.
+                position[i] = position[first];
+                moved = true;
+                for j in chain().collect::<Vec<_>>() {
+                    keep[j] = false;
+                }
+                heads.insert(key, (i, i));
+            } else {
+                keep[i] = false;
+                if !origin.type_checking {
+                    // A rival runtime definition: which one exists depends on the branch.
+                    for j in chain().collect::<Vec<_>>() {
+                        conditional[j] = true;
+                    }
+                }
             }
         }
     }
-    kept.into_iter()
-        .map(|(mut item, origin)| {
+
+    let mut kept: Vec<(usize, T)> = items
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| keep[*i])
+        .map(|(i, (mut item, origin))| {
             let label = if origin.type_checking {
                 Some("type-checking")
-            } else if origin.conditional {
+            } else if conditional[i] {
                 Some("conditional")
             } else {
                 None
@@ -453,9 +471,13 @@ fn dedupe<T>(
             if let Some(label) = label {
                 badges(&mut item).push(label.to_string());
             }
-            item
+            (i, item)
         })
-        .collect()
+        .collect();
+    if moved {
+        kept.sort_by_key(|(i, _)| (position[*i], *i));
+    }
+    kept.into_iter().map(|(_, item)| item).collect()
 }
 
 /// Variables assigned in a module or class body (including inside `if`,

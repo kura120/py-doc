@@ -54,7 +54,24 @@ impl PythonClass {
     /// Removes private members, recursively through nested classes, and
     /// returns a stub holding them (None if there were none).
     fn hide_private(&mut self) -> Option<PythonClass> {
-        let mut stub = PythonClass {
+        let functions;
+        let variables;
+        let mut classes;
+        (self.functions, functions) =
+            split_private(std::mem::take(&mut self.functions), |f| f.is_private);
+        (self.variables, variables) =
+            split_private(std::mem::take(&mut self.variables), |v| v.is_private);
+        (self.classes, classes) =
+            split_private(std::mem::take(&mut self.classes), |c| c.is_private);
+        classes.extend(
+            self.classes
+                .iter_mut()
+                .filter_map(PythonClass::hide_private),
+        );
+        if functions.is_empty() && variables.is_empty() && classes.is_empty() {
+            return None;
+        }
+        Some(PythonClass {
             name: self.name.clone(),
             qualname: self.qualname.clone(),
             bases: Vec::new(),
@@ -62,25 +79,11 @@ impl PythonClass {
             docstring: None,
             summary: None,
             badges: Vec::new(),
-            functions: Vec::new(),
-            classes: Vec::new(),
-            variables: Vec::new(),
+            functions,
+            classes,
+            variables,
             is_private: false,
-        };
-        (self.functions, stub.functions) =
-            split_private(std::mem::take(&mut self.functions), |f| f.is_private);
-        (self.variables, stub.variables) =
-            split_private(std::mem::take(&mut self.variables), |v| v.is_private);
-        (self.classes, stub.classes) =
-            split_private(std::mem::take(&mut self.classes), |c| c.is_private);
-        stub.classes.extend(
-            self.classes
-                .iter_mut()
-                .filter_map(PythonClass::hide_private),
-        );
-        let empty =
-            stub.functions.is_empty() && stub.variables.is_empty() && stub.classes.is_empty();
-        (!empty).then_some(stub)
+        })
     }
 }
 
