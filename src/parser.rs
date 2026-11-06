@@ -280,49 +280,228 @@ fn attribute_docstring(stmt: &Stmt, next: Option<&Stmt>, source: &Source) -> Opt
     (!comments.is_empty()).then(|| comments.join("\n"))
 }
 
-/// Variables assigned directly in `body` (a module or class body), in
-/// source order. A name assigned twice is documented once, where it first
-/// appears. `is_private` decides visibility from the name.
+/// Where a definition was found while walking a body.
+#[derive(Clone, Copy)]
+struct Origin {
+    /// Which suite (statement list) it is in; definitions in the same suite
+    /// are never merged (overloads, property setters).
+    block: usize,
+    /// Inside an `if`/`elif`/`else` or `try`/`except`/`else` branch.
+    conditional: bool,
+    /// Inside an `if TYPE_CHECKING:` branch: only seen by type checkers.
+    type_checking: bool,
+}
+
+/// A statement that may define something, with the statement after it in
+/// the same suite (for attribute docstrings).
+struct Found<'a> {
+    stmt: &'a Stmt,
+    next: Option<&'a Stmt>,
+    origin: Origin,
+}
+
+/// `TYPE_CHECKING` or `typing.TYPE_CHECKING`; `not ...` gives Some(false).
+fn type_checking_test(test: &Expr) -> Option<bool> {
+    match test {
+        Expr::Name(name) if name.id.as_str() == "TYPE_CHECKING" => Some(true),
+        Expr::Attribute(attr) if attr.attr.as_str() == "TYPE_CHECKING" => Some(true),
+        Expr::UnaryOp(op) if op.op == ast::UnaryOp::Not => {
+            type_checking_test(&op.operand).map(|tc| !tc)
+        }
+        _ => None,
+    }
+}
+
+/// `__name__ == "__main__"`, in either order.
+fn is_main_guard(test: &Expr) -> bool {
+    let Expr::Compare(compare) = test else {
+        return false;
+    };
+    let ([ast::CmpOp::Eq], [right]) = (&compare.ops[..], &compare.comparators[..]) else {
+        return false;
+    };
+    let is_name = |e: &Expr| matches!(e, Expr::Name(n) if n.id.as_str() == "__name__");
+    let is_main = |e: &Expr| matches!(e, Expr::StringLiteral(s) if s.value.to_str() == "__main__");
+    (is_name(&compare.left) && is_main(right)) || (is_main(&compare.left) && is_name(right))
+}
+
+/// Collects the statements of `body` that may define something, descending
+/// into `if`, `try` and `with` blocks but never into functions or classes,
+/// and skipping `if __name__ == "__main__":` blocks.
+fn walk_body<'a>(body: &'a [Stmt], origin: Origin, blocks: &mut usize, out: &mut Vec<Found<'a>>) {
+    let nested = |body: &'a [Stmt],
+                  conditional: bool,
+                  type_checking: bool,
+                  blocks: &mut usize,
+                  out: &mut Vec<Found<'a>>| {
+        *blocks += 1;
+        let inner = Origin {
+            block: *blocks,
+            conditional: origin.conditional || conditional,
+            type_checking: origin.type_checking || type_checking,
+        };
+        walk_body(body, inner, blocks, out);
+    };
+    for (index, stmt) in body.iter().enumerate() {
+        match stmt {
+            Stmt::FunctionDef(_)
+            | Stmt::ClassDef(_)
+            | Stmt::Assign(_)
+            | Stmt::AnnAssign(_)
+            | Stmt::TypeAlias(_) => out.push(Found {
+                stmt,
+                next: body.get(index + 1),
+                origin,
+            }),
+            Stmt::If(if_stmt) => {
+                if is_main_guard(&if_stmt.test) {
+                    continue;
+                }
+                let tc = type_checking_test(&if_stmt.test);
+                nested(&if_stmt.body, true, tc == Some(true), blocks, out);
+                for clause in &if_stmt.elif_else_clauses {
+                    // The `else` of `if not TYPE_CHECKING` is type-checking only.
+                    let clause_tc = clause.test.is_none() && tc == Some(false);
+                    nested(&clause.body, true, clause_tc, blocks, out);
+                }
+            }
+            Stmt::Try(try_stmt) => {
+                nested(&try_stmt.body, true, false, blocks, out);
+                for ast::ExceptHandler::ExceptHandler(handler) in &try_stmt.handlers {
+                    nested(&handler.body, true, false, blocks, out);
+                }
+                nested(&try_stmt.orelse, true, false, blocks, out);
+                // `finally` always runs.
+                nested(&try_stmt.finalbody, false, false, blocks, out);
+            }
+            Stmt::With(with_stmt) => nested(&with_stmt.body, false, false, blocks, out),
+            _ => {}
+        }
+    }
+}
+
+/// The definitions of a module or class body.
+fn walk(body: &[Stmt]) -> Vec<Found<'_>> {
+    let mut out = Vec::new();
+    let mut blocks = 0;
+    let top = Origin {
+        block: 0,
+        conditional: false,
+        type_checking: false,
+    };
+    walk_body(body, top, &mut blocks, &mut out);
+    out
+}
+
+/// Keeps one definition per name when the same name is defined in several
+/// suites (`if`/`else`, `try`/`except`): the first one, except that a
+/// runtime definition replaces one only seen under `TYPE_CHECKING`.
+/// Several definitions in the same suite are all kept (overloads, property
+/// setters) unless `merge_same_block` is set. Kept definitions that are
+/// conditional, or had a runtime rival in another suite, get a
+/// "conditional" badge; those only seen under `TYPE_CHECKING` get
+/// "type-checking".
+fn dedupe<T>(
+    items: Vec<(T, Origin)>,
+    name: impl Fn(&T) -> &str,
+    badges: impl Fn(&mut T) -> &mut Vec<String>,
+    merge_same_block: bool,
+) -> Vec<T> {
+    let mut kept: Vec<(T, Origin)> = Vec::with_capacity(items.len());
+    // Name -> indexes into `kept`; rebuilt only on the rare replacement.
+    let mut by_name: std::collections::HashMap<String, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (item, origin) in items {
+        let same = by_name.get(name(&item)).cloned().unwrap_or_default();
+        if same.is_empty()
+            || (!merge_same_block && same.iter().any(|&i| kept[i].1.block == origin.block))
+        {
+            by_name
+                .entry(name(&item).to_string())
+                .or_default()
+                .push(kept.len());
+            kept.push((item, origin));
+            continue;
+        }
+        if !origin.type_checking && same.iter().all(|&i| kept[i].1.type_checking) {
+            // A runtime definition wins over type-checking-only ones.
+            let at = same[0];
+            for &i in same.iter().rev() {
+                kept.remove(i);
+            }
+            kept.insert(at, (item, origin));
+            by_name.clear();
+            for (i, (k, _)) in kept.iter().enumerate() {
+                by_name.entry(name(k).to_string()).or_default().push(i);
+            }
+        } else if !origin.type_checking {
+            // A rival runtime definition: which one exists depends on the branch.
+            for &i in &same {
+                kept[i].1.conditional = true;
+            }
+        }
+    }
+    kept.into_iter()
+        .map(|(mut item, origin)| {
+            let label = if origin.type_checking {
+                Some("type-checking")
+            } else if origin.conditional {
+                Some("conditional")
+            } else {
+                None
+            };
+            if let Some(label) = label {
+                badges(&mut item).push(label.to_string());
+            }
+            item
+        })
+        .collect()
+}
+
+/// Variables assigned in a module or class body (including inside `if`,
+/// `try` and `with` blocks), in source order. A name assigned twice is
+/// documented once (see `dedupe`). `is_private` decides visibility from the
+/// name.
 fn extract_variables(
-    body: &[Stmt],
+    found: &[Found],
     source: &Source,
     kind: ClassKind,
     is_private: impl Fn(&str) -> bool,
 ) -> Vec<PythonVariable> {
-    let mut variables: Vec<PythonVariable> = Vec::new();
-    for (index, stmt) in body.iter().enumerate() {
+    let mut variables: Vec<(PythonVariable, Origin)> = Vec::new();
+    for Found { stmt, next, origin } in found {
         // (target, annotation, value, is_type_alias)
-        let mut found: Vec<(&Expr, Option<&Expr>, Option<&Expr>, bool)> = Vec::new();
+        let mut targets: Vec<(&Expr, Option<&Expr>, Option<&Expr>, bool)> = Vec::new();
         match stmt {
             Stmt::Assign(assign) => {
                 for target in &assign.targets {
                     match target {
-                        Expr::Name(_) => found.push((target, None, Some(&assign.value), false)),
+                        Expr::Name(_) => targets.push((target, None, Some(&assign.value), false)),
                         Expr::Tuple(ast::ExprTuple { elts, .. })
                         | Expr::List(ast::ExprList { elts, .. }) => {
-                            found.extend(elts.iter().map(|elt| (elt, None, None, false)))
+                            targets.extend(elts.iter().map(|elt| (elt, None, None, false)))
                         }
                         _ => {}
                     }
                 }
             }
             Stmt::AnnAssign(assign) => {
-                found.push((
+                targets.push((
                     &assign.target,
                     Some(&assign.annotation),
                     assign.value.as_deref(),
                     false,
                 ));
             }
-            Stmt::TypeAlias(alias) => found.push((&alias.name, None, Some(&alias.value), true)),
+            Stmt::TypeAlias(alias) => targets.push((&alias.name, None, Some(&alias.value), true)),
             _ => continue,
         }
 
         let mut docstring: Option<Option<String>> = None;
-        for (target, annotation, value, is_type_alias) in found {
+        for (target, annotation, value, is_type_alias) in targets {
             let Expr::Name(name) = target else { continue };
             let name = name.id.as_str();
-            if UNDOCUMENTED_NAMES.contains(&name) || variables.iter().any(|v| v.name == name) {
+            if UNDOCUMENTED_NAMES.contains(&name) {
                 continue;
             }
             let annotation = annotation.map(|a| annotation_to_string(a, source));
@@ -349,9 +528,9 @@ fn extract_variables(
                 _ => {}
             }
             let docstring = docstring
-                .get_or_insert_with(|| attribute_docstring(stmt, body.get(index + 1), source))
+                .get_or_insert_with(|| attribute_docstring(stmt, *next, source))
                 .clone();
-            variables.push(PythonVariable {
+            let variable = PythonVariable {
                 name: name.to_string(),
                 annotation,
                 value,
@@ -362,10 +541,51 @@ fn extract_variables(
                 docstring,
                 summary: None,
                 is_private: private,
-            });
+            };
+            variables.push((variable, *origin));
         }
     }
-    variables
+    dedupe(variables, |v| &v.name, |v| &mut v.badges, true)
+}
+
+/// The functions, classes and variables of a module or class body.
+/// `prefix` is the qualified name of the enclosing class, if any.
+/// `is_public` decides functions and classes; module variables use it too,
+/// while class attributes follow the underscore rule, dunders included.
+fn extract_members(
+    body: &[Stmt],
+    source: &Source,
+    kind: ClassKind,
+    prefix: Option<&str>,
+    is_public: &dyn Fn(&str) -> bool,
+) -> (Vec<PythonFunction>, Vec<PythonClass>, Vec<PythonVariable>) {
+    let found = walk(body);
+    let mut functions = Vec::new();
+    let mut classes = Vec::new();
+    for item in &found {
+        match item.stmt {
+            Stmt::FunctionDef(func) => {
+                let mut function = extract_function(func, source);
+                function.is_private = !is_public(&function.name);
+                functions.push((function, item.origin));
+            }
+            Stmt::ClassDef(class_def) => {
+                let mut class = extract_class(class_def, source, prefix);
+                class.is_private = !is_public(&class.name);
+                classes.push((class, item.origin));
+            }
+            _ => {}
+        }
+    }
+    let variables = match kind {
+        ClassKind::Module => extract_variables(&found, source, kind, |name| !is_public(name)),
+        _ => extract_variables(&found, source, kind, |name| name.starts_with('_')),
+    };
+    (
+        dedupe(functions, |f| &f.name, |f| &mut f.badges, false),
+        dedupe(classes, |c| &c.name, |c| &mut c.badges, false),
+        variables,
+    )
 }
 
 pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
@@ -436,25 +656,11 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
     let syntax_body = parsed.into_syntax().body;
     module.docstring = leading_docstring(&syntax_body);
     module.all = read_dunder_all(&syntax_body);
-    module.variables = extract_variables(&syntax_body, &source, ClassKind::Module, |name| {
-        !is_public_name(name, module.all.as_deref())
-    });
-
-    for stmt in &syntax_body {
-        match stmt {
-            Stmt::FunctionDef(func) => {
-                let mut function = extract_function(func, &source);
-                function.is_private = !is_public_name(&function.name, module.all.as_deref());
-                module.functions.push(function);
-            }
-            Stmt::ClassDef(class_def) => {
-                let mut class = extract_class(class_def, &source);
-                class.is_private = !is_public_name(&class.name, module.all.as_deref());
-                module.classes.push(class);
-            }
-            _ => {}
-        }
-    }
+    let all = module.all.clone();
+    (module.functions, module.classes, module.variables) =
+        extract_members(&syntax_body, &source, ClassKind::Module, None, &|name| {
+            is_public_name(name, all.as_deref())
+        });
 
     Ok(module)
 }
@@ -591,15 +797,16 @@ fn extract_function(func: &ast::StmtFunctionDef, source: &Source) -> PythonFunct
     }
 }
 
-fn extract_class(class_def: &ast::StmtClassDef, source: &Source) -> PythonClass {
-    let functions = class_def
-        .body
-        .iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::FunctionDef(func) => Some(extract_function(func, source)),
-            _ => None,
-        })
-        .collect();
+fn extract_class(
+    class_def: &ast::StmtClassDef,
+    source: &Source,
+    prefix: Option<&str>,
+) -> PythonClass {
+    let name = class_def.name.to_string();
+    let qualname = match prefix {
+        Some(prefix) => format!("{}.{}", prefix, name),
+        None => name.clone(),
+    };
 
     let bases = class_def
         .arguments
@@ -613,21 +820,24 @@ fn extract_class(class_def: &ast::StmtClassDef, source: &Source) -> PythonClass 
         })
         .unwrap_or_default();
 
-    // Class attributes follow the underscore rule, and dunders are private.
-    let variables = extract_variables(
+    let (functions, classes, variables) = extract_members(
         &class_def.body,
         source,
         class_kind(class_def, source),
-        |name| name.starts_with('_'),
+        Some(&qualname),
+        &|name| is_public_name(name, None),
     );
 
     PythonClass {
-        name: class_def.name.to_string(),
+        name,
+        qualname,
         bases,
         line: source.line_of(class_def.name.range().start().to_usize()),
         docstring: leading_docstring(&class_def.body),
         summary: None,
+        badges: Vec::new(),
         functions,
+        classes,
         variables,
         is_private: false,
     }
@@ -706,9 +916,34 @@ mod tests {
         let source = Source::new(code);
         let body = parse_module(code).unwrap().into_syntax().body;
         let all = read_dunder_all(&body);
-        extract_variables(&body, &source, ClassKind::Module, |name| {
+        extract_variables(&walk(&body), &source, ClassKind::Module, |name| {
             !is_public_name(name, all.as_deref())
         })
+    }
+
+    /// (functions, classes, variables) of a module, as "name[badges]".
+    fn members_of(code: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
+        let source = Source::new(code);
+        let body = parse_module(code).unwrap().into_syntax().body;
+        let (functions, classes, variables) =
+            extract_members(&body, &source, ClassKind::Module, None, &|name| {
+                is_public_name(name, None)
+            });
+        let show = |name: &str, badges: &[String]| {
+            if badges.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}[{}]", name, badges.join(","))
+            }
+        };
+        (
+            functions.iter().map(|f| show(&f.name, &f.badges)).collect(),
+            classes
+                .iter()
+                .map(|c| show(&c.qualname, &c.badges))
+                .collect(),
+            variables.iter().map(|v| show(&v.name, &v.badges)).collect(),
+        )
     }
 
     fn class_of(code: &str) -> PythonClass {
@@ -717,7 +952,7 @@ mod tests {
         let Some(Stmt::ClassDef(class_def)) = body.first() else {
             panic!("no class")
         };
-        extract_class(class_def, &source)
+        extract_class(class_def, &source, None)
     }
 
     fn summary(vars: &[PythonVariable]) -> Vec<String> {
@@ -828,5 +1063,82 @@ mod tests {
         );
         let badges: Vec<_> = point.variables.iter().map(|v| v.badges.clone()).collect();
         assert_eq!(badges, [vec!["field"], vec!["field"], vec![], vec![]]);
+    }
+
+    #[test]
+    fn branches_keep_the_first_definition() {
+        let (functions, _, variables) = members_of(
+            "if A:\n    def f(): pass\n    X = 1\nelif B:\n    def f(): pass\nelse:\n    def f(): pass\n    X = 2\n\
+             def g(): pass\nif A:\n    def g(): pass\n",
+        );
+        assert_eq!(functions, ["f[conditional]", "g[conditional]"]);
+        assert_eq!(variables, ["X[conditional]"]);
+    }
+
+    #[test]
+    fn type_checking_definitions_never_replace_runtime_ones() {
+        let (functions, _, variables) = members_of(
+            "if TYPE_CHECKING:\n    def a(): pass\n    Alias = int\n\
+             def a(): pass\n\
+             def b(): pass\n\
+             if typing.TYPE_CHECKING:\n    def b(): pass\n\
+             if not TYPE_CHECKING:\n    def c(): pass\nelse:\n    def d(): pass\n",
+        );
+        assert_eq!(functions, ["a", "b", "c[conditional]", "d[type-checking]"]);
+        assert_eq!(variables, ["Alias[type-checking]"]);
+    }
+
+    #[test]
+    fn overloads_in_one_suite_are_all_kept() {
+        let (functions, _, _) = members_of(
+            "if TYPE_CHECKING:\n    @overload\n    def f(x: int): ...\n    @overload\n    def f(x: str): ...\n\
+             def f(x): pass\n",
+        );
+        // The runtime definition replaces the type-checking overloads.
+        assert_eq!(functions, ["f"]);
+
+        let (functions, _, _) = members_of(
+            "@overload\ndef f(x: int): ...\n@overload\ndef f(x: str): ...\ndef f(x): pass\n",
+        );
+        assert_eq!(functions, ["f[overload]", "f[overload]", "f"]);
+    }
+
+    #[test]
+    fn try_with_and_skipped_blocks() {
+        let (functions, classes, variables) = members_of(
+            "try:\n    import fast\nexcept ImportError:\n    def fast(): pass\nelse:\n    OK = 1\nfinally:\n    DONE = 1\n\
+             with lock:\n    INSIDE = 1\n\
+             def outer():\n    def hidden(): pass\n    class Hidden: pass\n\
+             if __name__ == '__main__':\n    def main(): pass\n    SCRIPT = 1\n\
+             if '__main__' == __name__:\n    def main2(): pass\n",
+        );
+        assert_eq!(functions, ["fast[conditional]", "outer"]);
+        assert!(classes.is_empty());
+        assert_eq!(variables, ["OK[conditional]", "DONE", "INSIDE"]);
+    }
+
+    #[test]
+    fn nested_classes() {
+        let outer = class_of(
+            "class Outer:\n    class Inner:\n        class Deep:\n            def ping(self): pass\n\
+             \x20   class _Private: pass\n\
+             \x20   if X:\n        class Meta: pass\n    else:\n        class Meta: pass\n",
+        );
+        let names: Vec<_> = outer
+            .classes
+            .iter()
+            .map(|c| (c.qualname.as_str(), c.is_private, c.badges.clone()))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                ("Outer.Inner", false, vec![]),
+                ("Outer._Private", true, vec![]),
+                ("Outer.Meta", false, vec!["conditional".to_string()]),
+            ]
+        );
+        let deep = &outer.classes[0].classes[0];
+        assert_eq!(deep.qualname, "Outer.Inner.Deep");
+        assert_eq!(deep.functions[0].name, "ping");
     }
 }

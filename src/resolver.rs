@@ -1,4 +1,4 @@
-use crate::models::{PythonModule, PythonPackage};
+use crate::models::{PythonClass, PythonModule, PythonPackage};
 use std::collections::HashMap;
 
 struct ModuleEntry {
@@ -6,10 +6,37 @@ struct ModuleEntry {
     /// prefixes ("01_core.engine" and "core.engine").
     paths: Vec<String>,
     link_path: String,
-    /// Function and variable name -> anchor kind ("fn" or "var").
-    symbols: HashMap<String, &'static str>,
-    /// Class name -> member name -> anchor kind ("method" or "attr").
-    classes: HashMap<String, HashMap<String, &'static str>>,
+    /// Dotted path inside the module -> anchor: "f" -> "fn.f",
+    /// "Outer.Inner" -> "class.Outer.Inner", "Outer.run" -> "method.Outer.run".
+    symbols: HashMap<String, String>,
+}
+
+/// Adds a class, its members and its nested classes to `symbols`. Members
+/// are inserted before the nested classes, and attributes before methods,
+/// so a class wins over a method of the same name, and a method over an
+/// attribute.
+fn add_class(symbols: &mut HashMap<String, String>, class: &PythonClass) {
+    let qualname = if class.qualname.is_empty() {
+        &class.name
+    } else {
+        &class.qualname
+    };
+    for v in &class.variables {
+        symbols.insert(
+            format!("{}.{}", qualname, v.name),
+            format!("attr.{}.{}", qualname, v.name),
+        );
+    }
+    for f in &class.functions {
+        symbols.insert(
+            format!("{}.{}", qualname, f.name),
+            format!("method.{}.{}", qualname, f.name),
+        );
+    }
+    for nested in &class.classes {
+        add_class(symbols, nested);
+    }
+    symbols.insert(qualname.clone(), format!("class.{}", qualname));
 }
 
 /// Resolves `#pd-doc-link` targets against the modules that were actually parsed.
@@ -40,30 +67,23 @@ fn module_entries(modules: &[PythonModule]) -> Vec<ModuleEntry> {
                 paths.push(raw);
             }
 
+            // Variables first, then functions, then classes: on a clash the
+            // later kind wins, as before.
+            let mut symbols = HashMap::new();
+            for v in &module.variables {
+                symbols.insert(v.name.clone(), format!("var.{}", v.name));
+            }
+            for f in &module.functions {
+                symbols.insert(f.name.clone(), format!("fn.{}", f.name));
+            }
+            for class in &module.classes {
+                add_class(&mut symbols, class);
+            }
+
             ModuleEntry {
                 paths,
                 link_path: module.link_path.clone(),
-                // Functions are inserted last so they win over a variable
-                // of the same name; likewise methods over attributes.
-                symbols: module
-                    .variables
-                    .iter()
-                    .map(|v| (v.name.clone(), "var"))
-                    .chain(module.functions.iter().map(|f| (f.name.clone(), "fn")))
-                    .collect(),
-                classes: module
-                    .classes
-                    .iter()
-                    .map(|c| {
-                        let members = c
-                            .variables
-                            .iter()
-                            .map(|v| (v.name.clone(), "attr"))
-                            .chain(c.functions.iter().map(|f| (f.name.clone(), "method")))
-                            .collect();
-                        (c.name.clone(), members)
-                    })
-                    .collect(),
+                symbols,
             }
         })
         .collect()
@@ -126,48 +146,26 @@ impl Resolver {
             return Some(module.link_path.clone());
         }
 
-        // module.symbol
-        if let Some((module_path, symbol)) = target.rsplit_once('.') {
-            if let Some(module) = self.find_module(module_path) {
-                if module.classes.contains_key(symbol) {
-                    return Some(format!("{}#class.{}", module.link_path, symbol));
-                }
-                if let Some(kind) = module.symbols.get(symbol) {
-                    return Some(format!("{}#{}.{}", module.link_path, kind, symbol));
-                }
-            }
-
-            // module.Class.member
-            if let Some((module_path, class)) = module_path.rsplit_once('.')
-                && let Some(module) = self.find_module(module_path)
-                && let Some(kind) = module.classes.get(class).and_then(|m| m.get(symbol))
+        // module.symbol, module.Class.member, module.Outer.Inner, ...: the
+        // longest module path that matches wins.
+        let mut split = target.len();
+        while let Some(dot) = target[..split].rfind('.') {
+            let (module_path, symbol) = (&target[..dot], &target[dot + 1..]);
+            if let Some(module) = self.find_module(module_path)
+                && let Some(anchor) = module.symbols.get(symbol)
             {
-                return Some(format!(
-                    "{}#{}.{}.{}",
-                    module.link_path, kind, class, symbol
-                ));
+                return Some(format!("{}#{}", module.link_path, anchor));
             }
+            split = dot;
         }
 
-        // Bare "symbol" or "Class.method", when exactly one module defines it.
-        let (class, member) = match target.split_once('.') {
-            Some((class, member)) if !member.contains('.') => (class, Some(member)),
-            Some(_) => return None,
-            None => (target, None),
-        };
-        let mut hits = self.modules.iter().filter_map(|module| match member {
-            Some(member) => module
-                .classes
-                .get(class)
-                .and_then(|members| members.get(member))
-                .map(|kind| format!("{}#{}.{}.{}", module.link_path, kind, class, member)),
-            None if module.classes.contains_key(class) => {
-                Some(format!("{}#class.{}", module.link_path, class))
-            }
-            None => module
+        // A bare symbol path ("slugify", "Engine.run", "Outer.Inner"), when
+        // exactly one module defines it.
+        let mut hits = self.modules.iter().filter_map(|module| {
+            module
                 .symbols
-                .get(class)
-                .map(|kind| format!("{}#{}.{}", module.link_path, kind, class)),
+                .get(target)
+                .map(|anchor| format!("{}#{}", module.link_path, anchor))
         });
         let first = hits.next()?;
         hits.next().is_none().then_some(first)
