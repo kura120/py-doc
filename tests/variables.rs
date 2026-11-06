@@ -13,7 +13,15 @@ fn generate(test: &str, extra: &[&str]) -> PathBuf {
         .join("tests")
         .join("fixtures")
         .join("variables");
+    // An empty --config keeps the repository's own pyproject.toml (the PyPI
+    // packaging metadata) out of these runs.
+    let empty_config = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
+    if !empty_config.exists() {
+        fs::write(&empty_config, "").unwrap();
+    }
     let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        .arg("--config")
+        .arg(&empty_config)
         .arg("--src")
         .arg(&src)
         .arg("--out")
