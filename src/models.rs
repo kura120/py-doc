@@ -44,6 +44,7 @@ impl PythonPackage {
                         bases: Vec::new(),
                         line: class.line,
                         docstring: None,
+                        raw_docstring: None,
                         summary: None,
                         functions: hidden_methods,
                         variables: hidden_attributes,
@@ -72,6 +73,10 @@ pub struct PythonModule {
     /// Dotted display path with ordering prefixes stripped (e.g. "core.engine").
     pub qualname: String,
     pub docstring: Option<String>,
+    /// The docstring as written, kept when rendering replaces `docstring`
+    /// with HTML. Only for `--format json`; not in the template context.
+    #[serde(skip)]
+    pub raw_docstring: Option<String>,
     /// First meaningful line of the docstring, as plain text.
     pub summary: Option<String>,
     pub classes: Vec<PythonClass>,
@@ -102,6 +107,7 @@ impl PythonModule {
             source_path: self.source_path.clone(),
             qualname: self.qualname.clone(),
             docstring: None,
+            raw_docstring: None,
             summary: None,
             classes: Vec::new(),
             functions: Vec::new(),
@@ -123,6 +129,9 @@ pub struct PythonClass {
     pub bases: Vec<String>,
     pub line: usize,
     pub docstring: Option<String>,
+    /// The docstring as written; see `PythonModule::raw_docstring`.
+    #[serde(skip)]
+    pub raw_docstring: Option<String>,
     pub summary: Option<String>,
     pub functions: Vec<PythonFunction>,
     /// Class attributes, including enum members and dataclass fields.
@@ -142,6 +151,9 @@ pub struct PythonFunction {
     pub is_async: bool,
     pub line: usize,
     pub docstring: Option<String>,
+    /// The docstring as written; see `PythonModule::raw_docstring`.
+    #[serde(skip)]
+    pub raw_docstring: Option<String>,
     pub summary: Option<String>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,
@@ -164,6 +176,9 @@ pub struct PythonVariable {
     pub line: usize,
     /// From a string literal right after the assignment, or `#:` comments.
     pub docstring: Option<String>,
+    /// The docstring as written; see `PythonModule::raw_docstring`.
+    #[serde(skip)]
+    pub raw_docstring: Option<String>,
     pub summary: Option<String>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,

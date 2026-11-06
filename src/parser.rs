@@ -360,6 +360,7 @@ fn extract_variables(
                 badges,
                 line: source.line_of(target.range().start().to_usize()),
                 docstring,
+                raw_docstring: None,
                 summary: None,
                 is_private: private,
             });
@@ -420,6 +421,7 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         source_path,
         qualname,
         docstring: None,
+        raw_docstring: None,
         summary: None,
         classes: Vec::new(),
         functions: Vec::new(),
@@ -585,6 +587,7 @@ fn extract_function(func: &ast::StmtFunctionDef, source: &Source) -> PythonFunct
         is_async: func.is_async,
         line: source.line_of(func.name.range().start().to_usize()),
         docstring: leading_docstring(&func.body),
+        raw_docstring: None,
         summary: None,
         // Correct for methods; parse_file overrides it for top-level functions.
         is_private: !is_public_name(&func.name, None),
@@ -626,6 +629,7 @@ fn extract_class(class_def: &ast::StmtClassDef, source: &Source) -> PythonClass 
         bases,
         line: source.line_of(class_def.name.range().start().to_usize()),
         docstring: leading_docstring(&class_def.body),
+        raw_docstring: None,
         summary: None,
         functions,
         variables,
