@@ -1,0 +1,133 @@
+name: Action self-test
+
+# Exercises action.yml on each runner OS. "release" downloads the latest
+# published binary (the download, checksum and extract path); "source" builds
+# this commit with cargo, so changes to py-doc itself are covered too.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - action.yml
+      - scripts/action/**
+      - scripts/pre-commit.sh
+      - .pre-commit-hooks.yaml
+      - .github/workflows/action-test.yaml
+  pull_request:
+    paths:
+      - action.yml
+      - scripts/action/**
+      - scripts/pre-commit.sh
+      - .pre-commit-hooks.yaml
+      - .github/workflows/action-test.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    name: Action (${{ matrix.os }}, ${{ matrix.install }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        install: [release, source]
+        # Linux arm64 binaries ship from the release after v0.5.1; until that
+        # is the latest release, only a source build can run there.
+        include:
+          - os: ubuntu-24.04-arm
+            install: source
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: matrix.install == 'source'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run the action
+        id: py-doc
+        uses: ./
+        with:
+          install: ${{ matrix.install }}
+          src: tests/fixtures/sample
+          out: _site-test
+          name: sample
+          args: --strict --theme dark --doc-version "1.2.3 beta"
+
+      - name: Check the output
+        shell: bash
+        env:
+          OUT: ${{ steps.py-doc.outputs.out }}
+          VERSION: ${{ steps.py-doc.outputs.version }}
+        run: |
+          set -x
+          test "$OUT" = "_site-test"
+          test -n "$VERSION"
+          test -f _site-test/index.html
+          test -f _site-test/guide.html
+          test -f _site-test/search-index.js
+          grep -q "1.2.3 beta" _site-test/index.html
+
+  pinned:
+    name: Action (ubuntu-latest, pinned version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the action
+        id: py-doc
+        uses: ./
+        with:
+          version: "0.5.1"
+          src: tests/fixtures/sample
+          out: _site-test
+          name: sample
+
+      - name: Check the output
+        shell: bash
+        env:
+          VERSION: ${{ steps.py-doc.outputs.version }}
+        run: |
+          set -x
+          test "$VERSION" = "0.5.1"
+          test -f _site-test/index.html
+
+  pre-commit:
+    name: pre-commit hook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install py-doc
+        uses: ./
+        with:
+          src: tests/fixtures/sample
+          out: _site-test
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Try the hook against a scratch repository
+        shell: bash
+        run: |
+          set -x
+          pip install pre-commit
+          hook_repo="$PWD"
+          work="$RUNNER_TEMP/consumer"
+          mkdir -p "$work/pkg"
+          cd "$work"
+          git init -q .
+          printf '"""Package.\n\n#pd-doc-link: pkg.engine.Engine\n"""\n' > pkg/__init__.py
+          printf '"""Engine module."""\n\n\nclass Engine:\n    """Runs things."""\n' > pkg/engine.py
+          git add -A
+          pre-commit try-repo "$hook_repo" py-doc --all-files
+          # A broken doc-link must fail the hook.
+          sed -i 's/pkg.engine.Engine/pkg.engine.Missing/' pkg/__init__.py
+          git add -A
+          if pre-commit try-repo "$hook_repo" py-doc --all-files; then
+            echo "hook passed on a broken doc-link"
+            exit 1
+          fi
