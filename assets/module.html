@@ -1,5 +1,51 @@
 {% extends "base.html" %}
 
+{#- A class defined inside another class, rendered inside its parent's card.
+    Anchors use the qualified name ("Outer.Inner"). Calls itself for deeper nesting. -#}
+{% component nested_class(cls, @module, @source_url = "") %}
+<div class="method-item" id="class.{{ cls.qualname }}">
+    <div class="signature-box">
+        <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ cls.qualname }}</span>{% if cls.bases %}({{ cls.bases | join(sep=", ") }}){% endif %}:</span>
+        <span class="signature-meta">{% for badge in cls.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ cls.line }}">source</a>{% else %}<span class="source-ref">line {{ cls.line }}</span>{% endif %}</span>
+    </div>
+    {% if cls.docstring %}<div class="docstring">{{ cls.docstring | safe }}</div>{% endif %}
+    {%- if cls.variables %}
+    <div class="method-list">
+        <h3 class="method-list-title">Attributes</h3>
+        {%- for var in cls.variables %}
+        <div class="method-item" id="attr.{{ cls.qualname }}.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
+        {%- endfor %}
+    </div>
+    {%- endif %}
+    {%- if cls.functions %}
+    <div class="method-list">
+        <h3 class="method-list-title">Methods</h3>
+        {%- for func in cls.functions %}
+        <div class="method-item" id="method.{{ cls.qualname }}.{{ func.name }}"><div class="signature-box"><span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span><span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span></div>{% if func.docstring %}<div class="docstring">{{ func.docstring | safe }}</div>{% endif %}</div>
+        {%- endfor %}
+    </div>
+    {%- endif %}
+    {%- if cls.classes %}
+    <div class="method-list">
+        <h3 class="method-list-title">Nested classes</h3>
+        {%- for inner in cls.classes %}
+        {{ <nested_class cls={inner}/> }}
+        {%- endfor %}
+    </div>
+    {%- endif %}
+</div>
+{% endcomponent nested_class %}
+
+{#- Outline entries for a nested class and everything inside it. -#}
+{% component outline_class(cls) %}
+<li><a href="#class.{{ cls.qualname }}">{{ cls.qualname }}</a>
+{%- if cls.variables or cls.functions or cls.classes %}<ul>
+{%- for var in cls.variables %}<li><a href="#attr.{{ cls.qualname }}.{{ var.name }}">{{ var.name }}</a></li>{% endfor %}
+{%- for func in cls.functions %}<li><a href="#method.{{ cls.qualname }}.{{ func.name }}">{{ func.name }}</a></li>{% endfor %}
+{%- for inner in cls.classes %}{{ <outline_class cls={inner}/> }}{% endfor %}
+</ul>{% endif %}</li>
+{% endcomponent outline_class %}
+
 {% block title %}Module {{ display_module_name }} - {{ package.name }}{% endblock title %}
 
 {% block description %}{% if module.summary %}{{ module.summary }}{% else %}{{ display_module_name }} - {{ package.name }} documentation{% endif %}{% endblock description %}
@@ -47,7 +93,7 @@
                     <div class="item-card" id="class.{{ class.name }}">
                         <div class="signature-box">
                             <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ class.name }}</span>{% if class.bases %}({{ class.bases | join(sep=", ") }}){% endif %}:</span>
-                            <span class="signature-meta">{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ class.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ class.line }}</span>{% endif %}</span>
+                            <span class="signature-meta">{% for badge in class.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ class.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ class.line }}</span>{% endif %}</span>
                         </div>
                         {% if class.docstring %}
                             <div class="docstring">{{ class.docstring | safe }}</div>
@@ -76,6 +122,15 @@
                                         {% endif %}
                                     </div>
                                 {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        {% if class.classes %}
+                            <div class="method-list">
+                                <h3 class="method-list-title">Nested classes</h3>
+                                {%- for inner in class.classes %}
+                                {{ <nested_class cls={inner}/> }}
+                                {%- endfor %}
                             </div>
                         {% endif %}
                     </div>
@@ -115,7 +170,7 @@
             {% for class in module.classes %}
                 <li>
                     <a href="#class.{{ class.name }}">{{ class.name }}</a>
-                    {% if class.variables or class.functions %}
+                    {% if class.variables or class.functions or class.classes %}
                         <ul>
                             {%- for var in class.variables %}
                             <li><a href="#attr.{{ class.name }}.{{ var.name }}">{{ var.name }}</a></li>
@@ -123,6 +178,9 @@
                             {% for func in class.functions %}
                                 <li><a href="#method.{{ class.name }}.{{ func.name }}">{{ func.name }}</a></li>
                             {% endfor %}
+                            {%- for inner in class.classes %}
+                            {{ <outline_class cls={inner}/> }}
+                            {%- endfor %}
                         </ul>
                     {% endif %}
                 </li>
