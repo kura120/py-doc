@@ -15,6 +15,7 @@ mod coverage;
 mod generator;
 mod highlight;
 mod models;
+mod output;
 mod parser;
 mod resolver;
 mod tui;
@@ -101,6 +102,20 @@ pub enum CoverageFormat {
     Json,
 }
 
+/// What a run writes to `--out`. Each format is one arm of the match in
+/// `run_generation`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputFormat {
+    /// The HTML site
+    Html,
+    /// `api.json`: the parsed API, with raw and rendered docstrings
+    Json,
+    /// Not supported yet (planned, #20)
+    #[value(hide = true)]
+    Markdown,
+}
+
 /// Every option, as given on the command line or in `[tool.py-doc]`.
 ///
 /// This one struct is both the clap CLI and the serde shape of the
@@ -183,6 +198,12 @@ pub struct Args {
     /// out of `__all__`
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub include_private: Option<bool>,
+
+    /// What to write to --out: `html` (the site) and/or `json` (api.json).
+    /// Repeatable [default: html]
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    #[serde(default)]
+    pub format: Vec<OutputFormat>,
 
     /// Print a documentation coverage report. On the command line without
     /// --out, only the report is made and no site is written
@@ -397,11 +418,37 @@ fn run_generation(args: &Config) -> Result<()> {
         )?
         .with_extra_css(&args.css)?;
 
-        generator.generate(&mut package, args.clean)?;
+        generator.render(&mut package)?;
+
+        let out_shown = out.trim_end_matches(['/', '\\']);
+        let mut written = Vec::new();
+        for format in &args.formats {
+            match format {
+                OutputFormat::Html => {
+                    generator.write_html(&package)?;
+                    written.push(format!("{out_shown}/index.html"));
+                }
+                OutputFormat::Json => {
+                    if !args.formats.contains(&OutputFormat::Html) {
+                        status!(
+                            "\x1b[36;1m[3/3]\x1b[0m Writing {}...",
+                            output::json::FILE_NAME
+                        );
+                    }
+                    let api =
+                        output::json::to_string(&package, &args.doc_version, args.include_private);
+                    generator.write_file(output::json::FILE_NAME, &api)?;
+                    written.push(format!("{out_shown}/{}", output::json::FILE_NAME));
+                }
+                // Rejected by Config::resolve until #20 implements it.
+                OutputFormat::Markdown => bail!("format `markdown` is not supported yet"),
+            }
+        }
+        generator.finish(args.clean)?;
 
         status!(
-            "\n\x1b[32;1m✔ Documentation generated at {}/index.html\x1b[0m",
-            out.trim_end_matches(['/', '\\'])
+            "\n\x1b[32;1m✔ Documentation generated at {}\x1b[0m",
+            written.join(" and ")
         );
         problems += generator.warning_count();
     } else {

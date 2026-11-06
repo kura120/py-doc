@@ -112,8 +112,42 @@ function renderNavTree(navData, rootPath, currentPath) {
     return nestNavGroups(navData).map(group => renderNavGroup(group, rootPath, currentPath)).join("");
 }
 
-// --- Search (names and one-line summaries from search-index.js) ---
+// --- Search (names and one-line summaries from the search index) ---
 const SEARCH_LIMIT = 40;
+
+// The index is loaded on the first search, not with every page. Over HTTP
+// it is fetched as JSON. Browsers block fetch() of local files, so on
+// file:// (or if the fetch fails) search-index.js is added as a script,
+// which defines the global `searchIndex`. A page whose template still loads
+// search-index.js itself already has it.
+let searchIndexLoad = null;
+
+function loadSearchIndex(rootPath) {
+    if (searchIndexLoad) return searchIndexLoad;
+    const loaded = () => (typeof searchIndex !== "undefined" ? searchIndex : null);
+    const injectScript = () => loaded() ? Promise.resolve(loaded()) : new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `${rootPath}search-index.js`;
+        script.onload = () => (loaded() ? resolve(loaded()) : reject(new Error("search-index.js defined no index")));
+        script.onerror = () => reject(new Error("could not load search-index.js"));
+        document.head.appendChild(script);
+    });
+    if (loaded()) {
+        searchIndexLoad = Promise.resolve(loaded());
+    } else if (location.protocol === "file:" || typeof fetch !== "function") {
+        searchIndexLoad = injectScript();
+    } else {
+        searchIndexLoad = fetch(`${rootPath}search-index.json`)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .catch(injectScript);
+    }
+    // A failed load can be retried on the next search.
+    searchIndexLoad.catch(() => { searchIndexLoad = null; });
+    return searchIndexLoad;
+}
 
 function collectSearchEntries(index) {
     const entries = [];
@@ -299,9 +333,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchResults = document.getElementById("search-results");
     const resultsList = document.getElementById("results-list");
 
-    if (searchInput && searchResults && resultsList && typeof searchIndex !== "undefined") {
-        const entries = collectSearchEntries(searchIndex);
+    if (searchInput && searchResults && resultsList) {
+        // Filled once the index has loaded; until then a query waits for it.
+        let entries = null;
+        let loadFailed = false;
+        let loading = false;
         let activeIndex = -1;
+
+        function ensureIndex() {
+            if (entries || loadFailed || loading) return;
+            loading = true;
+            // Only a panel still showing "Loading search…" is refreshed, so a
+            // search the reader already dismissed does not pop back up.
+            const waiting = () => searchResults.classList.contains("is-open");
+            loadSearchIndex(rootPath).then(index => {
+                loading = false;
+                entries = collectSearchEntries(index);
+                if (waiting()) runSearch();
+            }, () => {
+                loading = false;
+                loadFailed = true;
+                if (waiting()) runSearch();
+                loadFailed = false;
+            });
+        }
 
         const items = () => Array.from(resultsList.querySelectorAll(".search-item"));
 
@@ -339,6 +394,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
+            if (!entries) {
+                // The index is still on its way; the query runs when it arrives.
+                resultsList.innerHTML = loadFailed
+                    ? `<p class="search-empty">The search index could not be loaded.</p>`
+                    : `<p class="search-empty search-loading">Loading search…</p>`;
+                positionPanel();
+                searchResults.classList.add("is-open");
+                activeIndex = -1;
+                ensureIndex();
+                return;
+            }
+
             const matches = findMatches(entries, query);
             if (matches.length === 0) {
                 resultsList.innerHTML = `<p class="search-empty">No results for “${escapeHtml(searchInput.value.trim())}”.</p>`;
@@ -363,6 +430,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         searchInput.addEventListener("input", runSearch);
         searchInput.addEventListener("focus", () => {
+            // Focusing the box (by click, Tab, "/" or Ctrl+K) starts loading
+            // the index, so it is usually there before the first key.
+            ensureIndex();
             if (searchInput.value.trim()) runSearch();
         });
 

@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::config::{Config, DEFAULT_VERSION};
-use crate::{Args, LayoutKind, ThemeKind};
+use crate::{Args, LayoutKind, OutputFormat, ThemeKind};
 
 const LAYOUT_OPTIONS: [&str; 3] = ["Classic", "Minimal", "Modern"];
 const THEME_OPTIONS: [&str; 4] = ["Auto", "Dark", "Light", "Slate"];
@@ -337,7 +337,8 @@ impl App {
             clean: self.prefill.clean.unwrap_or(false),
             include_private: self.prefill.include_private.unwrap_or(false),
             // The wizard only runs without a [tool.py-doc] table, so no
-            // coverage settings can reach it.
+            // coverage settings or extra formats can reach it.
+            formats: vec![OutputFormat::Html],
             coverage: None,
         }
     }
@@ -917,6 +918,7 @@ mod tests {
                 strict: true,
                 clean: false,
                 include_private: false,
+                formats: vec![OutputFormat::Html],
                 coverage: None,
             }
         );

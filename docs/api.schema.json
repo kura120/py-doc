@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kura120/py-doc/blob/master/docs/api.schema.json",
+  "title": "py-doc api.json",
+  "description": "The parsed API written by `py-doc --format json`. schema_version changes only when a field is renamed, removed or changes type. tests/api_json.rs validates real output against this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "py_doc_version", "package", "include_private", "modules"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "py_doc_version": { "type": "string", "description": "Version of py-doc that wrote the file." },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string", "description": "--doc-version, or [project] version." }
+      }
+    },
+    "include_private": { "type": "boolean", "description": "True when private names were kept (--include-private)." },
+    "modules": {
+      "type": "array",
+      "description": "Sorted by qualname, then path.",
+      "items": { "$ref": "#/$defs/module" }
+    }
+  },
+  "$defs": {
+    "nullable_string": { "type": ["string", "null"] },
+    "strings": { "type": "array", "items": { "type": "string" } },
+    "line": { "type": "integer", "minimum": 1, "description": "1-based line of the definition." },
+    "variables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/variable" },
+      "description": "In source order."
+    },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "qualname", "line", "annotation", "value", "value_truncated", "is_type_alias", "badges", "docstring", "docstring_html", "summary", "is_private"],
+      "properties": {
+        "name": { "type": "string" },
+        "qualname": { "type": "string" },
+        "line": { "$ref": "#/$defs/line" },
+        "annotation": { "$ref": "#/$defs/nullable_string", "description": "The type annotation as written." },
+        "value": { "$ref": "#/$defs/nullable_string", "description": "The value as written, whitespace collapsed, cut short when long." },
+        "value_truncated": { "type": "boolean", "description": "value was cut short." },
+        "is_type_alias": { "type": "boolean", "description": "Declared with the `type` statement (PEP 695)." },
+        "badges": { "$ref": "#/$defs/strings", "description": "\"enum\" for enum members, \"field\" for dataclass fields." },
+        "docstring": { "$ref": "#/$defs/nullable_string", "description": "A string literal right after the assignment, or `#:` comments." },
+        "docstring_html": { "$ref": "#/$defs/nullable_string" },
+        "summary": { "$ref": "#/$defs/nullable_string" },
+        "is_private": { "type": "boolean" }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "qualname", "path", "page", "docstring", "docstring_html", "summary", "is_document", "is_private", "all", "classes", "functions", "variables"],
+      "properties": {
+        "name": { "type": "string", "description": "File name without .py (`__init__` for a package)." },
+        "qualname": { "type": "string", "description": "Dotted name, ordering prefixes removed. Empty for a root __init__.py." },
+        "path": { "type": "string", "description": "Source file, relative to --src, with forward slashes." },
+        "page": { "type": "string", "description": "The module's page in the HTML site, relative to its root. Links in docstring_html are relative to this page." },
+        "docstring": { "$ref": "#/$defs/nullable_string", "description": "Exactly as written in the source." },
+        "docstring_html": { "$ref": "#/$defs/nullable_string", "description": "As rendered for the HTML site." },
+        "summary": { "$ref": "#/$defs/nullable_string", "description": "First meaningful line, as plain text." },
+        "is_document": { "type": "boolean", "description": "A doc-only `#pd-write` page." },
+        "is_private": { "type": "boolean" },
+        "all": { "type": ["array", "null"], "items": { "type": "string" }, "description": "A literal __all__, in order; null when there is none." },
+        "classes": { "type": "array", "items": { "$ref": "#/$defs/class" }, "description": "In source order." },
+        "functions": { "type": "array", "items": { "$ref": "#/$defs/function" }, "description": "In source order." },
+        "variables": { "$ref": "#/$defs/variables" }
+      }
+    },
+    "class": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "qualname", "line", "bases", "docstring", "docstring_html", "summary", "badges", "is_private", "methods", "variables", "classes"],
+      "properties": {
+        "name": { "type": "string" },
+        "qualname": { "type": "string" },
+        "line": { "$ref": "#/$defs/line" },
+        "bases": { "$ref": "#/$defs/strings" },
+        "docstring": { "$ref": "#/$defs/nullable_string" },
+        "docstring_html": { "$ref": "#/$defs/nullable_string" },
+        "summary": { "$ref": "#/$defs/nullable_string" },
+        "badges": { "$ref": "#/$defs/strings", "description": "\"conditional\" when defined in an if/try branch, \"type-checking\" when only defined under `if TYPE_CHECKING:`." },
+        "is_private": { "type": "boolean" },
+        "methods": { "type": "array", "items": { "$ref": "#/$defs/function" }, "description": "In source order." },
+        "variables": { "$ref": "#/$defs/variables" },
+        "classes": { "type": "array", "items": { "$ref": "#/$defs/class" }, "description": "Classes defined in the class body, in source order. Their qualname includes the parent (\"module.Outer.Inner\")." }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "qualname", "line", "args", "return_type", "decorators", "badges", "is_async", "docstring", "docstring_html", "summary", "is_private"],
+      "properties": {
+        "name": { "type": "string" },
+        "qualname": { "type": "string" },
+        "line": { "$ref": "#/$defs/line" },
+        "args": { "$ref": "#/$defs/strings", "description": "Each parameter as written, with annotation and default." },
+        "return_type": { "$ref": "#/$defs/nullable_string" },
+        "decorators": { "$ref": "#/$defs/strings" },
+        "badges": { "$ref": "#/$defs/strings", "description": "Labels such as property or static." },
+        "is_async": { "type": "boolean" },
+        "docstring": { "$ref": "#/$defs/nullable_string" },
+        "docstring_html": { "$ref": "#/$defs/nullable_string" },
+        "summary": { "$ref": "#/$defs/nullable_string" },
+        "is_private": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -561,6 +561,7 @@ fn extract_variables(
                 badges,
                 line: source.line_of(target.range().start().to_usize()),
                 docstring,
+                raw_docstring: None,
                 summary: None,
                 is_private: private,
             };
@@ -610,8 +611,21 @@ fn extract_members(
     )
 }
 
+/// Line endings as Python sees them: `\r\n` and a lone `\r` both become
+/// `\n`, as in Python's universal-newline mode. Without this, a file checked
+/// out with CRLF endings (git on Windows) would put `\r` into docstrings,
+/// values and signatures.
+fn normalize_newlines(text: String) -> String {
+    if text.contains('\r') {
+        text.replace("\r\n", "\n").replace('\r', "\n")
+    } else {
+        text
+    }
+}
+
 pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
-    let source_code = fs::read_to_string(filepath).context("could not read file")?;
+    let source_code =
+        normalize_newlines(fs::read_to_string(filepath).context("could not read file")?);
     let source = Source::new(&source_code);
 
     let parsed = parse_module(&source_code).map_err(|e| {
@@ -662,6 +676,7 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         source_path,
         qualname,
         docstring: None,
+        raw_docstring: None,
         summary: None,
         classes: Vec::new(),
         functions: Vec::new(),
@@ -813,6 +828,7 @@ fn extract_function(func: &ast::StmtFunctionDef, source: &Source) -> PythonFunct
         is_async: func.is_async,
         line: source.line_of(func.name.range().start().to_usize()),
         docstring: leading_docstring(&func.body),
+        raw_docstring: None,
         summary: None,
         // Correct for methods; parse_file overrides it for top-level functions.
         is_private: !is_public_name(&func.name, None),
@@ -856,6 +872,7 @@ fn extract_class(
         bases,
         line: source.line_of(class_def.name.range().start().to_usize()),
         docstring: leading_docstring(&class_def.body),
+        raw_docstring: None,
         summary: None,
         badges: Vec::new(),
         functions,
@@ -868,6 +885,26 @@ fn extract_class(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crlf_sources_read_like_python_does() {
+        assert_eq!(normalize_newlines("a\r\nb\rc\n".into()), "a\nb\nc\n");
+        let dir = std::env::temp_dir().join(format!("py-doc-crlf-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("crlf.py");
+        fs::write(
+            &file,
+            "\"\"\"Core package.\r\n\r\nHolds the engine.\r\n\"\"\"\r\nX = 1\r\n",
+        )
+        .unwrap();
+        let module = parse_file(&file, &dir).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(
+            module.docstring.as_deref(),
+            Some("Core package.\n\nHolds the engine.\n")
+        );
+        assert!(!format!("{:?}", module.variables).contains('\r'));
+    }
 
     fn all_of(code: &str) -> Option<Vec<String>> {
         read_dunder_all(&parse_module(code).unwrap().into_syntax().body)
