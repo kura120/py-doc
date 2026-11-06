@@ -279,7 +279,7 @@ Shortened (`"...": "..."` marks left-out fields):
       "is_private": false,
       "all": null,
       "classes": [
-        { "name": "Engine", "qualname": "myproject.engine.Engine", "line": 8, "bases": [], "...": "...", "methods": [], "variables": [] }
+        { "name": "Engine", "qualname": "myproject.engine.Engine", "line": 8, "bases": [], "...": "...", "methods": [], "variables": [], "classes": [] }
       ],
       "functions": [],
       "variables": [
@@ -290,7 +290,7 @@ Shortened (`"...": "..."` marks left-out fields):
 }
 ```
 
-The full shape is in [`docs/api.schema.json`](docs/api.schema.json) (JSON Schema 2020-12). A test validates real output against it, so it cannot fall out of date. Modules are sorted by `qualname`, then `path`; members keep source order. The same input always gives a byte-identical file. `schema_version` changes only when a field is renamed, removed or changes type.
+The full shape is in [`docs/api.schema.json`](docs/api.schema.json) (JSON Schema 2020-12). A test validates real output against it, so it cannot fall out of date. Modules are sorted by `qualname`, then `path`; members keep source order. Nested classes are listed in their parent's `classes`, with qualified names such as `myproject.engine.Engine.Config`. The same input always gives a byte-identical file. `schema_version` changes only when a field is renamed, removed or changes type.
 
 ### Keeping the output folder tidy
 
@@ -395,6 +395,14 @@ DEFAULT_NAME = "anonymous"  #: Used when no name is given.
 ```
 
 Class attributes starting with `_` are private, dunders included. `__slots__`, `__match_args__`, `__annotations__`, `__doc__`, `__module__` and `__all__` are never documented.
+
+### Nested and conditional definitions
+
+Classes defined inside a class are shown inside its card, under qualified names such as `Outer.Inner`. Link to them the same way: `#pd-doc-link: engine.Outer.Inner`.
+
+Definitions inside `if`, `try` and `with` blocks are documented too, at module and class level. Function bodies and `if __name__ == "__main__":` blocks are not.
+
+When a name is defined in several branches, such as `if sys.version_info >= (3, 11):` and `else:`, or `try:` and `except ImportError:`, only the first definition is shown. Definitions in a branch get a `conditional` badge. Definitions that only exist under `if TYPE_CHECKING:` get a `type-checking` badge, and a runtime definition of the same name always wins over them. Several definitions in the same block, such as `@overload` signatures or a property and its setter, are all kept.
 
 ### Macros
 

@@ -82,10 +82,14 @@ struct Class<'a> {
     bases: &'a [String],
     #[serde(flatten)]
     doc: Doc<'a>,
+    /// "conditional" or "type-checking".
+    badges: &'a [String],
     is_private: bool,
     methods: Vec<Function<'a>>,
     /// Class attributes, dataclass fields and enum members.
     variables: Vec<Variable<'a>>,
+    /// Classes defined in the class body, in source order.
+    classes: Vec<Class<'a>>,
 }
 
 #[derive(Serialize)]
@@ -159,15 +163,23 @@ fn variable<'a>(v: &'a PythonVariable, parent: &str) -> Variable<'a> {
 }
 
 fn class<'a>(c: &'a PythonClass, module: &str) -> Class<'a> {
-    let qualname = qualify(module, &c.name);
+    // `c.qualname` is "Outer.Inner" for a nested class.
+    let in_module = if c.qualname.is_empty() {
+        &c.name
+    } else {
+        &c.qualname
+    };
+    let qualname = qualify(module, in_module);
     Class {
         name: &c.name,
         line: c.line,
         bases: &c.bases,
         doc: Doc::new(&c.raw_docstring, &c.docstring, &c.summary),
+        badges: &c.badges,
         is_private: c.is_private,
         methods: c.functions.iter().map(|f| function(f, &qualname)).collect(),
         variables: c.variables.iter().map(|v| variable(v, &qualname)).collect(),
+        classes: c.classes.iter().map(|inner| class(inner, module)).collect(),
         qualname,
     }
 }

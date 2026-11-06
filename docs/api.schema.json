@@ -76,7 +76,7 @@
     "class": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "qualname", "line", "bases", "docstring", "docstring_html", "summary", "is_private", "methods", "variables"],
+      "required": ["name", "qualname", "line", "bases", "docstring", "docstring_html", "summary", "badges", "is_private", "methods", "variables", "classes"],
       "properties": {
         "name": { "type": "string" },
         "qualname": { "type": "string" },
@@ -85,9 +85,11 @@
         "docstring": { "$ref": "#/$defs/nullable_string" },
         "docstring_html": { "$ref": "#/$defs/nullable_string" },
         "summary": { "$ref": "#/$defs/nullable_string" },
+        "badges": { "$ref": "#/$defs/strings", "description": "\"conditional\" when defined in an if/try branch, \"type-checking\" when only defined under `if TYPE_CHECKING:`." },
         "is_private": { "type": "boolean" },
         "methods": { "type": "array", "items": { "$ref": "#/$defs/function" }, "description": "In source order." },
-        "variables": { "$ref": "#/$defs/variables" }
+        "variables": { "$ref": "#/$defs/variables" },
+        "classes": { "type": "array", "items": { "$ref": "#/$defs/class" }, "description": "Classes defined in the class body, in source order. Their qualname includes the parent (\"module.Outer.Inner\")." }
       }
     },
     "function": {
