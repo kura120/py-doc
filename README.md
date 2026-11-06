@@ -14,6 +14,7 @@ py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 4
 * [Usage](#usage)
 * [Writing docs](#writing-docs)
 * [The generated site](#the-generated-site)
+* [Restyling with CSS](#restyling-with-css)
 * [Custom templates](#custom-templates)
 * [Benchmarks](#benchmarks)
 * [Development](#development)
@@ -96,6 +97,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `--theme <auto\|dark\|light\|slate>` | Color theme the site opens with. `auto` (default) follows the reader's system setting. |
 | `-e`, `--exclude <NAME>` | Skip a file or directory, by name or by path relative to `--src`. Repeatable. |
 | `--source-url <URL>` | Base URL of a browsable copy of the sources. Turns each symbol's `file:line` reference into a link. |
+| `--css <FILE>` | Extra stylesheet, linked after the bundled one on every page. Repeatable. See [Restyling with CSS](#restyling-with-css). |
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
@@ -136,9 +138,9 @@ Each setting is taken from the first place that has it:
 3. `[project]` (for `name` and `doc-version` only);
 4. the built-in default.
 
-A flag replaces the config value, it does not add to it: `--exclude` on the command line replaces the whole `exclude` list.
+A flag replaces the config value, it does not add to it: `--exclude` or `--css` on the command line replaces the whole `exclude` or `css` list.
 
-Paths in `pyproject.toml` (`src`, `out`, `templates`) are relative to the directory that holds it. Paths on the command line are relative to the current directory.
+Paths in `pyproject.toml` (`src`, `out`, `templates`, `css`) are relative to the directory that holds it. Paths on the command line are relative to the current directory.
 
 py-doc looks for `pyproject.toml` in `--src` (or the current directory, without `--src`) and then in each parent directory, stopping at the repository root (the first directory with a `.git`). `--config <FILE>` names the file instead.
 
@@ -307,6 +309,57 @@ A folder's `__init__.py` docstring becomes the folder's description, and the roo
 * **Module pages:** signatures with defaults and annotations as written, class bases, `property` / `static` / `classmethod` / `abstract` badges, a `file:line` reference per symbol, and an "On this page" outline on wide screens.
 
 The output is plain static files. Open `index.html` directly or host the folder anywhere.
+
+---
+
+## Restyling with CSS
+
+To change colors or fonts, keep the bundled theme and add a stylesheet with `--css`:
+
+```css
+/* brand.css */
+:root {
+    --accent-blue: #2563eb;
+    --font-body: "IBM Plex Sans", sans-serif;
+}
+```
+
+```bash
+py-doc --src ./myproject --out ./docs --css brand.css
+```
+
+In `pyproject.toml`: `css = ["docs/brand.css"]`.
+
+Each file is copied to `custom/` in the output and linked after `style.css` on every page, in the order given, so it can also add or override rules. A missing file is an error. `--clean` removes copies that a later run no longer writes.
+
+A plain `:root` rule like the one above applies to every layout and color theme; `!important` is not needed. To set a value for one theme or layout only, use its attribute: `:root[data-theme="light"]`, `:root[data-layout="modern"]`, or both.
+
+The bundled theme reads these properties. The colors are set per layout and per color theme; the rest are set per layout.
+
+| Property | Controls |
+| --- | --- |
+| `--bg-color` | Page background, and the search box, search results and selects |
+| `--sidebar-bg` | Sidebar background |
+| `--text-color` | Body text |
+| `--muted-color` | Secondary text and icons: labels, badges, line references |
+| `--code-bg` | Code blocks, signature boxes, table headers, quotes, callouts |
+| `--accent-blue` | Main accent: links, entity names, the active page, focus rings |
+| `--accent-red` | Keywords in signatures and code, and error callouts |
+| `--border-color` | Borders and dividers |
+| `--card-border` | Module card borders (Modern layout) |
+| `--sidebar-hover` | Hover and active background in the sidebar and search results |
+| `--scrollbar-thumb`, `--scrollbar-thumb-hover` | Scrollbar color |
+| `--font-body` | Body text and form controls |
+| `--font-heading` | Headings, the sidebar title and labels |
+| `--font-mono` | Code and signatures |
+| `--radius-sm`, `--radius-md` | Corner rounding of small controls, and of cards and the search panel |
+| `--shadow-card` | Shadow under module cards (Modern) and images |
+| `--card-lift` | How far a module card moves up on hover (Modern) |
+| `--content-max-width` | Maximum width of the main column |
+| `--show-nav-icons` | `display` of the sidebar's file and folder icons; `none` hides them |
+| `--nav-icon-color`, `--nav-icon-size`, `--nav-icon-stroke`, `--nav-icon-opacity` | Sidebar icon color, size, line width and opacity |
+
+Custom templates get the copied files' paths as `extra_css`. The bundled `base.html` links them in its `stylesheets` block, so a template that replaces that block, or a whole page, has to link them itself.
 
 ---
 
