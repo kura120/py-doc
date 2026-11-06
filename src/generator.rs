@@ -993,15 +993,24 @@ impl SiteGenerator {
 
         status!("\x1b[36;1m[3/3]\x1b[0m Writing search index, navigation and theme assets...");
 
+        // The search index is loaded by app.js on the first search, not by
+        // every page: as JSON over HTTP, or through the .js copy on file://,
+        // where browsers block fetch() of local files.
+        let search_index = search_index_json(package).to_string();
         fs::write(
             Path::new(&self.output_dir).join("search-index.js"),
-            format!("const searchIndex = {};", search_index_json(package)),
+            format!("const searchIndex = {};", search_index),
+        )?;
+        fs::write(
+            Path::new(&self.output_dir).join("search-index.json"),
+            &search_index,
         )?;
         fs::write(
             Path::new(&self.output_dir).join("nav-data.js"),
             format!("const navData = {};", nav_data_json(&nav_groups)),
         )?;
         self.record("search-index.js");
+        self.record("search-index.json");
         self.record("nav-data.js");
 
         if !self.extra_css.is_empty() {
