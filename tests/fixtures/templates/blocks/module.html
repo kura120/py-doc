@@ -1,0 +1,7 @@
+{% extends "py-doc/module.html" %}
+
+{% block header %}<h1 class="custom-header">API: {{ display_module_name }}</h1>{% endblock header %}
+
+{% block footer %}{% include "partials/footer.html" %}{% endblock footer %}
+
+{% block scripts %}{{ super() }}<script src="{{ root_path }}extra.js" defer></script>{% endblock scripts %}

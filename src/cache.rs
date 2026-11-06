@@ -23,7 +23,7 @@ use crate::models::PythonModule;
 pub const CACHE_NAME: &str = ".py-doc-cache";
 
 /// Bump when the cache layout or what it records changes.
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 
 /// A 128-bit content hash as hex.
 pub fn hash_bytes(bytes: &[u8]) -> String {
@@ -75,8 +75,9 @@ pub fn source_path_for(path: &Path, root: &Path) -> String {
 /// What rendering one module looked at, besides its own source.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModuleDeps {
-    /// Each `#pd-doc-link` target and what it resolved to.
-    pub links: Vec<(String, Option<String>)>,
+    /// Each `#pd-doc-link` target, what it resolved to and, when it did
+    /// not resolve, whether it names a hidden private symbol.
+    pub links: Vec<(String, Option<String>, bool)>,
     /// Each local image path and its status (see `SiteGenerator::image_status`).
     pub images: Vec<(String, String)>,
     /// Warnings printed while rendering, replayed when the module is reused.
@@ -85,11 +86,16 @@ pub struct ModuleDeps {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleEntry {
+    pub source_path: String,
     pub source_hash: String,
     /// Not serialized as part of `PythonModule`, so stored here.
     pub dir: String,
-    /// The module after rendering.
-    pub module: PythonModule,
+    /// The public module after rendering; None for a private module.
+    pub module: Option<PythonModule>,
+    /// The file's private part (see `PythonPackage::hide_private`), without
+    /// docstrings: the resolver only needs its names.
+    pub hidden: Option<PythonModule>,
+    /// The fields below describe `module`; empty without one.
     pub deps: ModuleDeps,
     /// Hash of the rendered module.
     pub full_hash: String,
@@ -129,7 +135,9 @@ impl Cache {
             return None;
         }
         for entry in cache.modules.values_mut() {
-            entry.module.dir = entry.dir.clone();
+            if let Some(module) = entry.module.as_mut() {
+                module.dir = entry.dir.clone();
+            }
         }
         Some(cache)
     }
@@ -144,35 +152,64 @@ impl Cache {
     /// Writes this cache (used by tests; a run writes with [`write`]).
     #[cfg(test)]
     pub fn save(&self, out_dir: &Path) -> Result<()> {
-        let json = modules_json(self.modules.values().map(|entry| ModuleEntryRef {
-            source_hash: &entry.source_hash,
-            dir: &entry.dir,
-            module: &entry.module,
-            deps: &entry.deps,
-            full_hash: &entry.full_hash,
-            shared_hash: &entry.shared_hash,
-        }))?;
-        write(out_dir, &self.key, &json, &self.pages)
+        let entries = self
+            .modules
+            .values()
+            .map(|entry| {
+                let module_json = entry
+                    .module
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                entry_json(&EntryParts {
+                    source_path: &entry.source_path,
+                    source_hash: &entry.source_hash,
+                    dir: &entry.dir,
+                    module_json: module_json.as_deref(),
+                    hidden: entry.hidden.as_ref(),
+                    deps: &entry.deps,
+                    full_hash: &entry.full_hash,
+                    shared_hash: &entry.shared_hash,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        write(out_dir, &self.key, &modules_json(&entries), &self.pages)
     }
 }
 
-/// [`ModuleEntry`] by reference, so a run can save without copying modules.
-#[derive(Serialize)]
-pub struct ModuleEntryRef<'a> {
+/// The fields of one [`ModuleEntry`], with the module already serialized:
+/// a run has its JSON from hashing it, so it is not serialized twice.
+pub struct EntryParts<'a> {
+    pub source_path: &'a str,
     pub source_hash: &'a str,
     pub dir: &'a str,
-    pub module: &'a PythonModule,
+    pub module_json: Option<&'a str>,
+    pub hidden: Option<&'a PythonModule>,
     pub deps: &'a ModuleDeps,
     pub full_hash: &'a str,
     pub shared_hash: &'a str,
 }
 
-/// The `modules` map of a cache file, as JSON.
-pub fn modules_json<'a>(entries: impl Iterator<Item = ModuleEntryRef<'a>>) -> Result<String> {
-    let map: BTreeMap<&str, ModuleEntryRef> = entries
-        .map(|entry| (entry.module.source_path.as_str(), entry))
-        .collect();
-    serde_json::to_string(&map).context("Failed to serialize the build cache")
+/// One `"source_path": {entry}` member of the `modules` map, as JSON.
+pub fn entry_json(parts: &EntryParts) -> Result<String> {
+    let text = |value: &str| serde_json::to_string(value);
+    Ok(format!(
+        "{}:{{\"source_path\":{},\"source_hash\":{},\"dir\":{},\"module\":{},\"hidden\":{},\"deps\":{},\"full_hash\":{},\"shared_hash\":{}}}",
+        text(parts.source_path)?,
+        text(parts.source_path)?,
+        text(parts.source_hash)?,
+        text(parts.dir)?,
+        parts.module_json.unwrap_or("null"),
+        serde_json::to_string(&parts.hidden)?,
+        serde_json::to_string(parts.deps)?,
+        text(parts.full_hash)?,
+        text(parts.shared_hash)?,
+    ))
+}
+
+/// The `modules` map of a cache file from its members.
+pub fn modules_json(entries: &[String]) -> String {
+    format!("{{{}}}", entries.join(","))
 }
 
 /// Writes the cache file next to the site, replacing the old one in one step.

@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a new feature or an improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [open issues](https://github.com/kura120/py-doc/issues) and the [roadmap](https://github.com/kura120/py-doc/issues/3) first, in case it is already planned.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+      placeholder: My project uses Google-style docstrings, and `Args:` sections show up as plain text.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should py-doc do? Example input and output help a lot.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Parsing and docstrings
+        - Templates and theme
+        - Command line and configuration
+        - Output formats
+        - Performance
+        - Installation and CI integration
+        - Documentation
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use today, or how other tools (pdoc, Sphinx, ...) handle this.

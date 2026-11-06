@@ -17,7 +17,7 @@ use walkdir::{DirEntry, WalkDir};
 
 use cache::Cache;
 use config::Config;
-use generator::{ModuleSource, SiteGenerator};
+use generator::{ModuleSource, RunCache, SiteGenerator};
 
 /// Directory names that are never documented: environments, caches and
 /// build output. Hidden directories (".git", ".venv", ...) are skipped too.
@@ -141,6 +141,11 @@ pub struct Args {
     /// is still written for the next run.
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub no_cache: Option<bool>,
+
+    /// Also document private names (`_name`), private modules and names left
+    /// out of `__all__`
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub include_private: Option<bool>,
 
     /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
     /// it is looked for in --src (or the current directory) and its parents,
@@ -306,7 +311,15 @@ fn run_generation(args: &Config) -> Result<()> {
     generator.announce_templates();
 
     generator.generate(
-        &args.name, sources, &root, old_cache, &cache_key, args.clean,
+        &args.name,
+        sources,
+        &root,
+        RunCache {
+            previous: old_cache,
+            key: cache_key,
+        },
+        args.include_private,
+        args.clean,
     )?;
 
     println!(

@@ -4,7 +4,7 @@ A lightweight and fast documentation tool for Python codebases, powered by Rust.
 
 py-doc reads your `.py` files, never imports or runs them, and writes a static site: one page per module, a searchable index, and three switchable layouts. The theme is built into the binary, so generation works offline.
 
-<p align="center"><img src="benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 20 ms, pydoc 305 ms, pdoc3 868 ms, pdoc 1.50 s, Sphinx 4.27 s. rich: py-doc 44 ms, pydoc 571 ms, pdoc3 1.95 s, pdoc 3.88 s, Sphinx 10.8 s. SQLAlchemy: py-doc 344 ms, pdoc3 15.5 s, pydoc 15.9 s, pdoc 39.7 s, Sphinx 62.6 s." width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/kura120/py-doc/master/benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 20 ms, pydoc 305 ms, pdoc3 868 ms, pdoc 1.50 s, Sphinx 4.27 s. rich: py-doc 44 ms, pydoc 571 ms, pdoc3 1.95 s, pdoc 3.88 s, Sphinx 10.8 s. SQLAlchemy: py-doc 344 ms, pdoc3 15.5 s, pydoc 15.9 s, pdoc 39.7 s, Sphinx 62.6 s." width="820"></p>
 
 py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 45x faster than `pydoc` and `pdoc3`, 115x faster than `pdoc`, and 180x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
 
@@ -25,7 +25,19 @@ py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 4
 
 Choose the installation method that fits your environment.
 
-### Option A: One-Line Script Installer (Easiest)
+### Option A: pip, pipx or uv (Recommended)
+
+From the first release that includes wheels, py-doc is on PyPI as `swiftdoc` (the name `py-doc` was taken). The wheels hold the compiled binary, so no Rust toolchain is needed. The command it installs is still `py-doc`.
+
+```bash
+pipx install swiftdoc      # or
+uv tool install swiftdoc   # or
+pip install swiftdoc
+```
+
+To pin it per project, add `swiftdoc` to your dev dependencies, for example `uv add --dev swiftdoc`. Wheels are built for Linux (x86_64 and aarch64, glibc and musl), macOS (Intel and Apple silicon) and Windows (x86_64).
+
+### Option B: One-Line Script Installer
 
 You do not need Cargo or Rust installed for this. The script downloads the pre-compiled binary for your platform, verifies its SHA-256 checksum when the release publishes one, and installs it.
 
@@ -39,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/kura120/py-doc/master/scripts/insta
 irm https://raw.githubusercontent.com/kura120/py-doc/master/scripts/install.ps1 | iex
 ```
 
-### Option B: Fast Binary Installer (cargo-binstall)
+### Option C: Fast Binary Installer (cargo-binstall)
 
 If you have Cargo but want to avoid compile times, install the pre-compiled binary with `cargo-binstall`. py-doc is not published on crates.io, so point it at the repository:
 
@@ -50,7 +62,7 @@ cargo install cargo-binstall
 cargo binstall --git https://github.com/kura120/py-doc py-doc
 ```
 
-### Option C: Build from Source
+### Option D: Build from Source
 
 ```bash
 git clone https://github.com/kura120/py-doc.git
@@ -88,13 +100,14 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
 | `--no-cache` | Ignore the build cache and render every page. See [Incremental builds](#incremental-builds). |
+| `--include-private` | Also document private names and modules. See [Public API](#public-api). |
 | `--config <FILE>` | The `pyproject.toml` to read. By default it is found automatically (see below). |
 | `-V`, `--version` | Print the py-doc version. |
 | `-h`, `--help` | Print help. |
 
 > **Changed in this release:** `-v` / `--version <VERSION>` used to set the version shown in the docs. That is now `--doc-version`, and `--version` reports the tool's own version.
 
-`--strict`, `--clean` and `--no-cache` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
+`--strict`, `--clean`, `--include-private` and `--no-cache` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
 
 ### Configuring with pyproject.toml
 
@@ -143,6 +156,16 @@ Every `.py` file under `--src` is documented, except:
 
 Files with syntax errors are reported and skipped; the rest of the site is still generated.
 
+### Public API
+
+By default only the public API is documented, the way pdoc does it:
+
+* If a module defines `__all__`, only the names listed there are shown. A listed `_name` is shown too. `__all__` must be a literal list or tuple of strings; `+=`, `.extend(...)` and `.append(...)` with literals are followed. If it is built any other way, it is ignored.
+* Otherwise, names starting with `_` are hidden. Dunder methods such as `__init__` and `__call__` are always shown.
+* A module whose name starts with `_` is hidden, and so is everything inside a package whose name starts with `_`.
+
+Hidden items get no page and do not appear in the navigation or search. A `#pd-doc-link` to one is reported as a warning instead of being linked. Pass `--include-private` to document everything.
+
 ### Keeping the output folder tidy
 
 Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything py-doc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
@@ -164,6 +187,75 @@ The result is always the same as a full build. `--no-cache` forces one (and save
 py-doc --src . --out docs --name myproject \
   --source-url https://github.com/me/myproject/blob/main
 ```
+
+### GitHub Actions
+
+The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64 or arm64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. From v0.5.1 on, a missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
+
+This workflow builds the docs and publishes them to GitHub Pages. In the repository settings, set Pages to deploy from GitHub Actions.
+
+```yaml
+name: Docs
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kura120/py-doc@master
+        with:
+          src: src/myproject
+          out: site
+          name: myproject
+          args: --strict --source-url https://github.com/${{ github.repository }}/blob/${{ github.sha }}
+          upload-pages-artifact: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+| Input | Meaning |
+| --- | --- |
+| `version` | Release to install, such as `0.5.1`. Default `latest`. |
+| `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. Releases up to v0.5.1 have no Linux arm64 binary, so use `source` there for those versions. |
+| `src` | `--src`. Default `.`, or `src` from `[tool.py-doc]` when `pyproject.toml` configures py-doc. |
+| `out` | `--out`. Default `site`. |
+| `name` | `--name`. Defaults to the repository name, or the name from `pyproject.toml` when it configures py-doc. |
+| `args` | Any other flags, passed through. Quotes group words. |
+| `upload-pages-artifact` | `true` uploads `out` with `actions/upload-pages-artifact`. Default `false`. |
+
+The action's outputs are `version` (the py-doc version installed) and `out`. Once a release includes the action and the hook, pin its tag instead of `master` here and in the pre-commit config below.
+
+### pre-commit
+
+The hook runs `py-doc --strict` into a temporary directory, so a file that fails to parse, or a doc-link, macro or image that cannot be resolved, fails the commit. It does not install py-doc: install it first (see [Installation](#installation)) so `py-doc` is on `PATH`.
+
+```yaml
+repos:
+  - repo: https://github.com/kura120/py-doc
+    rev: master
+    hooks:
+      - id: py-doc
+        args: [--src, src/myproject, --name, myproject]
+```
+
+`--src` defaults to `.` and `--name` to the folder name, unless `pyproject.toml` has a `[tool.py-doc]` table, in which case both come from it. Any other args are passed to py-doc.
 
 ---
 
@@ -235,10 +327,52 @@ The output is plain static files. Open `index.html` directly or host the folder 
 `--templates <DIR>` replaces parts of the bundled theme. Any of these files found in the directory is used instead of the built-in one; the rest fall back to the bundled theme:
 
 ```text
-index.html  module.html  document.html  sidebar.html  style.css  app.js
+base.html  index.html  module.html  document.html  sidebar.html  style.css  app.js
 ```
 
 The HTML files are [Tera](https://keats.github.io/tera/) templates. The bundled versions in [`assets/`](assets) are the reference for the variables available.
+
+### Overriding one block
+
+You do not have to copy a whole page to change part of it. The bundled templates are also available under the `py-doc/` prefix, so a custom template can extend the one it replaces and override only the blocks it changes. Everything else keeps the bundled default.
+
+This `module.html` gives every module page a new header and leaves the rest of the page alone:
+
+```html
+{% extends "py-doc/module.html" %}
+
+{% block header %}
+<h1 class="module-title">{{ display_module_name }} <small>{{ package.name }} {{ version }}</small></h1>
+{% endblock header %}
+```
+
+Use `{{ super() }}` inside a block to keep the bundled content and add to it:
+
+```html
+{% block scripts %}{{ super() }}<script src="{{ root_path }}extra.js" defer></script>{% endblock scripts %}
+```
+
+`index.html`, `module.html` and `document.html` all extend `base.html`, which holds the page skeleton. Its blocks are:
+
+| Block | Holds |
+| --- | --- |
+| `head` | Everything inside `<head>`, including the blocks below it |
+| `title` | The text of `<title>` |
+| `description` | The `content` of the description `<meta>` tag |
+| `stylesheets` | The `style.css` link |
+| `body_attributes` | Extra attributes on `<body>` |
+| `sidebar` | The `sidebar.html` include and the resize handle |
+| `header` | The top of the page: breadcrumb and title |
+| `content` | The page body |
+| `outline` | The "On this page" panel (module pages only) |
+| `footer` | Empty by default; shown after the page body |
+| `scripts` | The script tags at the end of `<body>` |
+
+`module.html` also splits `content` into `module_docstring`, `classes` and `functions`.
+
+A custom `base.html` that extends `py-doc/base.html` changes every page at once, for example to add a footer to the whole site.
+
+Any other `*.html` file in the directory, including ones in subfolders, can be included or extended by name: `{% include "partials/footer.html" %}`. Whole-file replacements still work: a template that does not use `extends` is rendered as it is.
 
 ---
 
@@ -271,7 +405,7 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-Release builds are made with `scripts/build.sh [TARGET]` or `scripts/build.ps1 [-Target TARGET]`. Pushing a `v*` tag that matches the version in `Cargo.toml` builds and publishes binaries with SHA-256 checksums.
+Release builds are made with `scripts/build.sh [TARGET]` or `scripts/build.ps1 [-Target TARGET]`. Pushing a `v*` tag that matches the version in `Cargo.toml` builds and publishes binaries with SHA-256 checksums, and publishes the `swiftdoc` wheels and sdist to PyPI through trusted publishing. Each wheel is installed and run on its own platform first. The Packaging workflow builds and tests the Linux wheel on pull requests that touch packaging files.
 
 UPX compression is available with `--upx` / `-Upx` for local builds. Published binaries are not packed: the download is already compressed, and packed executables are unsupported on macOS and often flagged by antivirus tools on Windows.
 
@@ -281,7 +415,7 @@ UPX compression is available with `--upx` / `-Upx` for local builds. Published b
 
 ### 'py-doc' is not recognized as a command
 
-If you chose Option C (or your script path environment variable is missing), your shell cannot locate the executable. You must add Cargo's binary directory to your PATH.
+If you chose Option D (or your script path environment variable is missing), your shell cannot locate the executable. You must add Cargo's binary directory to your PATH.
 
 * **Windows (PowerShell):**
 ```powershell

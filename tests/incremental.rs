@@ -368,11 +368,12 @@ fn template_changes_rebuild_every_page() {
     let templates_arg = templates.to_string_lossy().into_owned();
 
     project.build_and_compare(&["--templates", &templates_arg]);
-    fs::write(
-        templates.join("module.html"),
-        module_html.replace("</body>", "<!-- changed --></body>"),
-    )
-    .unwrap();
+    let changed = module_html.replace(
+        "{% block title %}Module ",
+        "{% block title %}<!-- changed -->Module ",
+    );
+    assert_ne!(changed, module_html, "the template edit did not apply");
+    fs::write(templates.join("module.html"), changed).unwrap();
     let out = project.build_and_compare(&["--templates", &templates_arg]);
     assert_eq!(unchanged_pages(&out), 0);
     let engine = fs::read_to_string(project.out.join("pkg/engine.html")).unwrap();
@@ -411,4 +412,72 @@ fn custom_templates_may_show_other_modules_docstrings() {
     project.build_and_compare(&["--templates", &templates_arg]);
     let tools = fs::read_to_string(project.out.join("pkg/tools.html")).unwrap();
     assert!(tools.contains("now differently"));
+}
+
+/// The "(N unchanged)" count on the "Parsed" line, 0 if absent.
+fn unchanged_files(output: &Output) -> usize {
+    let text = stdout(output);
+    let line = text.lines().find(|line| line.contains("Parsed")).unwrap();
+    line.split('(')
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .map(|n| n.parse().unwrap())
+        .unwrap_or(0)
+}
+
+#[test]
+fn private_names_stay_hidden_across_incremental_builds() {
+    let mut project = Project::new("private");
+    project.write(
+        "pkg/_internal.py",
+        "\"\"\"Internal.\"\"\"\n\ndef secret():\n    \"\"\"Secret.\"\"\"\n",
+    );
+    project.edit(
+        "pkg/engine.py",
+        "\n\nclass Engine:",
+        "\n\n__all__ = [\"Engine\", \"build\"]\n\n\nclass Engine:",
+    );
+    project.edit(
+        "pkg/tools.py",
+        "#pd-image: logo.png",
+        "#pd-image: logo.png\n#pd-doc-link: pkg._internal.secret",
+    );
+    project.edit(
+        "pkg/tools.py",
+        "def helper(x):",
+        "def _private_helper():\n    pass\n\n\ndef helper(x):",
+    );
+
+    let first = project.build_and_compare(&[]);
+    assert!(
+        String::from_utf8_lossy(&first.stderr).contains("is private and hidden"),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(!project.out.join("pkg/_internal.html").exists());
+
+    // Nothing changed: no file is parsed (the private one included), no
+    // page is written, and the same warning is reported.
+    let again = project.build_and_compare(&[]);
+    assert_eq!(unchanged_files(&again), 5);
+    assert_eq!(unchanged_pages(&again), total_pages(&again));
+
+    // Renaming the private function turns "hidden" into "not found".
+    project.edit("pkg/_internal.py", "def secret", "def hush");
+    let out = project.build_and_compare(&[]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("was not found"));
+
+    // Dropping a name from __all__ hides it.
+    project.edit("pkg/engine.py", "[\"Engine\", \"build\"]", "[\"Engine\"]");
+    project.build_and_compare(&[]);
+    let engine = fs::read_to_string(project.out.join("pkg/engine.html")).unwrap();
+    assert!(!engine.contains("fn.build"));
+
+    // Showing private names is an option change: everything is rebuilt.
+    let out = project.build_and_compare(&["--include-private"]);
+    assert_eq!(unchanged_pages(&out), 0);
+    assert!(project.out.join("pkg/_internal.html").is_file());
+    let out = project.build_and_compare(&[]);
+    assert_eq!(unchanged_pages(&out), 0);
+    assert!(!project.out.join("pkg/_internal.html").exists());
 }

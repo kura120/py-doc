@@ -36,6 +36,7 @@ pub struct Config {
     pub strict: bool,
     pub clean: bool,
     pub no_cache: bool,
+    pub include_private: bool,
 }
 
 /// What was read from one pyproject.toml.
@@ -277,6 +278,10 @@ impl Config {
             strict,
             clean: cli.clean.or(tool.clean).unwrap_or(false),
             no_cache: cli.no_cache.or(tool.no_cache).unwrap_or(false),
+            include_private: cli
+                .include_private
+                .or(tool.include_private)
+                .unwrap_or(false),
         })
     }
 }
@@ -316,6 +321,7 @@ source-url = "https://tool"
 strict = true
 clean = true
 no-cache = true
+include-private = true
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -340,6 +346,7 @@ no-cache = true
         "--strict=false",
         "--clean=false",
         "--no-cache=false",
+        "--include-private=false",
     ];
 
     #[test]
@@ -361,6 +368,7 @@ no-cache = true
                 strict: false,
                 clean: false,
                 no_cache: false,
+                include_private: false,
             }
         );
     }
@@ -384,6 +392,7 @@ no-cache = true
                 strict: true,
                 clean: true,
                 no_cache: true,
+                include_private: true,
             }
         );
     }
@@ -414,6 +423,7 @@ no-cache = true
                 strict: false,
                 clean: false,
                 no_cache: false,
+                include_private: false,
             }
         );
     }
@@ -476,6 +486,7 @@ no-cache = true
             "strict",
             "clean",
             "no-cache",
+            "include-private",
         ] {
             assert!(keys.iter().any(|k| k == key), "{key}");
         }

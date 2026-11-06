@@ -335,6 +335,7 @@ impl App {
             strict: self.prefill.strict.unwrap_or(false),
             clean: self.prefill.clean.unwrap_or(false),
             no_cache: self.prefill.no_cache.unwrap_or(false),
+            include_private: self.prefill.include_private.unwrap_or(false),
         }
     }
 }
@@ -912,6 +913,7 @@ mod tests {
                 strict: true,
                 clean: false,
                 no_cache: false,
+                include_private: false,
             }
         );
     }

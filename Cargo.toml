@@ -44,7 +44,7 @@ pkg-fmt = "zip"
 pkg-fmt = "tgz" # uses .tar.gz
 
 [profile.release]
-opt-level = "z"
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
