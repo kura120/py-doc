@@ -19,8 +19,22 @@ fn out_dir(test: &str) -> PathBuf {
     dir
 }
 
+/// An empty pyproject.toml passed as `--config`, so runs against the
+/// fixtures never pick up the repository's own pyproject.toml (the PyPI
+/// packaging metadata), which py-doc would otherwise find by walking up
+/// from `--src`.
+fn empty_config() -> PathBuf {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
+    if !path.exists() {
+        fs::write(&path, "").unwrap();
+    }
+    path
+}
+
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        .arg("--config")
+        .arg(empty_config())
         .arg("--src")
         .arg(src)
         .arg("--out")
@@ -264,6 +278,19 @@ fn custom_templates_override_only_the_files_they_provide() {
     );
     assert_eq!(read(&out, "style.css"), "/* custom theme */");
     assert!(read(&out, "app.js").contains("renderNavTree"));
+}
+
+#[test]
+fn fixture_runs_ignore_the_repository_pyproject() {
+    // The repository root has a pyproject.toml for the PyPI package. These
+    // tests pass an empty --config, so its [project] table must not reach the
+    // fixture sites: no pyproject hint, and the default docs version.
+    let out = out_dir("ignores_repo_pyproject");
+    let output = run(&fixture("sample"), &out, &[]);
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("pyproject"), "unexpected: {}", stderr);
+    assert!(read(&out, "index.html").contains("1.0.0"));
 }
 
 #[test]
