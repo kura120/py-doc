@@ -40,6 +40,8 @@ pub struct Config {
     pub name: String,
     pub doc_version: String,
     pub templates: Option<String>,
+    /// Extra stylesheets, in the order given.
+    pub css: Vec<String>,
     pub layout: LayoutKind,
     pub theme: ThemeKind,
     pub exclude: Vec<String>,
@@ -189,6 +191,7 @@ fn rebase_paths(args: &mut Args, base: &Path) {
     for path in [&mut args.src, &mut args.out, &mut args.templates]
         .into_iter()
         .flatten()
+        .chain(args.css.iter_mut())
     {
         *path = base.join(&*path).to_string_lossy().into_owned();
     }
@@ -303,6 +306,11 @@ impl Config {
             name,
             doc_version,
             templates: cli.templates.or(tool.templates),
+            css: if cli.css.is_empty() {
+                tool.css
+            } else {
+                cli.css
+            },
             layout: cli.layout.or(tool.layout).unwrap_or(LayoutKind::Classic),
             theme: cli.theme.or(tool.theme).unwrap_or(ThemeKind::Auto),
             exclude: if cli.exclude.is_empty() {
@@ -350,6 +358,7 @@ out = "tool-out"
 name = "tool-name"
 doc-version = "3.0.0"
 templates = "tool-templates"
+css = ["tool-a.css", "tool-b.css"]
 layout = "modern"
 theme = "slate"
 exclude = ["tool-ex"]
@@ -373,6 +382,8 @@ coverage-format = "json"
         "4.0.0",
         "--templates",
         "cli-templates",
+        "--css",
+        "cli.css",
         "--layout",
         "minimal",
         "--theme",
@@ -402,6 +413,7 @@ coverage-format = "json"
                 name: "cli-name".into(),
                 doc_version: "4.0.0".into(),
                 templates: Some("cli-templates".into()),
+                css: vec!["cli.css".into()],
                 layout: LayoutKind::Minimal,
                 theme: ThemeKind::Dark,
                 exclude: vec!["cli-ex".into()],
@@ -429,6 +441,7 @@ coverage-format = "json"
                 name: "tool-name".into(),
                 doc_version: "3.0.0".into(),
                 templates: Some(in_proj("tool-templates")),
+                css: vec![in_proj("tool-a.css"), in_proj("tool-b.css")],
                 layout: LayoutKind::Modern,
                 theme: ThemeKind::Slate,
                 exclude: vec!["tool-ex".into()],
@@ -463,6 +476,7 @@ coverage-format = "json"
                 name: "c".into(),
                 doc_version: "1.0.0".into(),
                 templates: None,
+                css: vec![],
                 layout: LayoutKind::Classic,
                 theme: ThemeKind::Auto,
                 exclude: vec![],
@@ -526,6 +540,7 @@ coverage-format = "json"
             "name",
             "doc-version",
             "templates",
+            "css",
             "layout",
             "theme",
             "exclude",
