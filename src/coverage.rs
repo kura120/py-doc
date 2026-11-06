@@ -311,6 +311,7 @@ mod tests {
             is_async: false,
             line: 1,
             docstring: doc.map(str::to_string),
+            raw_docstring: None,
             summary: None,
             is_private: false,
         }
@@ -322,6 +323,7 @@ mod tests {
             source_path: format!("{}.py", qualname.replace('.', "/")),
             qualname: qualname.into(),
             docstring: doc.map(str::to_string),
+            raw_docstring: None,
             summary: None,
             classes: vec![],
             functions: vec![],
@@ -352,6 +354,7 @@ mod tests {
             bases: vec![],
             line: 1,
             docstring: None,
+            raw_docstring: None,
             summary: None,
             functions: vec![function("run", Some("Runs.")), function("stop", None)],
             variables: vec![],

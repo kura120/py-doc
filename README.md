@@ -92,7 +92,8 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | Flag | Meaning |
 | --- | --- |
 | `-s`, `--src <PATH>` | Project directory, or a single `.py` file. Required unless set in `pyproject.toml`. |
-| `-o`, `--out <DIR>` | Where the site is written. Required unless set in `pyproject.toml`. |
+| `-o`, `--out <DIR>` | Where the site (and `api.json`) is written. Required unless set in `pyproject.toml`. |
+| `--format <html\|json>` | What to write to `--out`: the HTML site, `api.json`, or both. Repeatable. Default `html`. See [JSON output](#json-output). |
 | `-n`, `--name <NAME>` | Package name shown in the docs. Defaults to `[project] name`; required if there is none. |
 | `--doc-version <VERSION>` | Your project's version, shown in the sidebar. Defaults to `[project] version`, else `1.0.0`. |
 | `--layout <classic\|minimal\|modern>` | Layout the site opens with. Default `classic`. |
@@ -237,6 +238,59 @@ The action always passes `--out`, so this also builds the site. To only check, r
 ```
 
 `modules` is sorted by module name. `module` is `""` for a root `__init__.py`, which has no dotted name; its `path` and its entry in `undocumented` use the file name. `undocumented` lists qualified names in source order. Percentages are rounded to two decimals, and `percent` is 100 when there is nothing to count. `schema_version` changes only when a field is renamed or removed.
+
+### JSON output
+
+`--format json` writes the parsed API to `<out>/api.json`, for tools that build on py-doc's parser: other site generators, API diffs between releases, linters, search indexes.
+
+```bash
+py-doc --src src/myproject --out build --format json                 # api.json only
+py-doc --src src/myproject --out build --format html --format json   # site and api.json
+```
+
+With only `json`, no HTML is written: `--out` gets `api.json`, the `.py-doc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`. `markdown` is planned and rejected for now.
+
+This is separate from a [coverage check](#documentation-coverage): `--coverage` without `--out` on the command line writes nothing at all, whatever `format` says.
+
+The file holds the same API the site shows: after the [Public API](#public-api) filtering, or everything with `--include-private`. Every module, class, method, function, variable and attribute has three forms of its docstring:
+
+* `docstring`: exactly as written in the source, so you can render it your own way;
+* `docstring_html`: as the site renders it, macros included. Its links are relative to the module's `page`;
+* `summary`: the first meaningful line, as plain text.
+
+Shortened (`"...": "..."` marks left-out fields):
+
+```json
+{
+  "schema_version": 1,
+  "py_doc_version": "0.5.1",
+  "package": { "name": "myproject", "version": "2.1.0" },
+  "include_private": false,
+  "modules": [
+    {
+      "name": "engine",
+      "qualname": "myproject.engine",
+      "path": "myproject/engine.py",
+      "page": "myproject/engine.html",
+      "docstring": "Runs jobs.",
+      "docstring_html": "<p>Runs jobs.</p>\n",
+      "summary": "Runs jobs.",
+      "is_document": false,
+      "is_private": false,
+      "all": null,
+      "classes": [
+        { "name": "Engine", "qualname": "myproject.engine.Engine", "line": 8, "bases": [], "...": "...", "methods": [], "variables": [] }
+      ],
+      "functions": [],
+      "variables": [
+        { "name": "TIMEOUT", "qualname": "myproject.engine.TIMEOUT", "line": 4, "annotation": "float", "value": "2.5", "...": "..." }
+      ]
+    }
+  ]
+}
+```
+
+The full shape is in [`docs/api.schema.json`](docs/api.schema.json) (JSON Schema 2020-12). A test validates real output against it, so it cannot fall out of date. Modules are sorted by `qualname`, then `path`; members keep source order. The same input always gives a byte-identical file. `schema_version` changes only when a field is renamed, removed or changes type.
 
 ### Keeping the output folder tidy
 
