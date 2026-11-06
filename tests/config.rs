@@ -81,6 +81,24 @@ fn config_paths_are_relative_to_the_pyproject() {
 }
 
 #[test]
+fn css_in_the_pyproject_is_relative_to_it() {
+    let pyproject = format!("{CONFIGURED}css = [\"docs/theme.css\"]\n");
+    let repo = project("css_config", &pyproject);
+    fs::create_dir_all(repo.join("docs")).unwrap();
+    fs::write(
+        repo.join("docs/theme.css"),
+        ":root { --accent-blue: #2563eb !important; }\n",
+    )
+    .unwrap();
+    let output = py_doc(&repo.join("sub"), &["--config", "../pyproject.toml"]);
+    assert_ok(&output);
+    let copied = fs::read_to_string(repo.join("site/custom/0-theme.css")).unwrap();
+    assert!(copied.contains("#2563eb"));
+    let index = fs::read_to_string(repo.join("site/index.html")).unwrap();
+    assert!(index.contains("href=\"./custom/0-theme.css\""));
+}
+
+#[test]
 fn cli_paths_are_relative_to_the_working_directory() {
     let repo = project("relative_cli", CONFIGURED);
     let output = py_doc(

@@ -109,6 +109,12 @@ pub struct Args {
     #[arg(short, long)]
     pub templates: Option<String>,
 
+    /// Extra stylesheet linked after the bundled style.css on every page,
+    /// to override the theme's CSS custom properties or add rules. Repeatable.
+    #[arg(long, value_name = "FILE")]
+    #[serde(default)]
+    pub css: Vec<String>,
+
     /// Starting UI layout for the generated site [default: classic]
     #[arg(long, value_enum)]
     pub layout: Option<LayoutKind>,
@@ -269,7 +275,8 @@ fn run_generation(args: &Config) -> Result<()> {
         args.layout.as_str(),
         args.theme.as_baked(),
         args.source_url.as_deref(),
-    )?;
+    )?
+    .with_extra_css(&args.css)?;
 
     generator.generate(&mut package, args.clean)?;
 
