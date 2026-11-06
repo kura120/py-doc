@@ -766,7 +766,9 @@ impl SiteGenerator {
             }
         };
 
-        for class in module.classes.iter_mut() {
+        // Nested classes are rendered too: walk them with an explicit stack.
+        let mut stack: Vec<&mut PythonClass> = module.classes.iter_mut().collect();
+        while let Some(class) = stack.pop() {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
                 class.docstring = Some(self.render_markdown(&doc, &ctx));
@@ -774,6 +776,7 @@ impl SiteGenerator {
             }
             class.functions.iter_mut().for_each(render_function);
             class.variables.iter_mut().for_each(render_variable);
+            stack.extend(class.classes.iter_mut());
         }
         module.functions.iter_mut().for_each(render_function);
         module.variables.iter_mut().for_each(render_variable);
@@ -1265,6 +1268,29 @@ fn with_variables(mut entry: serde_json::Value, variables: &[PythonVariable]) ->
     entry
 }
 
+/// Search entries for `classes` and, after each, its nested classes under
+/// their qualified names ("Outer.Inner"), which are also their anchors.
+fn class_entries(classes: &[PythonClass]) -> Vec<serde_json::Value> {
+    let mut entries = Vec::new();
+    for c in classes {
+        let name = if c.qualname.is_empty() {
+            &c.name
+        } else {
+            &c.qualname
+        };
+        entries.push(with_variables(
+            serde_json::json!({
+                "name": name,
+                "summary": c.summary,
+                "functions": function_entries(&c.functions, true),
+            }),
+            &c.variables,
+        ));
+        entries.extend(class_entries(&c.classes));
+    }
+    entries
+}
+
 fn search_index_json(package: &PythonPackage) -> serde_json::Value {
     let modules: Vec<serde_json::Value> = package
         .modules
@@ -1274,11 +1300,7 @@ fn search_index_json(package: &PythonPackage) -> serde_json::Value {
                 "name": if m.qualname.is_empty() { &package.name } else { &m.qualname },
                 "link_path": m.link_path,
                 "summary": m.summary,
-                "classes": m.classes.iter().map(|c| with_variables(serde_json::json!({
-                    "name": c.name,
-                    "summary": c.summary,
-                    "functions": function_entries(&c.functions, true),
-                }), &c.variables)).collect::<Vec<_>>(),
+                "classes": class_entries(&m.classes),
                 "functions": function_entries(&m.functions, true),
             });
             with_variables(entry, &m.variables)
