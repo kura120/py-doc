@@ -1,4 +1,4 @@
-use crate::models::PythonPackage;
+use crate::models::{PythonModule, PythonPackage};
 use std::collections::{HashMap, HashSet};
 
 struct ModuleEntry {
@@ -15,51 +15,75 @@ struct ModuleEntry {
 pub struct Resolver {
     package_name: String,
     modules: Vec<ModuleEntry>,
+    /// The same lookup over the private items left out of the docs, used only
+    /// to tell "hidden" apart from "does not exist". Never produces links.
+    hidden: Option<Box<Resolver>>,
+}
+
+fn module_entries(modules: &[PythonModule]) -> Vec<ModuleEntry> {
+    modules
+        .iter()
+        .map(|module| {
+            let raw = module
+                .source_path
+                .strip_suffix(".py")
+                .unwrap_or(&module.source_path)
+                .replace('/', ".");
+            let raw = raw
+                .strip_suffix(".__init__")
+                .map(str::to_string)
+                .unwrap_or(raw);
+
+            let mut paths = vec![module.qualname.clone()];
+            if raw != module.qualname {
+                paths.push(raw);
+            }
+
+            ModuleEntry {
+                paths,
+                link_path: module.link_path.clone(),
+                functions: module.functions.iter().map(|f| f.name.clone()).collect(),
+                classes: module
+                    .classes
+                    .iter()
+                    .map(|c| {
+                        (
+                            c.name.clone(),
+                            c.functions.iter().map(|f| f.name.clone()).collect(),
+                        )
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
 }
 
 impl Resolver {
+    /// Only `package.modules` can be linked to; `package.hidden` is kept
+    /// so that a link to a private symbol can be reported as such.
     pub fn build(package: &PythonPackage) -> Self {
-        let modules = package
-            .modules
-            .iter()
-            .map(|module| {
-                let raw = module
-                    .source_path
-                    .strip_suffix(".py")
-                    .unwrap_or(&module.source_path)
-                    .replace('/', ".");
-                let raw = raw
-                    .strip_suffix(".__init__")
-                    .map(str::to_string)
-                    .unwrap_or(raw);
-
-                let mut paths = vec![module.qualname.clone()];
-                if raw != module.qualname {
-                    paths.push(raw);
-                }
-
-                ModuleEntry {
-                    paths,
-                    link_path: module.link_path.clone(),
-                    functions: module.functions.iter().map(|f| f.name.clone()).collect(),
-                    classes: module
-                        .classes
-                        .iter()
-                        .map(|c| {
-                            (
-                                c.name.clone(),
-                                c.functions.iter().map(|f| f.name.clone()).collect(),
-                            )
-                        })
-                        .collect(),
-                }
+        let hidden = (!package.hidden.is_empty()).then(|| {
+            Box::new(Self {
+                package_name: package.name.clone(),
+                modules: module_entries(&package.hidden),
+                hidden: None,
             })
-            .collect();
-
+        });
         Self {
             package_name: package.name.clone(),
-            modules,
+            modules: module_entries(&package.modules),
+            hidden,
         }
+    }
+
+    /// True when `target` does not resolve to a documented symbol but names
+    /// a private one that was hidden from the docs.
+    pub fn is_hidden(&self, target: &str) -> bool {
+        self.resolve(target).is_none()
+            && self
+                .hidden
+                .as_ref()
+                .is_some_and(|hidden| hidden.resolve(target).is_some())
     }
 
     /// Finds the one module a dotted path refers to. An exact match wins;

@@ -9,7 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "Building optimized release binary (opt-level=z, LTO, single codegen unit)..."
+Write-Host "Building optimized release binary (opt-level=3, LTO, single codegen unit)..."
 if ($Target) {
     cargo build --release --locked --target $Target
     $BinPath = "target\$Target\release\py-doc.exe"
