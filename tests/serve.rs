@@ -1,4 +1,4 @@
-//! `py-doc serve`: the live-reload script is only in served pages, edits
+//! `swiftdoc serve`: the live-reload script is only in served pages, edits
 //! rebuild and reach the browser, a broken file keeps the last good site,
 //! and Ctrl+C stops cleanly. Every wait polls with a deadline.
 
@@ -30,7 +30,7 @@ impl Drop for Served {
 
 impl Served {
     fn start(src: &Path, out: &Path, config: &Path) -> Served {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
             .arg("serve")
             .arg("--config")
             .arg(config)
@@ -42,7 +42,7 @@ impl Served {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("failed to start py-doc serve");
+            .expect("failed to start swiftdoc serve");
         let (tx, lines) = mpsc::channel();
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
@@ -161,11 +161,11 @@ fn serve_injects_reload_rebuilds_and_survives_errors() {
     // The served page has the reload script; the file on disk does not,
     // and is otherwise the same page.
     let page = served.wait_for_page("/pkg/engine.html", "Engine, first version.");
-    assert!(page.contains("data-py-doc-reload"), "{page}");
+    assert!(page.contains("data-swiftdoc-reload"), "{page}");
     let on_disk = fs::read_to_string(out.join("pkg/engine.html")).unwrap();
-    assert!(!on_disk.contains("py-doc-reload"));
-    assert!(!on_disk.contains("__py-doc"));
-    let script_start = page.find("<script data-py-doc-reload>").unwrap();
+    assert!(!on_disk.contains("swiftdoc-reload"));
+    assert!(!on_disk.contains("__swiftdoc"));
+    let script_start = page.find("<script data-swiftdoc-reload>").unwrap();
     let script_end = page[script_start..].find("</script>").unwrap() + "</script>".len();
     let without = format!(
         "{}{}",
@@ -176,24 +176,24 @@ fn serve_injects_reload_rebuilds_and_survives_errors() {
     for file in walk(&out) {
         let bytes = fs::read(&file).unwrap();
         assert!(
-            !String::from_utf8_lossy(&bytes).contains("__py-doc/reload"),
+            !String::from_utf8_lossy(&bytes).contains("__swiftdoc/reload"),
             "{} has the reload code",
             file.display()
         );
     }
     // A folder serves its index; nothing outside the site is reachable.
-    assert!(served.get("/").1.contains("data-py-doc-reload"));
+    assert!(served.get("/").1.contains("data-swiftdoc-reload"));
     assert_eq!(served.get("/../empty-pyproject.toml").0, 404);
     assert_eq!(served.get("/missing.html").0, 404);
 
-    let (_, build) = served.get("/__py-doc/reload");
+    let (_, build) = served.get("/__swiftdoc/reload");
 
     // An edit rebuilds the page, and a waiting reload poll answers.
     let engine = src.join("pkg/engine.py");
     let text = fs::read_to_string(&engine).unwrap();
     fs::write(&engine, text.replace("first", "second")).unwrap();
     served.wait_for_page("/pkg/engine.html", "Engine, second version.");
-    let (status, newer) = served.get(&format!("/__py-doc/reload?since={build}"));
+    let (status, newer) = served.get(&format!("/__swiftdoc/reload?since={build}"));
     assert_eq!(status, 200);
     assert_ne!(newer, build);
 
@@ -203,7 +203,7 @@ fn serve_injects_reload_rebuilds_and_survives_errors() {
     let (status, page) = served.get("/pkg/engine.html");
     assert_eq!(status, 200);
     assert!(page.contains("Engine, second version."));
-    assert_eq!(served.get("/__py-doc/reload").1, newer);
+    assert_eq!(served.get("/__swiftdoc/reload").1, newer);
 
     // The next good save recovers.
     fs::remove_file(src.join("pkg/broken.py")).unwrap();
@@ -236,7 +236,7 @@ fn serve_moves_to_the_next_port_when_one_is_taken() {
     let (src, out, config) = setup("port");
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = taken.local_addr().unwrap().port();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("serve")
         .arg("--config")
         .arg(&config)

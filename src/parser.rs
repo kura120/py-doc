@@ -1040,7 +1040,7 @@ mod tests {
     #[test]
     fn crlf_sources_read_like_python_does() {
         assert_eq!(normalize_newlines("a\r\nb\rc\n".into()), "a\nb\nc\n");
-        let dir = std::env::temp_dir().join(format!("py-doc-crlf-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("swiftdoc-crlf-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let file = dir.join("crlf.py");
         fs::write(
@@ -1363,7 +1363,7 @@ mod tests {
             &body,
             &ImportContext {
                 package: &package,
-                root: Path::new("/nonexistent-py-doc-root"),
+                root: Path::new("/nonexistent-swiftdoc-root"),
                 root_package,
             },
         )

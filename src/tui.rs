@@ -189,7 +189,7 @@ struct App {
 }
 
 impl App {
-    /// A form prefilled from pyproject.toml (`[tool.py-doc]`, then `[project]`).
+    /// A form prefilled from pyproject.toml (`[tool.swiftdoc]`, then `[project]`).
     fn new(prefill: &Args) -> Self {
         let name_hint = "(required) auto-filled from source folder name";
         let layout_idx = match prefill.layout {
@@ -338,7 +338,7 @@ impl App {
             no_cache: self.prefill.no_cache.unwrap_or(false),
             include_private: self.prefill.include_private.unwrap_or(false),
             docstring_style: self.prefill.docstring_style.unwrap_or_default(),
-            // The wizard only runs without a [tool.py-doc] table, so no
+            // The wizard only runs without a [tool.swiftdoc] table, so no
             // coverage settings or extra formats can reach it.
             formats: vec![OutputFormat::Html],
             coverage: None,
@@ -522,7 +522,7 @@ fn ui(f: &mut Frame, app: &App) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
-            " py-doc ",
+            " swiftdoc ",
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Cyan)

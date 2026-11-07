@@ -18,10 +18,10 @@ done
 echo "Building optimized release binary (opt-level=3, LTO, single codegen unit)..."
 if [ -n "$TARGET" ]; then
     cargo build --release --locked --target "$TARGET"
-    BIN_PATH="target/$TARGET/release/py-doc"
+    BIN_PATH="target/$TARGET/release/swiftdoc"
 else
     cargo build --release --locked
-    BIN_PATH="target/release/py-doc"
+    BIN_PATH="target/release/swiftdoc"
 fi
 
 if [ ! -f "$BIN_PATH" ]; then

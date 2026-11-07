@@ -35,7 +35,7 @@ fn generate(test: &str, extra: &[&str]) -> (PathBuf, String) {
     fs::create_dir_all(&base).unwrap();
     let config = base.join("empty.toml");
     fs::write(&config, "").unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(&config)
         .arg("--src")
@@ -45,10 +45,10 @@ fn generate(test: &str, extra: &[&str]) -> (PathBuf, String) {
         .args(["--name", "demo"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     let log = String::from_utf8_lossy(&output.stdout).to_string()
         + &String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "py-doc failed:\n{log}");
+    assert!(output.status.success(), "swiftdoc failed:\n{log}");
     (out, log)
 }
 
@@ -254,10 +254,10 @@ fn style_can_be_set_in_pyproject() {
     let base = Path::new(env!("CARGO_TARGET_TMPDIR")).join("docstrings");
     fs::create_dir_all(&base).unwrap();
     let config = base.join("markdown.toml");
-    fs::write(&config, "[tool.py-doc]\ndocstring-style = \"markdown\"\n").unwrap();
+    fs::write(&config, "[tool.swiftdoc]\ndocstring-style = \"markdown\"\n").unwrap();
     let out = base.join("pyproject");
     let _ = fs::remove_dir_all(&out);
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(&config)
         .arg("--src")

@@ -1,4 +1,4 @@
-//! The incremental-build cache, stored as `.py-doc-cache` in `--out`.
+//! The incremental-build cache, stored as `.swiftdoc-cache` in `--out`.
 //!
 //! It holds, per source file, the content hash and the rendered module plus
 //! everything its rendering depended on (doc-link answers, image files,
@@ -9,7 +9,7 @@
 //! slow build.
 //!
 //! The whole cache is dropped when its key changes. The key covers the
-//! py-doc version, every option that can change the output and the theme
+//! swiftdoc version, every option that can change the output and the theme
 //! files, so an option or template change is a full rebuild.
 //!
 //! The file is in postcard, a compact binary serde format: strings are
@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 use crate::models::PythonModule;
 
-pub const CACHE_NAME: &str = ".py-doc-cache";
+pub const CACHE_NAME: &str = ".swiftdoc-cache";
 
 /// Bump when the cache layout or what it records changes.
 const FORMAT: u32 = 5;
@@ -55,7 +55,7 @@ pub fn hash_source(source_path: &str, contents: &[u8]) -> String {
     hash_bytes(&buffer)
 }
 
-/// The key for a cache built by this py-doc with these settings.
+/// The key for a cache built by this swiftdoc with these settings.
 /// `settings` is every option that affects the output, serialized;
 /// `theme` is the fingerprint of the template and static files.
 pub fn cache_key(settings: &str, theme: &str) -> String {
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn a_cache_with_another_key_is_ignored() {
-        let dir = std::env::temp_dir().join(format!("py-doc-cache-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("swiftdoc-cache-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         Cache::default().save(&dir, "one").unwrap();
         assert!(Cache::load(&dir, "one").is_some());
@@ -410,7 +410,7 @@ mod tests {
             shared_hash: "s",
         };
         let dir =
-            std::env::temp_dir().join(format!("py-doc-cache-roundtrip-{}", std::process::id()));
+            std::env::temp_dir().join(format!("swiftdoc-cache-roundtrip-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let mut pages = BTreeMap::new();
         pages.insert(

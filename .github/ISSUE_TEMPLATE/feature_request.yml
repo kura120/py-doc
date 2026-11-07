@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please check the [open issues](https://github.com/kura120/py-doc/issues) and the [roadmap](https://github.com/kura120/py-doc/issues/3) first, in case it is already planned.
+        Please check the [open issues](https://github.com/kura120/swiftdoc/issues) and the [roadmap](https://github.com/kura120/swiftdoc/issues/3) first, in case it is already planned.
 
   - type: textarea
     id: problem
@@ -20,7 +20,7 @@ body:
     id: proposal
     attributes:
       label: Proposal
-      description: What should py-doc do? Example input and output help a lot.
+      description: What should swiftdoc do? Example input and output help a lot.
     validations:
       required: true
 

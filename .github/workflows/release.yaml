@@ -18,24 +18,24 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: py-doc
-            asset_name: py-doc-x86_64-unknown-linux-gnu.tar.gz
+            artifact_name: swiftdoc
+            asset_name: swiftdoc-x86_64-unknown-linux-gnu.tar.gz
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact_name: py-doc
-            asset_name: py-doc-aarch64-unknown-linux-gnu.tar.gz
+            artifact_name: swiftdoc
+            asset_name: swiftdoc-aarch64-unknown-linux-gnu.tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: py-doc
-            asset_name: py-doc-x86_64-apple-darwin.tar.gz
+            artifact_name: swiftdoc
+            asset_name: swiftdoc-x86_64-apple-darwin.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: py-doc
-            asset_name: py-doc-aarch64-apple-darwin.tar.gz
+            artifact_name: swiftdoc
+            asset_name: swiftdoc-aarch64-apple-darwin.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: py-doc.exe
-            asset_name: py-doc-x86_64-pc-windows-msvc.zip
+            artifact_name: swiftdoc.exe
+            asset_name: swiftdoc-x86_64-pc-windows-msvc.zip
 
     steps:
       - name: Checkout Source Code
@@ -100,8 +100,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Python wheels for PyPI, published as `swiftdoc`. Each wheel holds only the
-  # py-doc binary (maturin `bindings = "bin"`, see pyproject.toml), which pip
-  # installs as the `py-doc` command. Linux wheels are built in the manylinux
+  # swiftdoc binary (maturin `bindings = "bin"`, see pyproject.toml), which pip
+  # installs as the `swiftdoc` command. Linux wheels are built in the manylinux
   # and musllinux containers maturin-action provides.
   wheels:
     name: Wheel (${{ matrix.platform }})
@@ -240,7 +240,7 @@ jobs:
 
   # PyPI trusted publishing, so no token is stored. The PyPI project
   # `swiftdoc` trusts this file (release.yaml) running in the `pypi`
-  # environment of kura120/py-doc. `publish` is needed for its check that the
+  # environment of kura120/swiftdoc. `publish` is needed for its check that the
   # tag matches the Cargo.toml version, which is also the wheel version.
   publish-pypi:
     name: Publish to PyPI

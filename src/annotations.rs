@@ -245,7 +245,7 @@ pub fn link(
     Some(html)
 }
 
-/// A parameter as py-doc prints it (`name: ann = default`, `*args: T`,
+/// A parameter as swiftdoc prints it (`name: ann = default`, `*args: T`,
 /// `name=1`) as HTML with its annotation linked; None when nothing links.
 pub fn link_parameter(
     param: &str,

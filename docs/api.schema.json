@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/kura120/py-doc/blob/master/docs/api.schema.json",
-  "title": "py-doc api.json",
-  "description": "The parsed API written by `py-doc --format json`. schema_version changes only when a field is renamed, removed or changes type. tests/api_json.rs validates real output against this file.",
+  "$id": "https://github.com/kura120/swiftdoc/blob/master/docs/api.schema.json",
+  "title": "swiftdoc api.json",
+  "description": "The parsed API written by `swiftdoc --format json`. schema_version changes only when a field is renamed, removed or changes type. tests/api_json.rs validates real output against this file.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "py_doc_version", "package", "include_private", "modules"],
+  "required": ["schema_version", "swiftdoc_version", "package", "include_private", "modules"],
   "properties": {
     "schema_version": { "const": 1 },
-    "py_doc_version": { "type": "string", "description": "Version of py-doc that wrote the file." },
+    "swiftdoc_version": { "type": "string", "description": "Version of swiftdoc that wrote the file." },
     "package": {
       "type": "object",
       "additionalProperties": false,

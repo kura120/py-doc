@@ -1,6 +1,6 @@
-# Packages the py-doc binary as Python wheels, published on PyPI as
-# `swiftdoc` (the name `py-doc` is taken there). The wheels hold only the
-# compiled binary, which is installed as the `py-doc` command: maturin names
+# Packages the swiftdoc binary as Python wheels, published on PyPI as
+# `swiftdoc` (the name `swiftdoc` is taken there). The wheels hold only the
+# compiled binary, which is installed as the `swiftdoc` command: maturin names
 # the executable after the Cargo bin target, not after the distribution.
 # The version comes from Cargo.toml.
 
@@ -10,7 +10,7 @@ build-backend = "maturin"
 
 [project]
 name = "swiftdoc"
-description = "A zero-config, fast Python documentation generator. Installs the py-doc command."
+description = "A zero-config, fast Python documentation generator. Installs the swiftdoc command."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Santiago Vasquez", email = "kur4ise@gmail.com" }]
@@ -32,9 +32,9 @@ classifiers = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/kura120/py-doc"
-Repository = "https://github.com/kura120/py-doc"
-Issues = "https://github.com/kura120/py-doc/issues"
+Homepage = "https://github.com/kura120/swiftdoc"
+Repository = "https://github.com/kura120/swiftdoc"
+Issues = "https://github.com/kura120/swiftdoc/issues"
 
 [tool.maturin]
 bindings = "bin"

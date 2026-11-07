@@ -37,15 +37,15 @@ const TEMPLATE_NAMES: [&str; 5] = [
     "document.html",
 ];
 /// The bundled templates are registered under this prefix, so a custom
-/// template can extend the one it replaces (`{% extends "py-doc/module.html" %}`).
+/// template can extend the one it replaces (`{% extends "swiftdoc/module.html" %}`).
 /// Tera falls back to it for any name the custom directory does not provide.
-const BUNDLED_PREFIX: &str = "py-doc/";
+const BUNDLED_PREFIX: &str = "swiftdoc/";
 const STATIC_NAMES: [&str; 2] = ["style.css", "app.js"];
 /// Written next to the ejected theme to explain how to use it.
 const THEME_README: &str = include_str!("../assets/theme-README.md");
 /// Lists every file a run wrote, so a later `--clean` run can remove the
 /// ones that are no longer produced without touching anything else.
-const MANIFEST_NAME: &str = ".py-doc-manifest";
+const MANIFEST_NAME: &str = ".swiftdoc-manifest";
 
 static TAG_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"<[^>]*>").expect("valid regex"));
@@ -1902,7 +1902,7 @@ fn load_asset(template_dir: Option<&Path>, name: &str) -> Result<(String, bool)>
     Ok((bundled_asset(name)?.to_string(), false))
 }
 
-/// `py-doc theme eject`: writes the bundled theme, exactly as compiled into
+/// `swiftdoc theme eject`: writes the bundled theme, exactly as compiled into
 /// this binary, plus a README into `dir`, as a starting point for
 /// `--templates`. Unless `force` is set, nothing is written when any of the
 /// files already exists. Returns the paths written.

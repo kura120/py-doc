@@ -11,14 +11,14 @@ fn fixture() -> PathBuf {
         .join("nested")
 }
 
-/// py-doc with an empty `--config`, so the repository's own pyproject.toml
+/// swiftdoc with an empty `--config`, so the repository's own pyproject.toml
 /// is never read.
-fn py_doc() -> Command {
+fn swiftdoc() -> Command {
     let config = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
     if !config.exists() {
         fs::write(&config, "").unwrap();
     }
-    let mut command = Command::new(env!("CARGO_BIN_EXE_py-doc"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_swiftdoc"));
     command.arg("--config").arg(config);
     command
 }
@@ -31,7 +31,7 @@ fn generate(test: &str, extra: &[&str]) -> (PathBuf, String) {
         .join(test);
     let _ = fs::remove_dir_all(&out);
     let src = fixture();
-    let output = py_doc()
+    let output = swiftdoc()
         .arg("--src")
         .arg(&src)
         .arg("--out")
@@ -39,10 +39,10 @@ fn generate(test: &str, extra: &[&str]) -> (PathBuf, String) {
         .args(["--name", "demo"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     let log = String::from_utf8_lossy(&output.stdout).to_string()
         + &String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "py-doc failed:\n{}", log);
+    assert!(output.status.success(), "swiftdoc failed:\n{}", log);
     (out, log)
 }
 
@@ -216,12 +216,12 @@ fn include_private_shows_private_nested_classes() {
 
 #[test]
 fn coverage_counts_nested_classes() {
-    let output = py_doc()
+    let output = swiftdoc()
         .arg("--src")
         .arg(fixture())
         .args(["--coverage", "--coverage-format", "json"])
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     assert!(
         output.status.success(),
         "{}",

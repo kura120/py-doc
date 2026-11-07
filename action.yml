@@ -1,5 +1,5 @@
-name: py-doc
-description: Generate static HTML API docs for a Python project with py-doc.
+name: swiftdoc
+description: Generate static HTML API docs for a Python project with swiftdoc.
 author: kura120
 branding:
   icon: book-open
@@ -8,21 +8,21 @@ branding:
 inputs:
   version:
     description: >-
-      py-doc release to install, such as "v0.5.1" or "0.5.1". "latest" (the
+      swiftdoc release to install, such as "v0.6.0" or "0.6.0". "latest" (the
       default) uses the newest published release. Ignored with install: source.
     required: false
     default: latest
   install:
     description: >-
       "release" (default) downloads the published binary for the runner and
-      verifies its SHA-256 checksum. "source" builds py-doc from the action's
+      verifies its SHA-256 checksum. "source" builds swiftdoc from the action's
       own checkout with cargo, which needs a Rust toolchain on the runner.
     required: false
     default: release
   src:
     description: >-
       Project directory, or a single .py file (--src). Defaults to the
-      repository root, or to `src` in [tool.py-doc] of pyproject.toml.
+      repository root, or to `src` in [tool.swiftdoc] of pyproject.toml.
     required: false
     default: ""
   out:
@@ -32,12 +32,12 @@ inputs:
   name:
     description: >-
       Package name shown in the docs (--name). Defaults to the name in
-      pyproject.toml when it configures py-doc, otherwise the repository name.
+      pyproject.toml when it configures swiftdoc, otherwise the repository name.
     required: false
     default: ""
   args:
     description: >-
-      Extra py-doc flags, passed through as-is, for example
+      Extra swiftdoc flags, passed through as-is, for example
       "--strict --theme dark --doc-version 1.2.0". Quotes group words;
       nothing is expanded or executed.
     required: false
@@ -55,7 +55,7 @@ inputs:
 
 outputs:
   version:
-    description: The py-doc version that was installed.
+    description: The swiftdoc version that was installed.
     value: ${{ steps.install.outputs.version }}
   out:
     description: The directory the site was written to.
@@ -64,23 +64,23 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install py-doc
+    - name: Install swiftdoc
       id: install
       shell: bash
       env:
-        PY_DOC_INSTALL: ${{ inputs.install }}
-        PY_DOC_VERSION: ${{ inputs.version }}
-        PY_DOC_TOKEN: ${{ inputs.token }}
+        SWIFTDOC_INSTALL: ${{ inputs.install }}
+        SWIFTDOC_VERSION: ${{ inputs.version }}
+        SWIFTDOC_TOKEN: ${{ inputs.token }}
       run: bash "$GITHUB_ACTION_PATH/scripts/action/install.sh"
 
     - name: Generate docs
       id: run
       shell: bash
       env:
-        PY_DOC_SRC: ${{ inputs.src }}
-        PY_DOC_OUT: ${{ inputs.out }}
-        PY_DOC_NAME: ${{ inputs.name }}
-        PY_DOC_ARGS: ${{ inputs.args }}
+        SWIFTDOC_SRC: ${{ inputs.src }}
+        SWIFTDOC_OUT: ${{ inputs.out }}
+        SWIFTDOC_NAME: ${{ inputs.name }}
+        SWIFTDOC_ARGS: ${{ inputs.args }}
       run: bash "$GITHUB_ACTION_PATH/scripts/action/run.sh"
 
     - name: Upload Pages artifact

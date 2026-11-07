@@ -21,14 +21,14 @@ fn out_dir(test: &str) -> PathBuf {
     dir
 }
 
-/// Runs py-doc with an empty --config, so the repository's own
+/// Runs swiftdoc with an empty --config, so the repository's own
 /// pyproject.toml is never read.
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
     let config = Path::new(env!("CARGO_TARGET_TMPDIR")).join("markdown-empty.toml");
     if !config.exists() {
         fs::write(&config, "").unwrap();
     }
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(&config)
         .arg("--src")
@@ -38,10 +38,10 @@ fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
         .args(["--name", "demo"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     output
@@ -385,13 +385,18 @@ fn markdown_alone_writes_no_html() {
             .any(|f| f.ends_with(".html") || f.ends_with(".js")),
         "{written:?}"
     );
-    for file in ["index.md", "llms.txt", "llms-full.txt", ".py-doc-manifest"] {
+    for file in [
+        "index.md",
+        "llms.txt",
+        "llms-full.txt",
+        ".swiftdoc-manifest",
+    ] {
         assert!(written.contains(file), "{file} missing: {written:?}");
     }
-    let manifest = read(&out, ".py-doc-manifest");
+    let manifest = read(&out, ".swiftdoc-manifest");
     let listed: BTreeSet<String> = manifest.lines().map(str::to_string).collect();
     let mut expected = written.clone();
-    expected.remove(".py-doc-manifest");
+    expected.remove(".swiftdoc-manifest");
     assert_eq!(listed, expected, "the manifest lists every file written");
 }
 
@@ -529,7 +534,7 @@ fn overloads_share_one_anchor_on_the_first_definition() {
 }
 
 /// Compares the sample's Markdown with `tests/snapshots/markdown-sample`.
-/// Set `PY_DOC_UPDATE_SNAPSHOTS=1` to rewrite the snapshots.
+/// Set `SWIFTDOC_UPDATE_SNAPSHOTS=1` to rewrite the snapshots.
 #[test]
 fn sample_matches_the_snapshots() {
     let out = markdown("sample", "snapshots", &[]);
@@ -541,7 +546,7 @@ fn sample_matches_the_snapshots() {
         .into_iter()
         .filter(|f| f.ends_with(".md") || f.ends_with(".txt"))
         .collect();
-    if std::env::var_os("PY_DOC_UPDATE_SNAPSHOTS").is_some() {
+    if std::env::var_os("SWIFTDOC_UPDATE_SNAPSHOTS").is_some() {
         let _ = fs::remove_dir_all(&snapshots);
         for page in &pages {
             let target = snapshots.join(page);
@@ -556,7 +561,7 @@ fn sample_matches_the_snapshots() {
         assert!(
             lf(read(&out, page)) == lf(read(&snapshots, page)),
             "{page} differs from tests/snapshots/markdown-sample/{page}; \
-             rerun with PY_DOC_UPDATE_SNAPSHOTS=1 if the change is intended"
+             rerun with SWIFTDOC_UPDATE_SNAPSHOTS=1 if the change is intended"
         );
     }
 }

@@ -1,6 +1,6 @@
-"""Reproducible doc-generator benchmark: py-doc vs pydoc, pdoc, pdoc3 and Sphinx.
+"""Reproducible doc-generator benchmark: swiftdoc vs pydoc, pdoc, pdoc3 and Sphinx.
 
-Requirements: Python 3.10+, hyperfine, and a release build of py-doc
+Requirements: Python 3.10+, hyperfine, and a release build of swiftdoc
 (`cargo build --release`). Everything else is installed into ./.bench/.
 
     python3 benchmarks/bench.py            # run, write benchmarks/results.json
@@ -9,11 +9,11 @@ Requirements: Python 3.10+, hyperfine, and a release build of py-doc
 Fairness rules:
 * Every tool documents the same packages, installed from PyPI into the same
   Python. Import-based tools (pydoc, pdoc, pdoc3, Sphinx) only get modules
-  that import cleanly on this machine; py-doc never imports, so it parses
+  that import cleanly on this machine; swiftdoc never imports, so it parses
   every file and does slightly more work.
 * Output directories are removed before every run (cold build every time).
 * Sphinx is timed for sphinx-apidoc + sphinx-build with `-j auto`, so it uses
-  every core just like py-doc. pdoc, pdoc3 and pydoc are single-process.
+  every core just like swiftdoc. pdoc, pdoc3 and pydoc are single-process.
 """
 
 import json
@@ -32,7 +32,7 @@ WORK = REPO / ".bench"
 VENVS = {"pdoc": WORK / "venv-pdoc", "pdoc3": WORK / "venv-pdoc3", "sphinx": WORK / "venv-sphinx"}
 OUT = WORK / "out"
 CMDS = WORK / "cmds"
-PY_DOC = REPO / "target" / "release" / ("py-doc.exe" if os.name == "nt" else "py-doc")
+SWIFTDOC = REPO / "target" / "release" / ("swiftdoc.exe" if os.name == "nt" else "swiftdoc")
 
 TOOLS = {"pdoc": "pdoc==16.0.0", "pdoc3": "pdoc3==0.11.6", "sphinx": "sphinx==9.2.0"}
 CORPORA = {
@@ -44,7 +44,7 @@ CORPORA = {
 PDOC_EXCLUDES = {
     "sqlalchemy": ["sqlalchemy.testing.plugin.bootstrap", "sqlalchemy.testing.plugin.pytestplugin"],
 }
-RUNS = {"py-doc": 20, "default": 5, ("sphinx", "sqlalchemy"): 3}
+RUNS = {"swiftdoc": 20, "default": 5, ("sphinx", "sqlalchemy"): 3}
 
 
 def sh(*args, **kw):
@@ -106,9 +106,9 @@ def commands(site: pathlib.Path, pkg: str) -> dict[str, pathlib.Path]:
     excludes = " ".join(f"'!{m}'" for m in PDOC_EXCLUDES.get(pkg, []))
     src = WORK / f"sphinx-src-{pkg}"
     return {
-        "py-doc": script(f"py-doc-{pkg}.sh", f"""
-            rm -rf {OUT}/py-doc-{pkg}
-            {PY_DOC} --src {site}/{pkg} --out {OUT}/py-doc-{pkg} --name {pkg} >/dev/null 2>&1
+        "swiftdoc": script(f"swiftdoc-{pkg}.sh", f"""
+            rm -rf {OUT}/swiftdoc-{pkg}
+            {SWIFTDOC} --src {site}/{pkg} --out {OUT}/swiftdoc-{pkg} --name {pkg} >/dev/null 2>&1
         """),
         "pydoc": script(f"pydoc-{pkg}.sh", f"""
             rm -rf {OUT}/pydoc-{pkg}; mkdir -p {OUT}/pydoc-{pkg}; cd {OUT}/pydoc-{pkg}
@@ -154,8 +154,8 @@ def median_seconds(report: pathlib.Path) -> float:
 
 
 def main() -> None:
-    if not PY_DOC.exists():
-        sys.exit("build py-doc first: cargo build --release")
+    if not SWIFTDOC.exists():
+        sys.exit("build swiftdoc first: cargo build --release")
     if not shutil.which("hyperfine"):
         sys.exit("hyperfine is required: https://github.com/sharkdp/hyperfine")
     CMDS.mkdir(parents=True, exist_ok=True)

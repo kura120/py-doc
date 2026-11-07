@@ -19,7 +19,7 @@ fn generate(test: &str, extra: &[&str]) -> PathBuf {
     if !empty_config.exists() {
         fs::write(&empty_config, "").unwrap();
     }
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(&empty_config)
         .arg("--src")
@@ -29,10 +29,10 @@ fn generate(test: &str, extra: &[&str]) -> PathBuf {
         .args(["--name", "demo", "--strict"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}{}",
+        "swiftdoc failed:\n{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );

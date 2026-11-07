@@ -26,18 +26,18 @@ fn project(test: &str, pyproject: &str) -> PathBuf {
     repo
 }
 
-fn py_doc(cwd: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_py-doc"))
+fn swiftdoc(cwd: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .current_dir(cwd)
         .args(args)
         .output()
-        .expect("failed to run py-doc")
+        .expect("failed to run swiftdoc")
 }
 
 fn assert_ok(output: &Output) {
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 }
@@ -51,7 +51,7 @@ const CONFIGURED: &str = r#"
 name = "from-project"
 version = "2.3.4"
 
-[tool.py-doc]
+[tool.swiftdoc]
 src = "src/pkg"
 out = "site"
 layout = "modern"
@@ -60,7 +60,7 @@ layout = "modern"
 #[test]
 fn no_args_in_a_configured_repo_builds_the_site() {
     let repo = project("no_args", CONFIGURED);
-    let output = py_doc(&repo, &[]);
+    let output = swiftdoc(&repo, &[]);
     assert_ok(&output);
 
     let index = fs::read_to_string(repo.join("site/index.html")).unwrap();
@@ -74,7 +74,7 @@ fn no_args_in_a_configured_repo_builds_the_site() {
 fn config_paths_are_relative_to_the_pyproject() {
     let repo = project("relative_config", CONFIGURED);
     // Run from a subdirectory: `src` and `out` still resolve against the repo root.
-    let output = py_doc(&repo.join("sub"), &["--config", "../pyproject.toml"]);
+    let output = swiftdoc(&repo.join("sub"), &["--config", "../pyproject.toml"]);
     assert_ok(&output);
     assert!(repo.join("site/index.html").is_file());
     assert!(!repo.join("sub/site").exists());
@@ -90,7 +90,7 @@ fn css_in_the_pyproject_is_relative_to_it() {
         ":root { --accent-blue: #2563eb; }\n",
     )
     .unwrap();
-    let output = py_doc(&repo.join("sub"), &["--config", "../pyproject.toml"]);
+    let output = swiftdoc(&repo.join("sub"), &["--config", "../pyproject.toml"]);
     assert_ok(&output);
     let copied = fs::read_to_string(repo.join("site/custom/0-theme.css")).unwrap();
     assert!(copied.contains("#2563eb"));
@@ -101,7 +101,7 @@ fn css_in_the_pyproject_is_relative_to_it() {
 #[test]
 fn cli_paths_are_relative_to_the_working_directory() {
     let repo = project("relative_cli", CONFIGURED);
-    let output = py_doc(
+    let output = swiftdoc(
         &repo.join("sub"),
         &["--src", "../src/pkg", "--out", "cli-site"],
     );
@@ -121,13 +121,13 @@ fn cli_beats_tool_beats_project() {
 name = "from-project"
 version = "2.3.4"
 
-[tool.py-doc]
+[tool.swiftdoc]
 src = "src/pkg"
 out = "site"
 name = "from-tool"
 "#,
     );
-    let output = py_doc(&repo, &["--doc-version", "9.9.9"]);
+    let output = swiftdoc(&repo, &["--doc-version", "9.9.9"]);
     assert_ok(&output);
     let index = fs::read_to_string(repo.join("site/index.html")).unwrap();
     assert!(index.contains("from-tool - Documentation Index"));
@@ -138,9 +138,9 @@ name = "from-tool"
 fn unknown_keys_warn_and_fail_under_strict() {
     let repo = project(
         "unknown",
-        "[tool.py-doc]\nsrc = \"src/pkg\"\nout = \"site\"\nname = \"x\"\nlayuot = \"modern\"\n",
+        "[tool.swiftdoc]\nsrc = \"src/pkg\"\nout = \"site\"\nname = \"x\"\nlayuot = \"modern\"\n",
     );
-    let lenient = py_doc(&repo, &[]);
+    let lenient = swiftdoc(&repo, &[]);
     assert_ok(&lenient);
     assert!(
         stderr(&lenient).contains("`layuot`"),
@@ -148,7 +148,7 @@ fn unknown_keys_warn_and_fail_under_strict() {
         stderr(&lenient)
     );
 
-    let strict = py_doc(&repo, &["--strict"]);
+    let strict = swiftdoc(&repo, &["--strict"]);
     assert!(!strict.status.success());
     assert!(stderr(&strict).contains("`layuot`"), "{}", stderr(&strict));
 }
@@ -159,7 +159,7 @@ fn dynamic_version_falls_back_with_a_hint() {
         "dynamic",
         "[project]\nname = \"dyn\"\ndynamic = [\"version\"]\n",
     );
-    let output = py_doc(&repo, &["--src", "src/pkg", "--out", "site"]);
+    let output = swiftdoc(&repo, &["--src", "src/pkg", "--out", "site"]);
     assert_ok(&output);
     assert!(stderr(&output).contains("dynamic"), "{}", stderr(&output));
     let index = fs::read_to_string(repo.join("site/index.html")).unwrap();
@@ -170,7 +170,7 @@ fn dynamic_version_falls_back_with_a_hint() {
 #[test]
 fn flags_alone_work_without_a_pyproject() {
     let repo = project("flags_only", "");
-    let output = py_doc(
+    let output = swiftdoc(
         &repo,
         &["--src", "src/pkg", "--out", "site", "--name", "plain"],
     );
@@ -183,17 +183,17 @@ fn flags_alone_work_without_a_pyproject() {
 #[test]
 fn missing_name_is_reported() {
     let repo = project("missing_name", "");
-    let output = py_doc(&repo, &["--src", "src/pkg", "--out", "site"]);
+    let output = swiftdoc(&repo, &["--src", "src/pkg", "--out", "site"]);
     assert!(!output.status.success());
     assert!(stderr(&output).contains("--name"), "{}", stderr(&output));
 }
 
 #[test]
 fn no_args_without_config_or_terminal_exits() {
-    // Only [project]: not configured, so py-doc wants the wizard, and there
+    // Only [project]: not configured, so swiftdoc wants the wizard, and there
     // is no terminal in tests.
     let repo = project("no_tty", "[project]\nname = \"p\"\n");
-    let output = py_doc(&repo, &[]);
+    let output = swiftdoc(&repo, &[]);
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr(&output).contains("no interactive terminal"));
     assert!(!repo.join("site").exists());

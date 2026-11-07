@@ -134,7 +134,7 @@ impl OutputFormat {
 
 /// The command line: the build options, or a subcommand. `serve` takes
 /// the same build options, so they are only on the subcommand's side of a
-/// command line (`py-doc serve --src x`, not `py-doc --src x serve`).
+/// command line (`swiftdoc serve --src x`, not `swiftdoc --src x serve`).
 #[derive(Parser, Debug)]
 #[command(
     author,
@@ -151,10 +151,10 @@ pub struct Cli {
     pub args: Args,
 }
 
-/// Every option, as given on the command line or in `[tool.py-doc]`.
+/// Every option, as given on the command line or in `[tool.swiftdoc]`.
 ///
 /// This one struct is both the clap arguments and the serde shape of the
-/// `[tool.py-doc]` table, so a field's flag (`--doc-version`) and its key
+/// `[tool.swiftdoc]` table, so a field's flag (`--doc-version`) and its key
 /// (`doc-version`) come from the same name. Every field is optional here;
 /// `Config::resolve` merges the layers and applies the defaults. To add an
 /// option: add a field here, then add it to `Config` and its `resolve`.
@@ -212,7 +212,7 @@ pub struct Args {
     pub strict: Option<bool>,
 
     /// Remove files that an earlier run wrote to --out and this run no longer
-    /// produces. Files py-doc did not write are never touched.
+    /// produces. Files swiftdoc did not write are never touched.
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub clean: Option<bool>,
 
@@ -252,7 +252,7 @@ pub struct Args {
     #[arg(long, value_enum, value_name = "STYLE")]
     pub docstring_style: Option<docstring::DocstringStyle>,
 
-    /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
+    /// pyproject.toml to read `[tool.swiftdoc]` and `[project]` from. By default
     /// it is looked for in --src (or the current directory) and its parents,
     /// stopping at the repository root.
     #[arg(long, value_name = "FILE")]
@@ -260,7 +260,7 @@ pub struct Args {
     pub config: Option<String>,
 }
 
-/// Subcommands. Without one, py-doc generates docs from the flags (or
+/// Subcommands. Without one, swiftdoc generates docs from the flags (or
 /// starts the setup wizard when there are none).
 #[derive(clap::Subcommand, Debug, Clone, PartialEq)]
 pub enum Command {
@@ -269,7 +269,7 @@ pub enum Command {
     Theme(ThemeCommand),
     /// Build the docs, serve them on 127.0.0.1 and rebuild on every change
     /// to the sources, templates or CSS, reloading open pages. Takes every
-    /// build option, and reads `[tool.py-doc]` like a normal build.
+    /// build option, and reads `[tool.swiftdoc]` like a normal build.
     Serve(Box<ServeArgs>),
 }
 
@@ -294,7 +294,7 @@ pub enum ThemeCommand {
     /// starting point for --templates
     Eject {
         /// Folder to write the theme to
-        #[arg(default_value = "py-doc-theme")]
+        #[arg(default_value = "swiftdoc-theme")]
         dir: String,
         /// Overwrite files that already exist
         #[arg(long)]
@@ -317,7 +317,7 @@ fn run_command(command: Command) -> Result<()> {
                 written.len(),
                 dir.trim_end_matches(['/', '\\'])
             );
-            println!("  Use it with: py-doc --templates {} ...", dir);
+            println!("  Use it with: swiftdoc --templates {} ...", dir);
             println!("  Delete the files you don't change; they fall back to the bundled theme.");
             Ok(())
         }
@@ -645,15 +645,15 @@ fn main() -> Result<()> {
     }
     let pyproject = config::PyProject::load(&cli)?;
 
-    // No flags and no [tool.py-doc]: launch the interactive setup wizard,
+    // No flags and no [tool.swiftdoc]: launch the interactive setup wizard,
     // unless we're not attached to a terminal (e.g. CI), in which case a
     // hanging full-screen TUI would just be a stuck build.
     if no_args && !pyproject.as_ref().is_some_and(|p| p.is_configured()) {
         use crossterm::tty::IsTty;
         if !std::io::stdout().is_tty() || !std::io::stdin().is_tty() {
-            eprintln!("py-doc: no arguments given and no interactive terminal detected.");
+            eprintln!("swiftdoc: no arguments given and no interactive terminal detected.");
             eprintln!(
-                "Run 'py-doc --help' for available flags, add a [tool.py-doc] table to pyproject.toml, \
+                "Run 'swiftdoc --help' for available flags, add a [tool.swiftdoc] table to pyproject.toml, \
                  or run interactively for the setup wizard."
             );
             std::process::exit(1);
