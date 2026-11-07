@@ -191,7 +191,9 @@ fn assert_links_resolve(out: &Path) -> (usize, usize) {
 
 #[test]
 fn every_link_and_anchor_resolves() {
-    let cases: [(&str, &[&str]); 5] = [
+    let cases: [(&str, &[&str]); 7] = [
+        ("nested", &[]),
+        ("nested", &["--include-private"]),
         ("sample", &[]),
         ("macros", &[]),
         ("variables", &[]),
@@ -413,16 +415,76 @@ fn crlf_sources_give_lf_markdown() {
 
 #[test]
 fn two_runs_are_byte_identical() {
-    let first = markdown("sample", "same_1", &[]);
-    let second = markdown("sample", "same_2", &[]);
-    let names = files(&first);
-    assert_eq!(names, files(&second));
-    for name in &names {
-        assert!(
-            fs::read(first.join(name)).unwrap() == fs::read(second.join(name)).unwrap(),
-            "{name} differs between two runs"
-        );
+    for fixture_name in ["sample", "nested"] {
+        let first = markdown(fixture_name, &format!("same_{fixture_name}_1"), &[]);
+        let second = markdown(fixture_name, &format!("same_{fixture_name}_2"), &[]);
+        let names = files(&first);
+        assert_eq!(names, files(&second));
+        for name in &names {
+            assert!(
+                fs::read(first.join(name)).unwrap() == fs::read(second.join(name)).unwrap(),
+                "{fixture_name}: {name} differs between two runs"
+            );
+        }
     }
+}
+
+#[test]
+fn nested_classes_render_recursively_with_qualified_anchors() {
+    let out = markdown("nested", "nested", &[]);
+    let page = read(&out, "compat.md");
+
+    // Doc-links into nested classes and their members.
+    for link in [
+        "[`compat.Outer.Inner`](./compat.md#class.Outer.Inner)",
+        "[`compat.Outer.Inner.Deep.ping`](./compat.md#method.Outer.Inner.Deep.ping)",
+        "[`Outer.Inner.LIMIT`](./compat.md#attr.Outer.Inner.LIMIT)",
+        "[`compat.Outer.Meta`](./compat.md#class.Outer.Meta)",
+    ] {
+        assert!(page.contains(link), "missing {link}:\n{page}");
+    }
+    // A private nested class is hidden, so its link stays text.
+    assert!(
+        page.contains("`compat.Outer._Private` (not found)"),
+        "{page}"
+    );
+
+    // Each nested class sits inside its parent's section, one level deeper,
+    // under its qualified name.
+    let at = |needle: &str| {
+        page.find(needle)
+            .unwrap_or_else(|| panic!("no {needle}:\n{page}"))
+    };
+    let outer = at("<a id=\"class.Outer\"></a>\n\n### class `Outer`");
+    let inner = at("<a id=\"class.Outer.Inner\"></a>\n\n##### class `Outer.Inner`");
+    let deep = at("<a id=\"class.Outer.Inner.Deep\"></a>\n\n###### class `Outer.Inner.Deep`");
+    let ping = at("<a id=\"method.Outer.Inner.Deep.ping\"></a>");
+    let functions = at("## Functions");
+    assert!(outer < inner && inner < deep && deep < ping && ping < functions);
+    assert!(
+        page.contains("<a id=\"attr.Outer.Inner.LIMIT\"></a>"),
+        "{page}"
+    );
+
+    // Badges from conditional and TYPE_CHECKING definitions are shown.
+    assert!(page.contains("*type-checking*"), "{page}");
+    assert!(page.contains("*conditional*"), "{page}");
+}
+
+#[test]
+fn overloads_share_one_anchor_on_the_first_definition() {
+    let out = markdown("nested", "overloads", &[]);
+    let page = read(&out, "compat.md");
+    assert_eq!(page.matches("<a id=\"fn.scale\"></a>").count(), 1, "{page}");
+    let headings = page.matches("### `scale()`").count();
+    assert!(headings >= 2, "every overload is still shown:\n{page}");
+    let anchor = page.find("<a id=\"fn.scale\"></a>").unwrap();
+    let first = page.find("### `scale()`").unwrap();
+    assert!(anchor < first, "the anchor is on the first definition");
+    assert!(
+        !page[anchor + 1..first].contains("### "),
+        "nothing between the anchor and the first overload"
+    );
 }
 
 /// Compares the sample's Markdown with `tests/snapshots/markdown-sample`.

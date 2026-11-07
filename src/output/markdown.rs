@@ -17,6 +17,8 @@
 //! Markdown keeps the text and never emits a link that does not resolve.
 
 use regex::Regex;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
@@ -48,6 +50,9 @@ struct Page<'a> {
     resolver: &'a Resolver,
     /// "./" or "../../": from this page to the output root.
     root_prefix: String,
+    /// Anchor ids already written on this page. Overloads share a name, so
+    /// only the first definition gets the anchor and ids stay unique.
+    ids: RefCell<HashSet<String>>,
 }
 
 impl Page<'_> {
@@ -204,12 +209,14 @@ fn collapse_blank_lines(text: &str) -> String {
     out
 }
 
-fn anchor(out: &mut String, level: usize, id: &str, title: &str) {
-    let _ = write!(
-        out,
-        "<a id=\"{id}\"></a>\n\n{} {title}\n\n",
-        "#".repeat(level)
-    );
+/// A heading with its anchor. Overloads (and a property with its setter)
+/// share one id: only the first definition gets the anchor, so ids stay
+/// unique and a doc-link lands on the first one, as in the HTML site.
+fn anchor(out: &mut String, page: &Page, level: usize, id: &str, title: &str) {
+    if page.ids.borrow_mut().insert(id.to_string()) {
+        let _ = write!(out, "<a id=\"{id}\"></a>\n\n");
+    }
+    let _ = write!(out, "{} {title}\n\n", "#".repeat(level));
 }
 
 fn code(out: &mut String, signature: &str) {
@@ -284,17 +291,73 @@ fn doc(out: &mut String, page: &Page, raw: &Option<String>) {
 }
 
 fn function(out: &mut String, page: &Page, func: &PythonFunction, level: usize, id: &str) {
-    anchor(out, level, id, &format!("`{}()`", func.name));
+    anchor(out, page, level, id, &format!("`{}()`", func.name));
     code(out, &function_signature(func));
     badges(out, &func.badges);
     doc(out, page, &func.raw_docstring);
 }
 
 fn variable(out: &mut String, page: &Page, var: &PythonVariable, level: usize, id: &str) {
-    anchor(out, level, id, &format!("`{}`", var.name));
+    anchor(out, page, level, id, &format!("`{}`", var.name));
     code(out, &variable_signature(var));
     badges(out, &var.badges);
     doc(out, page, &var.raw_docstring);
+}
+
+/// Markdown has six heading levels; deeper nesting stays at the last one.
+fn heading(level: usize) -> usize {
+    level.min(6)
+}
+
+fn subheading(out: &mut String, level: usize, title: &str) {
+    let _ = write!(out, "{} {title}\n\n", "#".repeat(heading(level)));
+}
+
+/// A class at heading `level`, then its attributes, methods and nested
+/// classes one and two levels below. Anchors use the dotted path inside
+/// the module ("class.Outer.Inner", "method.Outer.Inner.run"), the same
+/// ids the HTML site and the resolver use.
+fn class_section(out: &mut String, page: &Page, class: &PythonClass, level: usize) {
+    let path = if class.qualname.is_empty() {
+        &class.name
+    } else {
+        &class.qualname
+    };
+    anchor(
+        out,
+        page,
+        heading(level),
+        &format!("class.{path}"),
+        &format!("class `{path}`"),
+    );
+    code(out, &class_signature(class));
+    badges(out, &class.badges);
+    doc(out, page, &class.raw_docstring);
+    let member = heading(level + 2);
+    if !class.variables.is_empty() {
+        subheading(out, level + 1, "Attributes");
+        for var in &class.variables {
+            variable(out, page, var, member, &format!("attr.{path}.{}", var.name));
+        }
+    }
+    if !class.functions.is_empty() {
+        subheading(out, level + 1, "Methods");
+        for func in &class.functions {
+            function(
+                out,
+                page,
+                func,
+                member,
+                &format!("method.{path}.{}", func.name),
+            );
+        }
+    }
+    if !class.classes.is_empty() {
+        subheading(out, level + 1, "Classes");
+        for nested in &class.classes {
+            class_section(out, page, nested, level + 2);
+        }
+    }
 }
 
 fn module_page(module: &PythonModule, package: &PythonPackage, page: &Page) -> String {
@@ -317,28 +380,7 @@ fn module_page(module: &PythonModule, package: &PythonPackage, page: &Page) -> S
     if !module.classes.is_empty() {
         out.push_str("## Classes\n\n");
         for class in &module.classes {
-            anchor(
-                &mut out,
-                3,
-                &format!("class.{}", class.name),
-                &format!("class `{}`", class.name),
-            );
-            code(&mut out, &class_signature(class));
-            doc(&mut out, page, &class.raw_docstring);
-            if !class.variables.is_empty() {
-                out.push_str("#### Attributes\n\n");
-                for var in &class.variables {
-                    let id = format!("attr.{}.{}", class.name, var.name);
-                    variable(&mut out, page, var, 5, &id);
-                }
-            }
-            if !class.functions.is_empty() {
-                out.push_str("#### Methods\n\n");
-                for func in &class.functions {
-                    let id = format!("method.{}.{}", class.name, func.name);
-                    function(&mut out, page, func, 5, &id);
-                }
-            }
+            class_section(&mut out, page, class, 3);
         }
     }
     if !module.functions.is_empty() {
@@ -424,6 +466,7 @@ pub fn write(
         generator,
         resolver: &resolver,
         root_prefix: root_prefix_for(link_path),
+        ids: RefCell::new(HashSet::new()),
     };
 
     let mut full = String::new();
