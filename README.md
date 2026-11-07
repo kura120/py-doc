@@ -351,6 +351,22 @@ Each run saves a cache in `.py-doc-cache` inside `--out`, next to `.py-doc-manif
 
 The result is always the same as a full build. `--no-cache` forces one (and saves a fresh cache). A coverage report needs every file parsed, so `--coverage` does not read the cache; a coverage-only run (no `--out`) neither reads nor writes one. `--format json` and `--format markdown` are also full builds, since `api.json` and the Markdown pages are made from the raw docstrings that cached modules no longer keep; with `html` too, the run still saves a cache for the next HTML build. The cache belongs to the output folder: if you commit `--out`, add `.py-doc-cache` to your `.gitignore`.
 
+### Live preview
+
+```bash
+py-doc serve --src ./my_project --out ./docs
+```
+
+`serve` builds the site, serves `--out` at `http://127.0.0.1:8000/` and rebuilds whenever a file under `--src`, the `--templates` folder or a `--css` file changes. Open pages reload once the rebuild is done. Rebuilds are incremental, so a docstring edit usually shows up in well under a second.
+
+* It takes every build option and reads `[tool.py-doc]` like a normal build. Put the options after `serve`: `py-doc serve --src x`, not `py-doc --src x serve`.
+* `--port N` picks the port (default 8000). If it is taken, the next free one is used and the actual URL is printed. `--port 0` picks any free port. Only 127.0.0.1 is bound, so the site is not reachable from other machines.
+* `--open` opens the site in your browser.
+* The reload script is added to pages as they are served. Files on disk never contain it, so the folder is the same as a normal build's and safe to publish.
+* If a file fails to parse, the error is printed and nothing is rebuilt: the last good site stays up. Fixing the file and saving rebuilds it. Other errors, such as a broken template, are printed the same way, and the server keeps running.
+* Hidden files and folders (`.git`, editor swap files), `__pycache__` and the output folder itself are not watched. Changes to `pyproject.toml` need a restart.
+* Ctrl+C stops the server once the build in progress finishes; a second Ctrl+C stops it at once.
+
 ### Linking to source
 
 ```bash
