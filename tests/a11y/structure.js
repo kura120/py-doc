@@ -1,14 +1,14 @@
 // Landmarks and headings: one <main>, every <nav> labelled, a single <h1>,
 // and no skipped heading levels.
 //
-//   node structure.js <sample-site> <variables-site>
+//   node structure.js <sample-site> <variables-site> <nested-site>
 const { chromium } = require('playwright');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-const [sampleSite, variablesSite] = process.argv.slice(2);
-if (!sampleSite || !variablesSite) {
-  console.error('usage: node structure.js <sample-site> <variables-site>');
+const [sampleSite, variablesSite, nestedSite] = process.argv.slice(2);
+if (!sampleSite || !variablesSite || !nestedSite) {
+  console.error('usage: node structure.js <sample-site> <variables-site> <nested-site>');
   process.exit(2);
 }
 const PAGES = [
@@ -19,6 +19,7 @@ const PAGES = [
   [sampleSite, 'guide.html'],
   [variablesSite, 'config.html'],
   [variablesSite, 'links.html'],
+  [nestedSite, 'compat.html'],
 ];
 
 (async () => {

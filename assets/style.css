@@ -801,7 +801,7 @@ a:hover > .nav-icon,
 }
 .module-details summary::-webkit-details-marker { display: none; }
 .module-details ul { list-style: none; padding-left: 10px; margin: 10px 0 0 0; }
-.module-details li { margin-bottom: 6px; font-family: var(--font-mono); font-size: 0.85rem; }
+.module-details li { margin-bottom: 0; font-family: var(--font-mono); font-size: 0.85rem; }
 .module-details a { color: var(--text-color); text-decoration: none; }
 .module-details a:hover { color: var(--accent-blue); }
 
@@ -823,7 +823,7 @@ a:hover > .nav-icon,
 
 .submodule-list { list-style: none; padding-left: 0 !important; }
 .submodule-list > li {
-    margin-bottom: 4px;
+    margin-bottom: 0;
     font-family: var(--font-mono);
     font-size: 0.85rem;
 }
@@ -840,9 +840,26 @@ a:hover > .nav-icon,
 .nested-details summary::-webkit-details-marker { display: none; }
 .nested-details summary:hover { color: var(--accent-blue); }
 .nested-details ul { list-style: none; padding-left: 12px; margin: 6px 0 0 0; }
-.nested-details li { margin-bottom: 4px; font-size: 0.82rem; }
+.nested-details li { margin-bottom: 0; font-size: 0.82rem; }
 .nested-details a { color: var(--text-color); text-decoration: none; }
 .nested-details a:hover { color: var(--accent-blue); }
+
+/* The index cards' toggles and links: at least 24px tall whatever the
+   font's line height (WCAG 2.5.8). The list items above have no margin,
+   so the rows are about as tall as before. */
+.module-details summary,
+.nested-details summary {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+}
+/* inline-block, not flex: a flex link would drop the space in "def <strong>name</strong>". */
+.module-details a,
+.nested-details a {
+    display: inline-block;
+    min-height: 24px;
+    line-height: 24px;
+}
 
 /* Minimal layout: docs.rs/pydoc-style flat list instead of a card grid */
 :root[data-layout="minimal"] .module-grid {
