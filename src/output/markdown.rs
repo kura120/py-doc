@@ -364,7 +364,11 @@ fn doc_with_sections(
 
     let titled = |out: &mut String, title: &str, blocks: &[DocBlock]| {
         for block in blocks {
-            let _ = write!(out, "**{title}**\n\n{}\n\n", page.docstring(&block.text).trim_end());
+            let _ = write!(
+                out,
+                "**{title}**\n\n{}\n\n",
+                page.docstring(&block.text).trim_end()
+            );
         }
     };
     let quoted = |out: &mut String, label: &str, blocks: &[DocBlock]| {

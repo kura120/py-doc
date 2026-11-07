@@ -1,8 +1,8 @@
 // Runs axe-core (WCAG 2.2 AA) over sites generated from tests/fixtures/sample,
-// tests/fixtures/variables and tests/fixtures/nested, for every layout and
-// color theme, and exits non-zero on any violation.
+// tests/fixtures/variables, tests/fixtures/nested and tests/fixtures/docstrings,
+// for every layout and color theme, and exits non-zero on any violation.
 //
-//   node audit.js <sample-site> <variables-site> <nested-site> [--quick] [--json FILE]
+//   node audit.js <sample-site> <variables-site> <nested-site> <docstrings-site> [--quick] [--json FILE]
 //
 // --quick checks light and dark only (the CI matrix); the default also
 // checks slate. Each page is audited as loaded, again with every <details>
@@ -20,9 +20,9 @@ const quick = args.includes('--quick');
 const jsonAt = args.indexOf('--json');
 const jsonFile = jsonAt >= 0 ? args[jsonAt + 1] : null;
 const positional = args.filter((a, i) => !a.startsWith('--') && !(jsonAt >= 0 && i === jsonAt + 1));
-const [sampleSite, variablesSite, nestedSite] = positional;
-if (!sampleSite || !variablesSite || !nestedSite) {
-  console.error('usage: node audit.js <sample-site> <variables-site> <nested-site> [--quick] [--json FILE]');
+const [sampleSite, variablesSite, nestedSite, docstringsSite] = positional;
+if (!sampleSite || !variablesSite || !nestedSite || !docstringsSite) {
+  console.error('usage: node audit.js <sample-site> <variables-site> <nested-site> <docstrings-site> [--quick] [--json FILE]');
   process.exit(2);
 }
 const THEMES = quick ? ['light', 'dark'] : ['light', 'dark', 'slate'];
@@ -35,6 +35,8 @@ const PAGES = [
   { site: sampleSite, page: 'guide.html', kind: 'document', query: 'slug' },
   { site: variablesSite, page: 'config.html', kind: 'module (variables)', query: 'mode' },
   { site: nestedSite, page: 'compat.html', kind: 'module (nested classes)', query: 'deep' },
+  { site: docstringsSite, page: 'google.html', kind: 'module (docstring sections)', query: 'run' },
+  { site: docstringsSite, page: 'numpy_style.html', kind: 'module (NumPy sections)', query: 'mean' },
 ];
 
 const axeSource = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');

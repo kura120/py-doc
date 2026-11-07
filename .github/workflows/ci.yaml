@@ -61,6 +61,7 @@ jobs:
           ./target/debug/py-doc --config /dev/null --src tests/fixtures/sample --out "$RUNNER_TEMP/sample-site" --name demo
           ./target/debug/py-doc --config /dev/null --src tests/fixtures/variables --out "$RUNNER_TEMP/variables-site" --name variables
           ./target/debug/py-doc --config /dev/null --src tests/fixtures/nested --out "$RUNNER_TEMP/nested-site" --name nested
+          ./target/debug/py-doc --config /dev/null --src tests/fixtures/docstrings --out "$RUNNER_TEMP/docstrings-site" --name docstrings
       - name: Install axe-core and Playwright
         working-directory: tests/a11y
         run: |
@@ -68,10 +69,10 @@ jobs:
           npx playwright install --with-deps chromium
       - name: axe-core, WCAG 2.2 AA (3 layouts x light and dark)
         working-directory: tests/a11y
-        run: node audit.js "$RUNNER_TEMP/sample-site" "$RUNNER_TEMP/variables-site" "$RUNNER_TEMP/nested-site" --quick
+        run: node audit.js "$RUNNER_TEMP/sample-site" "$RUNNER_TEMP/variables-site" "$RUNNER_TEMP/nested-site" "$RUNNER_TEMP/docstrings-site" --quick
       - name: Keyboard
         working-directory: tests/a11y
         run: node keyboard.js "$RUNNER_TEMP/sample-site"
       - name: Landmarks and headings
         working-directory: tests/a11y
-        run: node structure.js "$RUNNER_TEMP/sample-site" "$RUNNER_TEMP/variables-site" "$RUNNER_TEMP/nested-site"
+        run: node structure.js "$RUNNER_TEMP/sample-site" "$RUNNER_TEMP/variables-site" "$RUNNER_TEMP/nested-site" "$RUNNER_TEMP/docstrings-site"

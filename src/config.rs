@@ -660,6 +660,22 @@ docstring-style = "numpy"
         )
         .unwrap();
         assert_ne!(base.cache_settings(), other_site.cache_settings());
+        // Sections change every page, so the style is part of the key.
+        let other_style = Config::resolve(
+            cli(&[
+                "-s",
+                "a",
+                "-o",
+                "b",
+                "-n",
+                "c",
+                "--docstring-style",
+                "markdown",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_ne!(base.cache_settings(), other_style.cache_settings());
     }
 
     #[test]

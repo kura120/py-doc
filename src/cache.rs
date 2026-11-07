@@ -29,7 +29,7 @@ use crate::models::PythonModule;
 pub const CACHE_NAME: &str = ".py-doc-cache";
 
 /// Bump when the cache layout or what it records changes.
-const FORMAT: u32 = 3;
+const FORMAT: u32 = 4;
 
 /// A 128-bit content hash as hex.
 pub fn hash_bytes(bytes: &[u8]) -> String {
