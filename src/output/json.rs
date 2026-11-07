@@ -173,7 +173,7 @@ fn blocks(list: &[DocBlock]) -> Vec<Block<'_>> {
 
 fn sections(s: &Option<DocSections>) -> Option<Sections<'_>> {
     s.as_ref().map(|s| Sections {
-        style: s.style,
+        style: &s.style,
         params: items(&s.params),
         keyword_params: items(&s.keyword_params),
         other_params: items(&s.other_params),

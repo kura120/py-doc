@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 /// `--docstring-style`.
-#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DocstringStyle {
     /// Detect the style of each docstring
@@ -41,7 +41,7 @@ impl DocstringStyle {
 }
 
 /// One documented parameter, attribute, return value or exception.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DocItem {
     /// The parameter or attribute name; None for return values and exceptions.
     pub name: Option<String>,
@@ -58,7 +58,7 @@ pub struct DocItem {
 }
 
 /// A free-text section: an example, a note, a warning or "see also".
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DocBlock {
     /// Raw Markdown.
     pub text: String,
@@ -68,10 +68,10 @@ pub struct DocBlock {
 }
 
 /// The sections of one docstring, in a fixed order.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DocSections {
     /// "google", "numpy" or "rest".
-    pub style: &'static str,
+    pub style: String,
     pub params: Vec<DocItem>,
     pub keyword_params: Vec<DocItem>,
     pub other_params: Vec<DocItem>,
@@ -230,7 +230,7 @@ pub fn split(doc: &str, style: DocstringStyle) -> Option<Split> {
         other => vec![other],
     };
     let mut sections = DocSections {
-        style: order.first()?.name(),
+        style: order.first()?.name().to_string(),
         ..DocSections::default()
     };
     // Each style takes its sections out of what the previous one left, so

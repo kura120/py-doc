@@ -1,0 +1,213 @@
+<!-- index.md -->
+
+# demo
+
+Version 1.0.0
+
+Demo package root docstring.
+
+## Modules
+
+- [`guide`](./guide.md): Getting Started
+- [`core`](./01_core/index.md): Core package.
+- [`core.sub`](./01_core/sub/index.md)
+- [`demo`](./__init__.md): Demo package root docstring.
+- [`core.engine`](./01_core/engine.md): Engine module.
+- [`core.sub.engine`](./01_core/sub/engine.md): A second module that is also named engine.
+- [`utils.helpers`](./utils/helpers.md)
+
+<!-- guide.md -->
+
+# Getting Started
+
+Welcome to the **guide**.
+
+> **Note:** This is a note.
+
+> **Warning:** This is a warning.
+
+See reference: [`helpers.slugify`](./utils/helpers.md#fn.slugify)
+
+See reference: [`core.engine.Engine.arun`](./01_core/engine.md#method.Engine.arun)
+
+![](./assets/img/logo.png)
+
+```python
+def hello(name):
+    return f"hi {name}"  # greet
+```
+
+| Flag | Meaning |
+|------|---------|
+| `-s` | source  |
+
+
+<!-- 01_core/index.md -->
+
+# `core`
+
+Core package.
+
+Holds the engine.
+
+## Functions
+
+<a id="fn.boot"></a>
+
+### `boot()`
+
+```python
+def boot() -> None: ...
+```
+
+Boot it.
+
+
+<!-- 01_core/sub/index.md -->
+
+# `core.sub`
+
+
+<!-- __init__.md -->
+
+# `demo`
+
+Demo package root docstring.
+
+
+<!-- 01_core/engine.md -->
+
+# `core.engine`
+
+Engine module.
+
+Runs things.
+
+## Classes
+
+<a id="class.Base"></a>
+
+### class `Base`
+
+```python
+class Base: ...
+```
+
+<a id="class.Engine"></a>
+
+### class `Engine`
+
+```python
+class Engine(Base): ...
+```
+
+The main engine.
+
+**Examples**
+
+```pycon
+>>> Engine().speed
+3
+```
+
+#### Attributes
+
+<a id="attr.Engine.speed"></a>
+
+##### `speed`
+
+```python
+speed: int = 3
+```
+
+#### Methods
+
+<a id="method.Engine.__init__"></a>
+
+##### `__init__()`
+
+```python
+def __init__(self, name: str = "x", *args, retries: int = 3, **kwargs) -> None: ...
+```
+
+Create an engine.
+
+<a id="method.Engine.status"></a>
+
+##### `status()`
+
+```python
+@property
+def status(self) -> dict[str, int]: ...
+```
+
+*property*
+
+Status map.
+
+<a id="method.Engine.helper"></a>
+
+##### `helper()`
+
+```python
+@staticmethod
+def helper(a: Optional[int], b: Engine, c: int | None = None, d: os.PathLike = ".", e: Callable[[int], str] = str) -> list[str]: ...
+```
+
+*static*
+
+<a id="method.Engine.arun"></a>
+
+##### `arun()`
+
+```python
+async def arun(self, /, x, *, y: int = 1) -> tuple[int, str]: ...
+```
+
+Run asynchronously.
+
+
+<!-- 01_core/sub/engine.md -->
+
+# `core.sub.engine`
+
+A second module that is also named engine.
+
+## Functions
+
+<a id="fn.deep"></a>
+
+### `deep()`
+
+```python
+def deep(x: int) -> int: ...
+```
+
+Deep function.
+
+
+<!-- utils/helpers.md -->
+
+# `utils.helpers`
+
+## Functions
+
+<a id="fn.slugify"></a>
+
+### `slugify()`
+
+```python
+def slugify(text: str, sep: str = "-") -> str: ...
+```
+
+Turn text into a URL slug.
+
+<a id="fn.undocumented"></a>
+
+### `undocumented()`
+
+```python
+def undocumented(a, b=2): ...
+```
+
+

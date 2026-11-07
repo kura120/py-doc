@@ -335,6 +335,7 @@ impl App {
             source_url: self.prefill.source_url.clone(),
             strict: self.prefill.strict.unwrap_or(false),
             clean: self.prefill.clean.unwrap_or(false),
+            no_cache: self.prefill.no_cache.unwrap_or(false),
             include_private: self.prefill.include_private.unwrap_or(false),
             docstring_style: self.prefill.docstring_style.unwrap_or_default(),
             // The wizard only runs without a [tool.py-doc] table, so no
@@ -918,6 +919,7 @@ mod tests {
                 source_url: Some("https://x".into()),
                 strict: true,
                 clean: false,
+                no_cache: false,
                 include_private: false,
                 docstring_style: Default::default(),
                 formats: vec![OutputFormat::Html],

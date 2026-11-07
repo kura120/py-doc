@@ -10,6 +10,7 @@ macro_rules! status {
     };
 }
 
+mod cache;
 mod config;
 mod coverage;
 mod docstring;
@@ -19,19 +20,21 @@ mod models;
 mod output;
 mod parser;
 mod resolver;
+mod serve;
 mod tui;
 
 use anyhow::{Result, bail};
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use walkdir::{DirEntry, WalkDir};
 
+use cache::Cache;
 use config::Config;
-use generator::SiteGenerator;
+use generator::{ModuleSource, RunCache, SiteGenerator};
 use models::PythonPackage;
 
 static STATUS_TO_STDERR: AtomicBool = AtomicBool::new(false);
@@ -54,7 +57,7 @@ const DEFAULT_EXCLUDES: [&str; 8] = [
     "__pypackages__",
 ];
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LayoutKind {
     Classic,
@@ -72,7 +75,7 @@ impl LayoutKind {
     }
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeKind {
     /// Follow the reader's system light/dark setting
@@ -112,20 +115,26 @@ pub enum OutputFormat {
     Html,
     /// `api.json`: the parsed API, with raw and rendered docstrings
     Json,
-    /// Not supported yet (planned, #20)
-    #[value(hide = true)]
+    /// One `.md` page per module, `index.md`, `llms.txt` and `llms-full.txt`
     Markdown,
 }
 
-/// Every option, as given on the command line or in `[tool.py-doc]`.
-///
-/// This one struct is both the clap CLI and the serde shape of the
-/// `[tool.py-doc]` table, so a field's flag (`--doc-version`) and its key
-/// (`doc-version`) come from the same name. Every field is optional here;
-/// `Config::resolve` merges the layers and applies the defaults. To add an
-/// option: add a field here, then add it to `Config` and its `resolve`.
-#[derive(Parser, Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+impl OutputFormat {
+    /// Built from raw docstrings, which modules reused from the build cache
+    /// no longer carry (`raw_docstring` is not cached), so a run with this
+    /// format must not read the cache.
+    pub fn needs_raw_docstrings(self) -> bool {
+        match self {
+            OutputFormat::Html => false,
+            OutputFormat::Json | OutputFormat::Markdown => true,
+        }
+    }
+}
+
+/// The command line: the build options, or a subcommand. `serve` takes
+/// the same build options, so they are only on the subcommand's side of a
+/// command line (`py-doc serve --src x`, not `py-doc --src x serve`).
+#[derive(Parser, Debug)]
 #[command(
     author,
     version,
@@ -133,13 +142,24 @@ pub enum OutputFormat {
     long_about = None,
     args_conflicts_with_subcommands = true
 )]
-pub struct Args {
-    /// A subcommand instead of generating docs. Not a `[tool.py-doc]` key:
-    /// `known_keys` lists only arguments, and serde skips this field.
+pub struct Cli {
     #[command(subcommand)]
-    #[serde(skip)]
     pub command: Option<Command>,
 
+    #[command(flatten)]
+    pub args: Args,
+}
+
+/// Every option, as given on the command line or in `[tool.py-doc]`.
+///
+/// This one struct is both the clap arguments and the serde shape of the
+/// `[tool.py-doc]` table, so a field's flag (`--doc-version`) and its key
+/// (`doc-version`) come from the same name. Every field is optional here;
+/// `Config::resolve` merges the layers and applies the defaults. To add an
+/// option: add a field here, then add it to `Config` and its `resolve`.
+#[derive(clap::Args, Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Args {
     /// Path to the Python project (or a single .py file) to document
     #[arg(short, long)]
     pub src: Option<String>,
@@ -195,6 +215,11 @@ pub struct Args {
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub clean: Option<bool>,
 
+    /// Ignore the build cache in --out and render every page. A new cache
+    /// is still written for the next run.
+    #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
+    pub no_cache: Option<bool>,
+
     /// Also document private names (`_name`), private modules and names left
     /// out of `__all__`
     #[arg(long, value_name = "BOOL", num_args = 0..=1, require_equals = true, default_missing_value = "true")]
@@ -236,11 +261,30 @@ pub struct Args {
 
 /// Subcommands. Without one, py-doc generates docs from the flags (or
 /// starts the setup wizard when there are none).
-#[derive(clap::Subcommand, Debug, Clone, PartialEq, Eq)]
+#[derive(clap::Subcommand, Debug, Clone, PartialEq)]
 pub enum Command {
     /// Work with the bundled theme
     #[command(subcommand)]
     Theme(ThemeCommand),
+    /// Build the docs, serve them on 127.0.0.1 and rebuild on every change
+    /// to the sources, templates or CSS, reloading open pages. Takes every
+    /// build option, and reads `[tool.py-doc]` like a normal build.
+    Serve(Box<ServeArgs>),
+}
+
+#[derive(clap::Args, Debug, Clone, PartialEq)]
+pub struct ServeArgs {
+    /// Port to listen on; the next free one is used if it is taken.
+    /// 0 picks any free port
+    #[arg(long, default_value_t = 8000)]
+    pub port: u16,
+
+    /// Open the site in the default browser once it is served
+    #[arg(long)]
+    pub open: bool,
+
+    #[command(flatten)]
+    pub build: Args,
 }
 
 #[derive(clap::Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -259,6 +303,12 @@ pub enum ThemeCommand {
 
 fn run_command(command: Command) -> Result<()> {
     match command {
+        Command::Serve(serve_args) => {
+            let pyproject = config::PyProject::load(&serve_args.build)?;
+            let ServeArgs { port, open, build } = *serve_args;
+            let config = Config::resolve(build, pyproject.as_ref())?;
+            serve::run(config, port, open)
+        }
         Command::Theme(ThemeCommand::Eject { dir, force }) => {
             let written = generator::eject_theme(Path::new(&dir), force)?;
             println!(
@@ -330,6 +380,29 @@ fn collect_python_files(src_path: &Path, user_excludes: &[String]) -> (PathBuf, 
 /// With `args.out` None (a check-only coverage run) it stops after the
 /// coverage report and writes nothing.
 fn run_generation(args: &Config) -> Result<()> {
+    build(args, false)
+}
+
+/// A `serve` build that stopped before writing anything.
+#[derive(Debug)]
+pub(crate) struct NotRebuilt(usize);
+
+impl std::fmt::Display for NotRebuilt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} file(s) failed to parse; the site was not rebuilt",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for NotRebuilt {}
+
+/// [`run_generation`], for `serve` when `serving`: then a file that fails
+/// to parse stops the build before anything is written, so the server
+/// keeps the last good site instead of one with that module missing.
+pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
     let src_path = Path::new(&args.src);
 
     if !src_path.exists() {
@@ -351,10 +424,41 @@ fn run_generation(args: &Config) -> Result<()> {
 
     let (root, py_files) = collect_python_files(src_path, &args.exclude);
 
-    let mut package = PythonPackage {
-        name: args.name.clone(),
-        modules: Vec::new(),
-        hidden: Vec::new(),
+    // The generator comes first: the cache key includes its theme files.
+    // A coverage report needs every module parsed, so it never reads the
+    // cache (a run that also builds the site still writes one), and a
+    // check-only run has no output folder and no cache at all. Nor does a
+    // format built from raw docstrings (`json`, `markdown`) read it: a cached
+    // (already rendered) module no longer has them, so that run is a full
+    // build. With `html` too, it still writes the cache.
+    let generator = match &args.out {
+        Some(out) => Some(
+            SiteGenerator::new(
+                &root,
+                out,
+                &args.doc_version,
+                args.templates.as_deref(),
+                args.layout.as_str(),
+                args.theme.as_baked(),
+                args.source_url.as_deref(),
+            )?
+            .with_extra_css(&args.css)?
+            .with_docstring_style(args.docstring_style),
+        ),
+        None => None,
+    };
+    let cache_key = generator
+        .as_ref()
+        .map(|g| cache::cache_key(&args.cache_settings(), g.theme_fingerprint()));
+    let old_cache = match (&args.out, &cache_key) {
+        (Some(out), Some(key))
+            if !args.no_cache
+                && args.coverage.is_none()
+                && !args.formats.iter().any(|f| f.needs_raw_docstrings()) =>
+        {
+            Cache::load(Path::new(out), key)
+        }
+        _ => None,
     };
 
     let pb = ProgressBar::new(py_files.len() as u64);
@@ -365,19 +469,44 @@ fn run_generation(args: &Config) -> Result<()> {
     );
 
     // Files are parsed in parallel; collecting keeps them in sorted order.
+    // A file the cache holds with the same content is not parsed at all.
+    // Without a cache nothing is hashed, so an uncached build costs the same
+    // as before.
     let results: Vec<_> = py_files
         .par_iter()
         .map(|path| {
-            let result = parser::parse_file(path, &root);
+            let mut source_hash = String::new();
+            let mut cached = false;
+            if cache_key.is_some() {
+                let source_path = cache::source_path_for(path, &root);
+                // An unreadable file gets no hash, misses the cache and fails to parse below.
+                if let Ok(bytes) = std::fs::read(path) {
+                    source_hash = cache::hash_source(&source_path, &bytes);
+                }
+                cached = !source_hash.is_empty()
+                    && old_cache
+                        .as_ref()
+                        .is_some_and(|c| c.has_source(&source_path, &source_hash));
+            }
+            let result = if cached {
+                Ok(None)
+            } else {
+                parser::parse_file(path, &root).map(Some)
+            };
             pb.inc(1);
-            (path, result)
+            (path, source_hash, result)
         })
         .collect();
 
+    let mut sources = Vec::new();
     let mut parse_errors: Vec<String> = Vec::new();
-    for (path, result) in results {
+    for (path, source_hash, result) in results {
         match result {
-            Ok(module) => package.modules.push(module),
+            Ok(parsed) => sources.push(ModuleSource {
+                path: path.clone(),
+                source_hash,
+                parsed,
+            }),
             Err(e) => {
                 let shown = path.strip_prefix(&root).unwrap_or(path);
                 parse_errors.push(format!("{}: {:#}", shown.display(), e));
@@ -386,10 +515,16 @@ fn run_generation(args: &Config) -> Result<()> {
     }
     pb.finish_and_clear();
 
+    let unchanged = sources.iter().filter(|s| s.parsed.is_none()).count();
     status!(
-        "  \x1b[32m✔\x1b[0m Parsed {} of {} Python files.",
-        package.modules.len(),
-        py_files.len()
+        "  \x1b[32m✔\x1b[0m Parsed {} of {} Python files{}.",
+        sources.len(),
+        py_files.len(),
+        if unchanged > 0 {
+            format!(" ({} unchanged)", unchanged)
+        } else {
+            String::new()
+        }
     );
     if !parse_errors.is_empty() {
         eprintln!(
@@ -399,68 +534,81 @@ fn run_generation(args: &Config) -> Result<()> {
         for err in &parse_errors {
             eprintln!("    - {}", err);
         }
+        if serving {
+            return Err(NotRebuilt(parse_errors.len()).into());
+        }
     }
 
-    if !args.include_private {
-        package.hide_private();
-    }
-
-    // Measured before rendering, which replaces docstrings with HTML.
-    let report = args
-        .coverage
-        .as_ref()
-        .map(|_| coverage::Report::of(&package, args.include_private));
+    // Measured before rendering, which replaces docstrings with HTML. The
+    // cache is not read in coverage runs, so every module is parsed here.
+    let report = args.coverage.as_ref().map(|_| {
+        let mut package = PythonPackage {
+            name: args.name.clone(),
+            modules: sources.iter().filter_map(|s| s.parsed.clone()).collect(),
+            hidden: Vec::new(),
+        };
+        if !args.include_private {
+            package.hide_private();
+        }
+        coverage::Report::of(&package, args.include_private)
+    });
 
     let mut problems = parse_errors.len();
-    if let Some(out) = &args.out {
-        status!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
-        let generator = SiteGenerator::new(
-            &root,
-            out,
-            &args.doc_version,
-            args.templates.as_deref(),
-            args.layout.as_str(),
-            args.theme.as_baked(),
-            args.source_url.as_deref(),
-        )?
-        .with_extra_css(&args.css)?
-        .with_docstring_style(args.docstring_style);
+    match (&args.out, generator, cache_key) {
+        (Some(out), Some(generator), Some(key)) => {
+            status!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");
+            generator.announce_templates();
 
-        generator.render(&mut package)?;
+            let prepared = generator.render(
+                &args.name,
+                sources,
+                &root,
+                RunCache {
+                    previous: old_cache,
+                    key,
+                },
+                args.include_private,
+            )?;
 
-        let out_shown = out.trim_end_matches(['/', '\\']);
-        let mut written = Vec::new();
-        for format in &args.formats {
-            match format {
-                OutputFormat::Html => {
-                    generator.write_html(&package)?;
-                    written.push(format!("{out_shown}/index.html"));
-                }
-                OutputFormat::Json => {
-                    if !args.formats.contains(&OutputFormat::Html) {
-                        status!(
-                            "\x1b[36;1m[3/3]\x1b[0m Writing {}...",
-                            output::json::FILE_NAME
-                        );
+            let out_shown = out.trim_end_matches(['/', '\\']);
+            let mut written = Vec::new();
+            for format in &args.formats {
+                match format {
+                    OutputFormat::Html => {
+                        let pages = generator.write_html(&prepared)?;
+                        generator.save_cache(&prepared, &pages);
+                        written.push(format!("{out_shown}/index.html"));
                     }
-                    let api =
-                        output::json::to_string(&package, &args.doc_version, args.include_private);
-                    generator.write_file(output::json::FILE_NAME, &api)?;
-                    written.push(format!("{out_shown}/{}", output::json::FILE_NAME));
+                    OutputFormat::Json => {
+                        status!("  Writing {}...", output::json::FILE_NAME);
+                        let api = output::json::to_string(
+                            &prepared.package,
+                            &args.doc_version,
+                            args.include_private,
+                        );
+                        generator.write_file(output::json::FILE_NAME, &api)?;
+                        written.push(format!("{out_shown}/{}", output::json::FILE_NAME));
+                    }
+                    OutputFormat::Markdown => {
+                        status!("  Writing Markdown pages, {}...", output::markdown::LLMS);
+                        output::markdown::write(&generator, &prepared.package, &args.doc_version)?;
+                        written.push(format!("{out_shown}/{}", output::markdown::INDEX));
+                    }
                 }
-                // Rejected by Config::resolve until #20 implements it.
-                OutputFormat::Markdown => bail!("format `markdown` is not supported yet"),
             }
-        }
-        generator.finish(args.clean)?;
+            generator.finish(args.clean)?;
 
-        status!(
-            "\n\x1b[32;1m✔ Documentation generated at {}\x1b[0m",
-            written.join(" and ")
-        );
-        problems += generator.warning_count();
-    } else {
-        status!("\x1b[36;1m[2/2]\x1b[0m Measuring documentation coverage (no site is written)...");
+            status!(
+                "\n\x1b[32;1m✔ Documentation generated at {}\x1b[0m",
+                written.join(" and ")
+            );
+            problems += generator.warning_count();
+        }
+        _ => {
+            status!(
+                "\x1b[36;1m[2/2]\x1b[0m Measuring documentation coverage (no site is written)..."
+            );
+        }
     }
 
     let mut failures = Vec::new();
@@ -490,8 +638,8 @@ fn run_generation(args: &Config) -> Result<()> {
 
 fn main() -> Result<()> {
     let no_args = std::env::args().len() == 1;
-    let mut cli = Args::parse();
-    if let Some(command) = cli.command.take() {
+    let Cli { command, args: cli } = Cli::parse();
+    if let Some(command) = command {
         return run_command(command);
     }
     let pyproject = config::PyProject::load(&cli)?;

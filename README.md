@@ -93,7 +93,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | --- | --- |
 | `-s`, `--src <PATH>` | Project directory, or a single `.py` file. Required unless set in `pyproject.toml`. |
 | `-o`, `--out <DIR>` | Where the site (and `api.json`) is written. Required unless set in `pyproject.toml`. |
-| `--format <html\|json>` | What to write to `--out`: the HTML site, `api.json`, or both. Repeatable. Default `html`. See [JSON output](#json-output). |
+| `--format <html\|json\|markdown>` | What to write to `--out`: the HTML site, `api.json`, Markdown pages, or any mix. Repeatable. Default `html`. See [JSON output](#json-output) and [Markdown output](#markdown-output). |
 | `-n`, `--name <NAME>` | Package name shown in the docs. Defaults to `[project] name`; required if there is none. |
 | `--doc-version <VERSION>` | Your project's version, shown in the sidebar. Defaults to `[project] version`, else `1.0.0`. |
 | `--layout <classic\|minimal\|modern>` | Layout the site opens with. Default `classic`. |
@@ -104,6 +104,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
+| `--no-cache` | Ignore the build cache and render every page. See [Incremental builds](#incremental-builds). |
 | `--include-private` | Also document private names and modules. See [Public API](#public-api). |
 | `--docstring-style <STYLE>` | How to read docstring sections: `auto`, `google`, `numpy`, `rest` or `markdown`. Default `auto`. See [Docstring sections](#docstring-sections). |
 | `--coverage` | Print a documentation coverage report. Without `--out` on the command line, no site is written. See [Documentation coverage](#documentation-coverage). |
@@ -115,7 +116,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 
 > **Changed in this release:** `-v` / `--version <VERSION>` used to set the version shown in the docs. That is now `--doc-version`, and `--version` reports the tool's own version.
 
-`--strict`, `--clean`, `--include-private` and `--coverage` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
+`--strict`, `--clean`, `--include-private`, `--coverage` and `--no-cache` also take `=true` or `=false`, so a command line can turn off what `pyproject.toml` turns on.
 
 ### Configuring with pyproject.toml
 
@@ -249,7 +250,7 @@ py-doc --src src/myproject --out build --format json                 # api.json 
 py-doc --src src/myproject --out build --format html --format json   # site and api.json
 ```
 
-With only `json`, no HTML is written: `--out` gets `api.json`, the `.py-doc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`. `markdown` is planned and rejected for now.
+With only `json`, no HTML is written: `--out` gets `api.json`, the `.py-doc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`.
 
 This is separate from a [coverage check](#documentation-coverage): `--coverage` without `--out` on the command line writes nothing at all, whatever `format` says.
 
@@ -295,9 +296,79 @@ Shortened (`"...": "..."` marks left-out fields):
 
 The full shape is in [`docs/api.schema.json`](docs/api.schema.json) (JSON Schema 2020-12). A test validates real output against it, so it cannot fall out of date. Modules are sorted by `qualname`, then `path`; members keep source order. Nested classes are listed in their parent's `classes`, with qualified names such as `myproject.engine.Engine.Config`. The same input always gives a byte-identical file. `schema_version` changes only when a field is renamed, removed or changes type.
 
+### Markdown output
+
+`--format markdown` writes the API reference as Markdown, to drop into an existing MkDocs or Docusaurus site, a wiki, or an LLM's context:
+
+```bash
+py-doc --src src/myproject --out docs/api --format markdown
+```
+
+It writes one `.md` page per module at the same path as its HTML page (`core/engine.html` becomes `core/engine.md`, a package's `__init__.py` becomes `index.md` in its folder), plus:
+
+* `index.md`: the package docstring and a list of every module with its summary;
+* `llms.txt`: a short index in the [llms.txt](https://llmstxt.org) format, for AI tools;
+* `llms-full.txt`: every page in one file.
+
+Each page has the module docstring, then **Variables**, **Classes** (each with its attributes and methods) and **Functions**. Every symbol has a `python` code block with its signature, then its docstring as written (docstrings are Markdown already). The `#pd-` macros become plain Markdown:
+
+| Macro | Markdown |
+| --- | --- |
+| `#pd-note: text` | `> **Note:** text` |
+| `#pd-warning: text` | `> **Warning:** text` |
+| `#pd-doc-link: target` | `See reference: [target](../core/engine.md#class.Engine)` |
+| `#pd-image: path` | `![](../assets/path)`, with the image copied to `assets/` |
+| `#pd-code lang` | a fenced `lang` block |
+
+`>>>` doctest sessions are fenced as `pycon`. A doc-link or image that cannot be resolved stays as text, so no link is ever broken.
+
+Each symbol heading is preceded by an HTML anchor with the same id the HTML site uses: `class.Engine`, `method.Engine.run`, `attr.Engine.speed`, `fn.boot` and `var.TIMEOUT`. Doc-links point at these, and they work on GitHub, in MkDocs and in Docusaurus without any extension.
+
+With MkDocs, point `docs_dir` at the output, or write it into a folder of your docs. This config also makes `mkdocs build --strict` fail on any broken link or anchor:
+
+```yaml
+site_name: myproject
+docs_dir: docs/api
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+```
+
+Docusaurus 3 reads `.md` files as MDX by default, and MDX rejects some plain Markdown, such as a `{` or `<` in a docstring. Set `markdown: { format: 'detect' }` in `docusaurus.config.js` so `.md` files are read as CommonMark.
+
+The output is deterministic: the same input gives byte-identical files. Pages follow the site's order (`#pd-z-index`, then name).
+
 ### Keeping the output folder tidy
 
 Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything py-doc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
+
+### Incremental builds
+
+Each run saves a cache in `.py-doc-cache` inside `--out`, next to `.py-doc-manifest`. The next run only parses files whose content changed and only rewrites pages whose content would change. A run with no changes writes no pages.
+
+* Editing a docstring re-renders that module's page and the index.
+* Adding, removing or renaming a module, class or function, or changing a one-line summary, re-renders every page, because every page shows the navigation.
+* A page that links to a renamed symbol with `#pd-doc-link`, or shows an image that changed, is re-rendered too.
+* A new py-doc version, a changed option, or a changed template or `--css` file rebuilds everything. With `--templates`, any change to a module re-renders every page, since a custom template can show any module on any page.
+
+The result is always the same as a full build. `--no-cache` forces one (and saves a fresh cache). A coverage report needs every file parsed, so `--coverage` does not read the cache; a coverage-only run (no `--out`) neither reads nor writes one. `--format json` and `--format markdown` are also full builds, since `api.json` and the Markdown pages are made from the raw docstrings that cached modules no longer keep; with `html` too, the run still saves a cache for the next HTML build. The cache belongs to the output folder: if you commit `--out`, add `.py-doc-cache` to your `.gitignore`.
+
+### Live preview
+
+```bash
+py-doc serve --src ./my_project --out ./docs
+```
+
+`serve` builds the site, serves `--out` at `http://127.0.0.1:8000/` and rebuilds whenever a file under `--src`, the `--templates` folder or a `--css` file changes. Open pages reload once the rebuild is done. Rebuilds are incremental, so a docstring edit usually shows up in well under a second.
+
+* It takes every build option and reads `[tool.py-doc]` like a normal build. Put the options after `serve`: `py-doc serve --src x`, not `py-doc --src x serve`.
+* `--port N` picks the port (default 8000). If it is taken, the next free one is used and the actual URL is printed. `--port 0` picks any free port. Only 127.0.0.1 is bound, so the site is not reachable from other machines.
+* `--open` opens the site in your browser.
+* The reload script is added to pages as they are served. Files on disk never contain it, so the folder is the same as a normal build's and safe to publish.
+* If a file fails to parse, the error is printed and nothing is rebuilt: the last good site stays up. Fixing the file and saving rebuilds it. Other errors, such as a broken template, are printed the same way, and the server keeps running.
+* Hidden files and folders (`.git`, editor swap files), `__pycache__` and the output folder itself are not watched. Changes to `pyproject.toml` need a restart.
+* Ctrl+C stops the server once the build in progress finishes; a second Ctrl+C stops it at once.
 
 ### Linking to source
 

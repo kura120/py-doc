@@ -13,7 +13,7 @@
 //!    read relative to the pyproject.toml.
 
 use anyhow::{Context, Result, bail};
-use clap::CommandFactory;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::docstring::DocstringStyle;
@@ -30,7 +30,7 @@ pub struct CoverageSettings {
 }
 
 /// The fully resolved settings the rest of the program runs on.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub src: String,
     /// Where to write the site. None in check-only coverage runs: `--coverage`
@@ -49,11 +49,17 @@ pub struct Config {
     pub source_url: Option<String>,
     pub strict: bool,
     pub clean: bool,
+    pub no_cache: bool,
     pub include_private: bool,
     pub docstring_style: DocstringStyle,
-    /// None when no coverage report was asked for.
+    /// None when no coverage report was asked for. Not part of the cache
+    /// key: the report does not change the site.
+    #[serde(skip)]
     pub coverage: Option<CoverageSettings>,
     /// What to write to `out`: sorted, without duplicates, never empty.
+    /// Not part of the cache key: the formats do not change the HTML pages,
+    /// and a run with `json` does not read the cache (see `run_generation`).
+    #[serde(skip)]
     pub formats: Vec<OutputFormat>,
 }
 
@@ -182,7 +188,7 @@ impl PyProject {
 
 /// The `[tool.py-doc]` keys: every long flag except `--config`.
 fn known_keys() -> Vec<String> {
-    Args::command()
+    <Args as clap::Args>::augment_args(clap::Command::new("py-doc"))
         .get_arguments()
         .filter_map(|arg| arg.get_long())
         .filter(|long| !matches!(*long, "config" | "help" | "version"))
@@ -241,6 +247,20 @@ fn missing(key: &str) -> anyhow::Error {
 }
 
 impl Config {
+    /// The settings that can change the generated site, serialized for the
+    /// cache key. Everything except where the site goes and how the run
+    /// behaves (`out`, `strict`, `clean`, `no-cache`), so a new option is
+    /// part of the key unless it is listed here.
+    pub fn cache_settings(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(map) = value.as_object_mut() {
+            for key in ["out", "strict", "clean", "no_cache"] {
+                map.remove(key);
+            }
+        }
+        value.to_string()
+    }
+
     /// Merges the CLI over the config file and fills in defaults.
     /// Prints a warning for unknown `[tool.py-doc]` keys (an error when
     /// strict) and a hint when the version falls back because it is dynamic.
@@ -308,12 +328,6 @@ impl Config {
         }
         formats.sort();
         formats.dedup();
-        if formats.contains(&OutputFormat::Markdown) {
-            bail!(
-                "format `markdown` is not supported yet; use `html` and/or `json` \
-                 (see https://github.com/kura120/py-doc/issues/20)"
-            );
-        }
 
         let name = match cli.name.or(tool.name).or(project_name) {
             Some(name) => name,
@@ -343,6 +357,7 @@ impl Config {
             source_url: cli.source_url.or(tool.source_url),
             strict,
             clean: cli.clean.or(tool.clean).unwrap_or(false),
+            no_cache: cli.no_cache.or(tool.no_cache).unwrap_or(false),
             include_private: cli
                 .include_private
                 .or(tool.include_private)
@@ -363,7 +378,9 @@ mod tests {
     use clap::Parser;
 
     fn cli(args: &[&str]) -> Args {
-        Args::try_parse_from(std::iter::once("py-doc").chain(args.iter().copied())).unwrap()
+        crate::Cli::try_parse_from(std::iter::once("py-doc").chain(args.iter().copied()))
+            .unwrap()
+            .args
     }
 
     fn in_proj(path: &str) -> String {
@@ -392,6 +409,7 @@ exclude = ["tool-ex"]
 source-url = "https://tool"
 strict = true
 clean = true
+no-cache = true
 include-private = true
 coverage = true
 fail-under = 50
@@ -423,6 +441,7 @@ docstring-style = "numpy"
         "https://cli",
         "--strict=false",
         "--clean=false",
+        "--no-cache=false",
         "--include-private=false",
         "--fail-under",
         "75.5",
@@ -457,6 +476,7 @@ docstring-style = "numpy"
                 source_url: Some("https://cli".into()),
                 strict: false,
                 clean: false,
+                no_cache: false,
                 include_private: false,
                 docstring_style: DocstringStyle::Markdown,
                 formats: vec![OutputFormat::Html, OutputFormat::Json],
@@ -487,6 +507,7 @@ docstring-style = "numpy"
                 source_url: Some("https://tool".into()),
                 strict: true,
                 clean: true,
+                no_cache: true,
                 include_private: true,
                 docstring_style: DocstringStyle::Numpy,
                 formats: vec![OutputFormat::Json],
@@ -524,6 +545,7 @@ docstring-style = "numpy"
                 source_url: None,
                 strict: false,
                 clean: false,
+                no_cache: false,
                 include_private: false,
                 docstring_style: DocstringStyle::Auto,
                 formats: vec![OutputFormat::Html],
@@ -590,6 +612,7 @@ docstring-style = "numpy"
             "source-url",
             "strict",
             "clean",
+            "no-cache",
             "include-private",
             "coverage",
             "fail-under",
@@ -599,8 +622,8 @@ docstring-style = "numpy"
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
         assert!(!keys.iter().any(|k| k == "config"));
-        // Subcommands (`py-doc theme eject`) are not options.
-        for key in ["command", "eject", "dir", "force"] {
+        // Subcommands (`py-doc theme eject`, `py-doc serve`) are not options.
+        for key in ["command", "eject", "dir", "force", "serve", "port", "open"] {
             assert!(!keys.iter().any(|k| k == key), "{key} must not be a key");
         }
     }
@@ -609,7 +632,34 @@ docstring-style = "numpy"
     fn subcommand_fields_are_not_config_keys() {
         let file = pyproject("[tool.py-doc]\ncommand = \"theme\"\neject = true\n");
         assert_eq!(file.unknown_keys, ["command", "eject"]);
-        assert_eq!(file.tool.unwrap().command, None);
+        assert_eq!(file.tool.unwrap(), Args::default());
+    }
+
+    #[test]
+    fn cache_settings_leave_out_run_behaviour() {
+        let base = Config::resolve(cli(&["-s", "a", "-o", "b", "-n", "c"]), None).unwrap();
+        let other_run = Config::resolve(
+            cli(&[
+                "-s",
+                "a",
+                "-o",
+                "elsewhere",
+                "-n",
+                "c",
+                "--strict",
+                "--clean",
+                "--no-cache",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(base.cache_settings(), other_run.cache_settings());
+        let other_site = Config::resolve(
+            cli(&["-s", "a", "-o", "b", "-n", "c", "--layout", "modern"]),
+            None,
+        )
+        .unwrap();
+        assert_ne!(base.cache_settings(), other_site.cache_settings());
     }
 
     #[test]
@@ -679,7 +729,7 @@ docstring-style = "numpy"
     }
 
     #[test]
-    fn formats_default_to_html_and_markdown_is_not_supported_yet() {
+    fn formats_default_to_html_and_are_sorted_and_deduplicated() {
         let base = ["-s", "a", "-o", "b", "-n", "c"];
         let config = Config::resolve(cli(&base), None).unwrap();
         assert_eq!(config.formats, [OutputFormat::Html]);
@@ -697,9 +747,11 @@ docstring-style = "numpy"
             [OutputFormat::Html, OutputFormat::Json]
         );
 
-        let file = pyproject("[tool.py-doc]\nformat = [\"markdown\"]\n");
-        let err = Config::resolve(cli(&base), Some(&file)).unwrap_err();
-        assert!(err.to_string().contains("not supported yet"), "{err}");
+        let file = pyproject("[tool.py-doc]\nformat = [\"markdown\", \"html\", \"markdown\"]\n");
+        assert_eq!(
+            Config::resolve(cli(&base), Some(&file)).unwrap().formats,
+            [OutputFormat::Html, OutputFormat::Markdown]
+        );
         let text = "[tool.py-doc]\nformat = [\"pdf\"]\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
     }

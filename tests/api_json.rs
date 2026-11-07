@@ -658,27 +658,3 @@ fn public_filtering_applies_and_include_private_keeps_everything() {
         ["connect", "_exported_private"]
     );
 }
-
-#[test]
-fn markdown_is_not_supported_yet() {
-    let out = out_dir("markdown");
-    let config = Path::new(env!("CARGO_TARGET_TMPDIR")).join("api-json-empty.toml");
-    fs::write(&config, "").unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
-        .arg("--config")
-        .arg(&config)
-        .arg("--src")
-        .arg(fixture("sample"))
-        .arg("--out")
-        .arg(&out)
-        .args(["--name", "demo", "--format", "markdown"])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("`markdown` is not supported yet"),
-        "{stderr}"
-    );
-    assert!(!out.exists(), "nothing is written");
-}
