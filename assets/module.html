@@ -41,8 +41,7 @@
         <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ cls.qualname }}</span>{% if cls.bases %}({{ cls.bases | join(sep=", ") }}){% endif %}:</span>
         <span class="signature-meta">{% for badge in cls.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ cls.line }}">source</a>{% else %}<span class="source-ref">line {{ cls.line }}</span>{% endif %}</span>
     </div>
-    {% if cls.docstring %}<div class="docstring">{{ cls.docstring | safe }}</div>{% endif %}
-    {% if cls.sections %}{{ <doc_sections s={cls.sections}/> }}{% endif %}
+    {% if cls.docstring %}<div class="docstring">{{ cls.docstring | safe }}</div>{% endif %}{% if cls.sections %}{{ <doc_sections s={cls.sections}/> }}{% endif %}
     {%- if cls.variables %}
     <div class="method-list">
         <h3 class="method-list-title">Attributes</h3>
@@ -131,8 +130,7 @@
                         </div>
                         {% if class.docstring %}
                             <div class="docstring">{{ class.docstring | safe }}</div>
-                        {% endif %}
-                        {% if class.sections %}{{ <doc_sections s={class.sections}/> }}{% endif %}
+                        {% endif %}{% if class.sections %}{{ <doc_sections s={class.sections}/> }}{% endif %}
 
                         {% if class.variables %}
                             <div class="method-list">
@@ -154,8 +152,7 @@
                                         </div>
                                         {% if func.docstring %}
                                             <div class="docstring">{{ func.docstring | safe }}</div>
-                                        {% endif %}
-                                        {% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}
+                                        {% endif %}{% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}
                                     </div>
                                 {% endfor %}
                             </div>
@@ -187,8 +184,7 @@
                         </div>
                         {% if func.docstring %}
                             <div class="docstring">{{ func.docstring | safe }}</div>
-                        {% endif %}
-                        {% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}
+                        {% endif %}{% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}
                     </div>
                 {% endfor %}
             </section>

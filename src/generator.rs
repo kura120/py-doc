@@ -456,12 +456,34 @@ impl SiteGenerator {
         self.docstring_style
     }
 
-    /// Takes the sections out of a raw docstring and renders their texts.
-    /// Returns the rest of the docstring (rendered by the caller as before)
-    /// and the sections, or None when it has no sections: then the raw
-    /// docstring is rendered unchanged.
-    fn sections_of(&self, doc: &str, ctx: &RenderCtx) -> Option<(String, DocSections)> {
-        let split = docstring::split(&clean_docstring(doc), self.docstring_style)?;
+    /// Renders a function or class docstring: the sections taken out of it
+    /// (with their texts rendered) and the HTML of the rest, None when
+    /// nothing is left. A docstring without sections renders exactly as
+    /// `render_markdown` would render it.
+    fn render_with_sections(
+        &self,
+        doc: &str,
+        ctx: &RenderCtx,
+    ) -> (Option<String>, Option<DocSections>) {
+        if !docstring::may_have_sections(doc, self.docstring_style) {
+            return (Some(self.render_markdown(doc, ctx)), None);
+        }
+        // Dedented once, for both the split and the rendering.
+        let cleaned = clean_docstring(doc);
+        match self.sections_of(&cleaned, ctx) {
+            Some((body, sections)) => (
+                (!body.trim().is_empty()).then(|| self.render_markdown(&body, ctx)),
+                Some(sections),
+            ),
+            None => (Some(self.render_dedented_markdown(&cleaned, ctx)), None),
+        }
+    }
+
+    /// Takes the sections out of a dedented docstring and renders their
+    /// texts. Returns the rest of the docstring and the sections, or None
+    /// when it has no sections.
+    fn sections_of(&self, cleaned: &str, ctx: &RenderCtx) -> Option<(String, DocSections)> {
+        let split = docstring::split(cleaned, self.docstring_style)?;
         let mut sections = split.sections;
         for item in sections.items_mut() {
             if !item.description.is_empty() {
@@ -760,8 +782,11 @@ impl SiteGenerator {
     }
 
     fn render_markdown(&self, markdown: &str, ctx: &RenderCtx) -> String {
-        let dedented_md = clean_docstring(markdown);
+        self.render_dedented_markdown(&clean_docstring(markdown), ctx)
+    }
 
+    /// `render_markdown` for text `clean_docstring` already dedented.
+    fn render_dedented_markdown(&self, dedented_md: &str, ctx: &RenderCtx) -> String {
         let mut processed_md = String::new();
         let mut in_custom_code = false;
         let mut code_language = String::new();
@@ -964,23 +989,16 @@ impl SiteGenerator {
             module.raw_docstring = Some(raw_doc);
         }
 
-        // The rendered body of a docstring, after its sections are taken
-        // out; None when nothing is left of it.
-        let body_html =
-            |body: &str| (!body.trim().is_empty()).then(|| self.render_markdown(body, &ctx));
-
         let render_function = |func: &mut PythonFunction| {
             if let Some(doc) = func.docstring.take() {
                 func.summary = summarize(&doc);
-                match self.sections_of(&doc, &ctx) {
-                    Some((body, mut sections)) => {
-                        docstring::merge_signature(&mut sections, &func.args);
-                        docstring::merge_return_type(&mut sections, func.return_type.as_deref());
-                        func.docstring = body_html(&body);
-                        func.sections = Some(sections);
-                    }
-                    None => func.docstring = Some(self.render_markdown(&doc, &ctx)),
+                let (html, mut sections) = self.render_with_sections(&doc, &ctx);
+                if let Some(sections) = sections.as_mut() {
+                    docstring::merge_signature(sections, &func.args);
+                    docstring::merge_return_type(sections, func.return_type.as_deref());
                 }
+                func.docstring = html;
+                func.sections = sections;
                 func.raw_docstring = Some(doc);
             }
         };
@@ -998,17 +1016,16 @@ impl SiteGenerator {
         while let Some(class) = stack.pop() {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
-                match self.sections_of(&doc, &ctx) {
-                    Some((body, mut sections)) => {
-                        // A class docstring's Args describe `__init__`.
-                        if let Some(init) = class.functions.iter().find(|f| f.name == "__init__") {
-                            docstring::merge_signature(&mut sections, &init.args);
-                        }
-                        class.docstring = body_html(&body);
-                        class.sections = Some(sections);
-                    }
-                    None => class.docstring = Some(self.render_markdown(&doc, &ctx)),
+                let (html, mut sections) = self.render_with_sections(&doc, &ctx);
+                // A class docstring's Args describe `__init__`.
+                if let (Some(sections), Some(init)) = (
+                    sections.as_mut(),
+                    class.functions.iter().find(|f| f.name == "__init__"),
+                ) {
+                    docstring::merge_signature(sections, &init.args);
                 }
+                class.docstring = html;
+                class.sections = sections;
                 class.raw_docstring = Some(doc);
             }
             class.functions.iter_mut().for_each(render_function);

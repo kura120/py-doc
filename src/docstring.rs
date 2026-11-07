@@ -193,7 +193,13 @@ impl Kind {
 
     /// From a section title, case-insensitively ("Args", "Keyword Arguments", ...).
     fn from_title(title: &str) -> Option<Kind> {
-        let title = title.trim().to_ascii_lowercase();
+        let title = title.trim();
+        // Called on every candidate line: the longest title is 18 bytes, so
+        // longer text is rejected before lowercasing it.
+        if title.len() > 18 || !title.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            return None;
+        }
+        let title = title.to_ascii_lowercase();
         Some(match title.as_str() {
             "args" | "arguments" | "parameters" | "params" => Kind::Params,
             "keyword args" | "keyword arguments" | "keyword parameters" | "kwargs" => {
@@ -218,6 +224,13 @@ impl Kind {
 pub struct Split {
     pub body: String,
     pub sections: DocSections,
+}
+
+/// A quick check on the raw text, before any dedenting: false when no line
+/// could start a section, so most plain docstrings skip [`split`]. Every
+/// header has a colon (`Args:`, `:param`, `.. note::`) or a dashed underline.
+pub fn may_have_sections(doc: &str, style: DocstringStyle) -> bool {
+    style != DocstringStyle::Markdown && (doc.contains(':') || doc.contains("---"))
 }
 
 /// Splits a dedented docstring into its body and sections. None when the
