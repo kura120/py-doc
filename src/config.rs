@@ -13,7 +13,6 @@
 //!    read relative to the pyproject.toml.
 
 use anyhow::{Context, Result, bail};
-use clap::CommandFactory;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -187,7 +186,7 @@ impl PyProject {
 
 /// The `[tool.py-doc]` keys: every long flag except `--config`.
 fn known_keys() -> Vec<String> {
-    Args::command()
+    <Args as clap::Args>::augment_args(clap::Command::new("py-doc"))
         .get_arguments()
         .filter_map(|arg| arg.get_long())
         .filter(|long| !matches!(*long, "config" | "help" | "version"))
@@ -379,7 +378,9 @@ mod tests {
     use clap::Parser;
 
     fn cli(args: &[&str]) -> Args {
-        Args::try_parse_from(std::iter::once("py-doc").chain(args.iter().copied())).unwrap()
+        crate::Cli::try_parse_from(std::iter::once("py-doc").chain(args.iter().copied()))
+            .unwrap()
+            .args
     }
 
     fn in_proj(path: &str) -> String {
@@ -615,8 +616,8 @@ format = ["json"]
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
         assert!(!keys.iter().any(|k| k == "config"));
-        // Subcommands (`py-doc theme eject`) are not options.
-        for key in ["command", "eject", "dir", "force"] {
+        // Subcommands (`py-doc theme eject`, `py-doc serve`) are not options.
+        for key in ["command", "eject", "dir", "force", "serve", "port", "open"] {
             assert!(!keys.iter().any(|k| k == key), "{key} must not be a key");
         }
     }
@@ -625,7 +626,7 @@ format = ["json"]
     fn subcommand_fields_are_not_config_keys() {
         let file = pyproject("[tool.py-doc]\ncommand = \"theme\"\neject = true\n");
         assert_eq!(file.unknown_keys, ["command", "eject"]);
-        assert_eq!(file.tool.unwrap().command, None);
+        assert_eq!(file.tool.unwrap(), Args::default());
     }
 
     #[test]
