@@ -638,3 +638,33 @@ fn docstring_sections_survive_the_cache_and_the_style_is_in_its_key() {
     assert!(!engine.contains("doc-section"));
     assert!(engine.contains("Args:"));
 }
+
+#[test]
+fn annotation_links_follow_renamed_targets() {
+    let mut project = Project::new("annotation_links");
+    project.edit(
+        "pkg/tools.py",
+        "def helper(x):",
+        "from .engine import Engine\n\n\ndef helper(x: \"Engine\") -> Engine:",
+    );
+    project.build_and_compare(&[]);
+    let tools = fs::read_to_string(project.out.join("pkg/tools.html")).unwrap();
+    assert!(
+        tools
+            .contains("<a class=\"type-link\" href=\"../pkg/engine.html#class.Engine\">Engine</a>")
+    );
+
+    // Only engine.py changes, yet the link in tools.html goes: the page
+    // recorded what its annotations resolved to, so it is rendered again.
+    project.edit("pkg/engine.py", "class Engine:", "class Motor:");
+    let out = project.build_and_compare(&[]);
+    assert!(unchanged_files(&out) > 0, "the cache was not used at all");
+    let tools = fs::read_to_string(project.out.join("pkg/tools.html")).unwrap();
+    assert!(!tools.contains("type-link"), "{tools}");
+
+    // And it comes back with the class.
+    project.edit("pkg/engine.py", "class Motor:", "class Engine:");
+    project.build_and_compare(&[]);
+    let tools = fs::read_to_string(project.out.join("pkg/tools.html")).unwrap();
+    assert!(tools.contains("type-link"));
+}

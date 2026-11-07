@@ -37,7 +37,7 @@
     "variable": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "qualname", "line", "annotation", "value", "value_truncated", "is_type_alias", "badges", "docstring", "docstring_html", "summary", "is_private"],
+      "required": ["name", "qualname", "line", "annotation", "value", "value_truncated", "is_type_alias", "badges", "docstring", "docstring_html", "summary", "type_links", "is_private"],
       "properties": {
         "name": { "type": "string" },
         "qualname": { "type": "string" },
@@ -50,6 +50,7 @@
         "docstring": { "$ref": "#/$defs/nullable_string", "description": "A string literal right after the assignment, or `#:` comments." },
         "docstring_html": { "$ref": "#/$defs/nullable_string" },
         "summary": { "$ref": "#/$defs/nullable_string" },
+        "type_links": { "$ref": "#/$defs/type_links", "description": "Names in the annotation that link to their documentation." },
         "is_private": { "type": "boolean" }
       }
     },
@@ -76,7 +77,7 @@
     "class": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "qualname", "line", "bases", "docstring", "docstring_html", "summary", "badges", "sections", "is_private", "methods", "variables", "classes"],
+      "required": ["name", "qualname", "line", "bases", "docstring", "docstring_html", "summary", "badges", "sections", "type_links", "is_private", "methods", "variables", "classes"],
       "properties": {
         "name": { "type": "string" },
         "qualname": { "type": "string" },
@@ -87,6 +88,7 @@
         "summary": { "$ref": "#/$defs/nullable_string" },
         "badges": { "$ref": "#/$defs/strings", "description": "\"conditional\" when defined in an if/try branch, \"type-checking\" when only defined under `if TYPE_CHECKING:`." },
         "sections": { "$ref": "#/$defs/sections" },
+        "type_links": { "$ref": "#/$defs/type_links", "description": "Names in the base classes that link to their documentation." },
         "is_private": { "type": "boolean" },
         "methods": { "type": "array", "items": { "$ref": "#/$defs/function" }, "description": "In source order." },
         "variables": { "$ref": "#/$defs/variables" },
@@ -96,7 +98,7 @@
     "function": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "qualname", "line", "args", "return_type", "decorators", "badges", "is_async", "docstring", "docstring_html", "summary", "sections", "is_private"],
+      "required": ["name", "qualname", "line", "args", "return_type", "decorators", "badges", "is_async", "docstring", "docstring_html", "summary", "sections", "type_links", "is_private"],
       "properties": {
         "name": { "type": "string" },
         "qualname": { "type": "string" },
@@ -110,6 +112,7 @@
         "docstring_html": { "$ref": "#/$defs/nullable_string" },
         "summary": { "$ref": "#/$defs/nullable_string" },
         "sections": { "$ref": "#/$defs/sections" },
+        "type_links": { "$ref": "#/$defs/type_links", "description": "Names in the parameter and return annotations that link to their documentation; `args` and `return_type` stay as written." },
         "is_private": { "type": "boolean" }
       }
     },
@@ -139,13 +142,27 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "type", "default", "description", "description_html"],
+        "required": ["name", "type", "default", "description", "description_html", "type_links"],
         "properties": {
           "name": { "$ref": "#/$defs/nullable_string", "description": "Parameter or attribute name; null for returns and raises." },
           "type": { "$ref": "#/$defs/nullable_string", "description": "As written in the docstring, else from the signature; for raises, the exception class." },
           "default": { "$ref": "#/$defs/nullable_string", "description": "From the signature." },
           "description": { "type": "string", "description": "As written (Markdown)." },
-          "description_html": { "type": "string" }
+          "description_html": { "type": "string" },
+          "type_links": { "$ref": "#/$defs/type_links", "description": "Names in `type` that link to their documentation." }
+        }
+      }
+    },
+    "type_links": {
+      "type": "array",
+      "description": "Each linked name once, in order of appearance. Names that do not resolve (builtins, typing, other packages) are not listed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "target"],
+        "properties": {
+          "name": { "type": "string", "description": "As written in the annotation: `Style`, `base.Base`." },
+          "target": { "type": "string", "description": "Page and anchor from the site root: `style.html#class.Style`." }
         }
       }
     },

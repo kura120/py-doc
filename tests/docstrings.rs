@@ -5,6 +5,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn strip_tags(html: &str) -> String {
+    let mut text = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    text
+}
+
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -70,9 +84,10 @@ fn entries(card: &str, title: &str) -> Vec<String> {
         .map(|li| {
             let head = li.split("</span>").next().unwrap_or("");
             let text = |class: &str| {
+                // The text up to `</code>`, without tags (a type may hold links).
                 head.split(&format!("class=\"{class}\">"))
                     .nth(1)
-                    .map(|t| t.split('<').next().unwrap().to_string())
+                    .map(|t| strip_tags(t.split("</code>").next().unwrap()))
             };
             let default = head
                 .split("class=\"doc-item-default\">default <code>")

@@ -191,7 +191,8 @@ fn assert_links_resolve(out: &Path) -> (usize, usize) {
 
 #[test]
 fn every_link_and_anchor_resolves() {
-    let cases: [(&str, &[&str]); 8] = [
+    let cases: [(&str, &[&str]); 9] = [
+        ("annotations", &[]),
         ("docstrings", &[]),
         ("nested", &[]),
         ("nested", &["--include-private"]),

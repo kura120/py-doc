@@ -10,6 +10,7 @@
 
 use serde::Serialize;
 
+use crate::annotations::{LinkedTypes, TypeLink};
 use crate::docstring::{DocBlock, DocItem, DocSections};
 use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage, PythonVariable};
 
@@ -86,6 +87,9 @@ struct Class<'a> {
     /// "conditional" or "type-checking".
     badges: &'a [String],
     sections: Option<Sections<'a>>,
+    /// Names in the annotations (or base classes) that link to their
+    /// documentation; the annotations themselves stay as written.
+    type_links: Vec<Link<'a>>,
     is_private: bool,
     methods: Vec<Function<'a>>,
     /// Class attributes, dataclass fields and enum members.
@@ -108,6 +112,9 @@ struct Function<'a> {
     #[serde(flatten)]
     doc: Doc<'a>,
     sections: Option<Sections<'a>>,
+    /// Names in the annotations (or base classes) that link to their
+    /// documentation; the annotations themselves stay as written.
+    type_links: Vec<Link<'a>>,
     is_private: bool,
 }
 
@@ -142,12 +149,35 @@ struct Item<'a> {
     default: Option<&'a str>,
     description: &'a str,
     description_html: &'a str,
+    /// Names in `type` that link to their documentation.
+    type_links: Vec<Link<'a>>,
 }
 
 #[derive(Serialize)]
 struct Block<'a> {
     text: &'a str,
     html: &'a str,
+}
+
+/// A name in an annotation and the page and anchor it links to, from the
+/// site root.
+#[derive(Serialize)]
+struct Link<'a> {
+    name: &'a str,
+    target: &'a str,
+}
+
+fn links(list: &[TypeLink]) -> Vec<Link<'_>> {
+    list.iter()
+        .map(|l| Link {
+            name: &l.name,
+            target: &l.target,
+        })
+        .collect()
+}
+
+fn linked_links(linked: &Option<LinkedTypes>) -> Vec<Link<'_>> {
+    linked.as_ref().map(|l| links(&l.links)).unwrap_or_default()
 }
 
 fn items(list: &[DocItem]) -> Vec<Item<'_>> {
@@ -158,6 +188,7 @@ fn items(list: &[DocItem]) -> Vec<Item<'_>> {
             default: i.default.as_deref(),
             description: &i.description,
             description_html: &i.description_html,
+            type_links: links(&i.type_links),
         })
         .collect()
 }
@@ -201,6 +232,9 @@ struct Variable<'a> {
     badges: &'a [String],
     #[serde(flatten)]
     doc: Doc<'a>,
+    /// Names in the annotations (or base classes) that link to their
+    /// documentation; the annotations themselves stay as written.
+    type_links: Vec<Link<'a>>,
     is_private: bool,
 }
 
@@ -224,6 +258,7 @@ fn function<'a>(f: &'a PythonFunction, parent: &str) -> Function<'a> {
         is_async: f.is_async,
         doc: Doc::new(&f.raw_docstring, &f.docstring, &f.summary),
         sections: sections(&f.sections),
+        type_links: linked_links(&f.linked),
         is_private: f.is_private,
     }
 }
@@ -239,6 +274,7 @@ fn variable<'a>(v: &'a PythonVariable, parent: &str) -> Variable<'a> {
         is_type_alias: v.is_type_alias,
         badges: &v.badges,
         doc: Doc::new(&v.raw_docstring, &v.docstring, &v.summary),
+        type_links: linked_links(&v.linked),
         is_private: v.is_private,
     }
 }
@@ -258,6 +294,7 @@ fn class<'a>(c: &'a PythonClass, module: &str) -> Class<'a> {
         doc: Doc::new(&c.raw_docstring, &c.docstring, &c.summary),
         badges: &c.badges,
         sections: sections(&c.sections),
+        type_links: linked_links(&c.linked),
         is_private: c.is_private,
         methods: c.functions.iter().map(|f| function(f, &qualname)).collect(),
         variables: c.variables.iter().map(|v| variable(v, &qualname)).collect(),

@@ -1116,6 +1116,17 @@ a.source-ref:hover { color: var(--accent-blue); text-decoration: underline; }
 .item-card:target > .signature-box,
 .method-item:target > .signature-box { border-color: var(--accent-blue); }
 
+/* Names in annotations and base classes that link to their documentation
+   (see annotations.rs): the signature's own color, told apart by an
+   underline rather than by color alone. */
+.type-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
+    text-underline-offset: 2px;
+}
+.type-link:hover { text-decoration-color: currentColor; text-decoration-thickness: 2px; }
+
 /* Docstring sections (Args, Returns, Raises, ...): see docstring.rs.
    Only theme tokens, so every palette and layout keeps its contrast. */
 .doc-sections { margin: 10px 0 4px; }

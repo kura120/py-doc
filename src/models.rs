@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::annotations::LinkedTypes;
 use crate::docstring::DocSections;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -86,6 +87,7 @@ impl PythonClass {
             functions,
             classes,
             variables,
+            linked: None,
             is_private: false,
         })
     }
@@ -123,6 +125,13 @@ pub struct PythonModule {
     pub all: Option<Vec<String>>,
     /// The module or one of its packages has a name starting with `_`.
     pub is_private: bool,
+    /// Names bound by imports of the documented package itself, as (local
+    /// name, dotted path from the source root): `from .style import Style`
+    /// in `console.py` gives ("Style", "style.Style"). Imports of other
+    /// packages are left out. Used to link type annotations; only needed
+    /// while rendering.
+    #[serde(skip)]
+    pub imports: Vec<(String, String)>,
 }
 
 impl PythonModule {
@@ -145,6 +154,7 @@ impl PythonModule {
             is_document: false,
             all: None,
             is_private: self.is_private,
+            imports: Vec::new(),
         }
     }
 }
@@ -171,6 +181,9 @@ pub struct PythonClass {
     pub classes: Vec<PythonClass>,
     /// Class attributes, including enum members and dataclass fields.
     pub variables: Vec<PythonVariable>,
+    /// Annotations with links to the documented types; None when no name
+    /// in them links (templates then show the plain text).
+    pub linked: Option<LinkedTypes>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,
 }
@@ -193,6 +206,9 @@ pub struct PythonFunction {
     /// `Args:` / `Returns:` / ... sections taken out of the docstring;
     /// None when it has none (or with `--docstring-style markdown`).
     pub sections: Option<DocSections>,
+    /// Annotations with links to the documented types; None when no name
+    /// in them links (templates then show the plain text).
+    pub linked: Option<LinkedTypes>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,
 }
@@ -218,6 +234,9 @@ pub struct PythonVariable {
     #[serde(skip)]
     pub raw_docstring: Option<String>,
     pub summary: Option<String>,
+    /// Annotations with links to the documented types; None when no name
+    /// in them links (templates then show the plain text).
+    pub linked: Option<LinkedTypes>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,
 }

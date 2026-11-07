@@ -22,6 +22,8 @@ class Base: ...
 class Engine(Base): ...
 ```
 
+Types: [`Base`](../01_core/engine.md#class.Base)
+
 The main engine.
 
 **Examples**
@@ -74,6 +76,8 @@ Status map.
 @staticmethod
 def helper(a: Optional[int], b: Engine, c: int | None = None, d: os.PathLike = ".", e: Callable[[int], str] = str) -> list[str]: ...
 ```
+
+Types: [`Engine`](../01_core/engine.md#class.Engine)
 
 *static*
 

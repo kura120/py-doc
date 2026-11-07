@@ -37,6 +37,8 @@ fn add_class(symbols: &mut HashMap<String, &'static str>, class: &PythonClass) {
 pub struct Resolver {
     package_name: String,
     modules: Vec<ModuleEntry>,
+    /// Every path of every module -> its index, for exact lookups.
+    by_path: HashMap<String, usize>,
     /// The same lookup over the private items left out of the docs, used only
     /// to tell "hidden" apart from "does not exist". Never produces links.
     hidden: Option<Box<Resolver>>,
@@ -88,16 +90,59 @@ impl Resolver {
     /// so that a link to a private symbol can be reported as such.
     pub fn build(package: &PythonPackage) -> Self {
         let hidden = (!package.hidden.is_empty()).then(|| {
-            Box::new(Self {
-                package_name: package.name.clone(),
-                modules: module_entries(&package.hidden),
-                hidden: None,
-            })
+            Box::new(Self::from_entries(
+                &package.name,
+                module_entries(&package.hidden),
+                None,
+            ))
         });
+        Self::from_entries(&package.name, module_entries(&package.modules), hidden)
+    }
+
+    fn from_entries(
+        package_name: &str,
+        modules: Vec<ModuleEntry>,
+        hidden: Option<Box<Resolver>>,
+    ) -> Self {
+        let mut by_path = HashMap::new();
+        for (index, module) in modules.iter().enumerate() {
+            for path in &module.paths {
+                by_path.entry(path.clone()).or_insert(index);
+            }
+        }
         Self {
-            package_name: package.name.clone(),
-            modules: module_entries(&package.modules),
+            package_name: package_name.to_string(),
+            modules,
+            by_path,
             hidden,
+        }
+    }
+
+    /// The link for a dotted path from the source root, matched exactly:
+    /// `style.Style`, `pkg.engine.Engine.run`, or `Engine` in a root
+    /// `__init__.py`. Unlike [`Resolver::resolve`] there is no trailing or
+    /// bare-name matching, so an annotation never links to a look-alike.
+    pub fn resolve_exact(&self, dotted: &str) -> Option<String> {
+        if !dotted.is_empty()
+            && let Some(&index) = self.by_path.get(dotted)
+        {
+            return Some(self.modules[index].link_path.clone());
+        }
+        // Each split into module path and symbol, longest module first;
+        // the last one is the root package (path "") and the whole symbol.
+        let mut end = dotted.len();
+        loop {
+            let (module_path, symbol) = match dotted[..end].rfind('.') {
+                Some(dot) => (&dotted[..dot], &dotted[dot + 1..]),
+                None => ("", dotted),
+            };
+            if let Some(&index) = self.by_path.get(module_path) {
+                let module = &self.modules[index];
+                if let Some(kind) = module.symbols.get(symbol) {
+                    return Some(format!("{}#{}.{}", module.link_path, kind, symbol));
+                }
+            }
+            end = dotted[..end].rfind('.')?;
         }
     }
 

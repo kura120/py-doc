@@ -317,6 +317,7 @@ mod tests {
             raw_docstring: None,
             summary: None,
             sections: None,
+            linked: None,
             is_private: false,
         }
     }
@@ -339,6 +340,7 @@ mod tests {
             is_document: false,
             all: None,
             is_private: false,
+            imports: vec![],
         }
     }
 
@@ -366,6 +368,7 @@ mod tests {
             functions: vec![function("run", Some("Runs.")), function("stop", None)],
             classes: vec![],
             variables: vec![],
+            linked: None,
             is_private: false,
         });
         m.functions.push(function("helper", Some("  \n\t ")));
@@ -442,6 +445,7 @@ mod tests {
             functions: vec![],
             classes,
             variables: vec![],
+            linked: None,
             is_private: false,
         };
         let mut m = module("pkg", Some("Pkg."));

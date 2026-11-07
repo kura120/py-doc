@@ -280,6 +280,8 @@ fn output_matches_the_schema() {
         &nested,
         &["--format", "json", "--include-private"],
     );
+    let annotations = out_dir("schema_annotations");
+    run(&fixture("annotations"), &annotations, &["--format", "json"]);
     let docstrings = out_dir("schema_docstrings");
     run(&fixture("docstrings"), &docstrings, &["--format", "json"]);
     assert_valid(&[
@@ -289,6 +291,7 @@ fn output_matches_the_schema() {
         &api(&variables),
         &api(&nested),
         &api(&docstrings),
+        &api(&annotations),
     ]);
 }
 
