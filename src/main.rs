@@ -114,9 +114,20 @@ pub enum OutputFormat {
     Html,
     /// `api.json`: the parsed API, with raw and rendered docstrings
     Json,
-    /// Not supported yet (planned, #20)
-    #[value(hide = true)]
+    /// One `.md` page per module, `index.md`, `llms.txt` and `llms-full.txt`
     Markdown,
+}
+
+impl OutputFormat {
+    /// Built from raw docstrings, which modules reused from the build cache
+    /// no longer carry (`raw_docstring` is not cached), so a run with this
+    /// format must not read the cache.
+    pub fn needs_raw_docstrings(self) -> bool {
+        match self {
+            OutputFormat::Html => false,
+            OutputFormat::Json | OutputFormat::Markdown => true,
+        }
+    }
 }
 
 /// The command line: the build options, or a subcommand. `serve` takes
@@ -409,9 +420,9 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
     // The generator comes first: the cache key includes its theme files.
     // A coverage report needs every module parsed, so it never reads the
     // cache (a run that also builds the site still writes one), and a
-    // check-only run has no output folder and no cache at all. Nor does
-    // `--format json` read it: api.json carries raw docstrings, which a
-    // cached (already rendered) module no longer has, so that run is a full
+    // check-only run has no output folder and no cache at all. Nor does a
+    // format built from raw docstrings (`json`, `markdown`) read it: a cached
+    // (already rendered) module no longer has them, so that run is a full
     // build. With `html` too, it still writes the cache.
     let generator = match &args.out {
         Some(out) => Some(
@@ -435,7 +446,7 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
         (Some(out), Some(key))
             if !args.no_cache
                 && args.coverage.is_none()
-                && !args.formats.contains(&OutputFormat::Json) =>
+                && !args.formats.iter().any(|f| f.needs_raw_docstrings()) =>
         {
             Cache::load(Path::new(out), key)
         }
@@ -561,12 +572,7 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
                         written.push(format!("{out_shown}/index.html"));
                     }
                     OutputFormat::Json => {
-                        if !args.formats.contains(&OutputFormat::Html) {
-                            status!(
-                                "\x1b[36;1m[3/3]\x1b[0m Writing {}...",
-                                output::json::FILE_NAME
-                            );
-                        }
+                        status!("  Writing {}...", output::json::FILE_NAME);
                         let api = output::json::to_string(
                             &prepared.package,
                             &args.doc_version,
@@ -575,8 +581,11 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
                         generator.write_file(output::json::FILE_NAME, &api)?;
                         written.push(format!("{out_shown}/{}", output::json::FILE_NAME));
                     }
-                    // Rejected by Config::resolve until #20 implements it.
-                    OutputFormat::Markdown => bail!("format `markdown` is not supported yet"),
+                    OutputFormat::Markdown => {
+                        status!("  Writing Markdown pages, {}...", output::markdown::LLMS);
+                        output::markdown::write(&generator, &prepared.package, &args.doc_version)?;
+                        written.push(format!("{out_shown}/{}", output::markdown::INDEX));
+                    }
                 }
             }
             generator.finish(args.clean)?;

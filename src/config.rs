@@ -326,12 +326,6 @@ impl Config {
         }
         formats.sort();
         formats.dedup();
-        if formats.contains(&OutputFormat::Markdown) {
-            bail!(
-                "format `markdown` is not supported yet; use `html` and/or `json` \
-                 (see https://github.com/kura120/py-doc/issues/20)"
-            );
-        }
 
         let name = match cli.name.or(tool.name).or(project_name) {
             Some(name) => name,
@@ -723,7 +717,7 @@ format = ["json"]
     }
 
     #[test]
-    fn formats_default_to_html_and_markdown_is_not_supported_yet() {
+    fn formats_default_to_html_and_are_sorted_and_deduplicated() {
         let base = ["-s", "a", "-o", "b", "-n", "c"];
         let config = Config::resolve(cli(&base), None).unwrap();
         assert_eq!(config.formats, [OutputFormat::Html]);
@@ -741,9 +735,11 @@ format = ["json"]
             [OutputFormat::Html, OutputFormat::Json]
         );
 
-        let file = pyproject("[tool.py-doc]\nformat = [\"markdown\"]\n");
-        let err = Config::resolve(cli(&base), Some(&file)).unwrap_err();
-        assert!(err.to_string().contains("not supported yet"), "{err}");
+        let file = pyproject("[tool.py-doc]\nformat = [\"markdown\", \"html\", \"markdown\"]\n");
+        assert_eq!(
+            Config::resolve(cli(&base), Some(&file)).unwrap().formats,
+            [OutputFormat::Html, OutputFormat::Markdown]
+        );
         let text = "[tool.py-doc]\nformat = [\"pdf\"]\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
     }

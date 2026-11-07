@@ -573,3 +573,43 @@ fn json_output_is_a_full_build() {
     let out = project.build_and_compare(&["--format", "json"]);
     assert_eq!(unchanged_files(&out), 0);
 }
+
+/// Markdown is built from raw docstrings too, so, like json, a run with
+/// `--format markdown` never reads the cache. A Markdown build right after
+/// an HTML build (which filled the cache), with nothing edited, must equal
+/// a `--no-cache` Markdown build byte for byte.
+#[test]
+fn markdown_output_is_a_full_build() {
+    let mut project = Project::new("markdown");
+    project.build_and_compare(&[]);
+    assert!(
+        project.out.join(CACHE).is_file(),
+        "the HTML build wrote a cache"
+    );
+
+    // Nothing edited; build_and_compare checks every file against a
+    // --no-cache build.
+    let out = project.build_and_compare(&["--format", "markdown"]);
+    assert_eq!(unchanged_files(&out), 0, "the cache was read");
+    let engine = fs::read_to_string(project.out.join("pkg/engine.md")).unwrap();
+    assert!(
+        engine.contains("An engine.\n\nIt has a long description."),
+        "raw docstrings are present:\n{engine}"
+    );
+    assert!(engine.contains("Starts the engine."), "{engine}");
+    let tools = fs::read_to_string(project.out.join("pkg/tools.md")).unwrap();
+    assert!(
+        tools.contains("[`pkg.engine.Engine`](../pkg/engine.md#class.Engine)"),
+        "{tools}"
+    );
+    assert!(tools.contains("![](../assets/logo.png)"), "{tools}");
+
+    // With html as well, the run still writes the cache, and a later HTML
+    // build reuses it.
+    let both = ["--format", "html", "--format", "markdown"];
+    let out = project.build_and_compare(&both);
+    assert_eq!(unchanged_files(&out), 0);
+    let out = project.build_and_compare(&[]);
+    assert_eq!(unchanged_files(&out), 4);
+    assert_eq!(unchanged_pages(&out), total_pages(&out));
+}
