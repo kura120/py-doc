@@ -10,6 +10,7 @@ use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 use tera::{Context as TeraContext, Kwargs, State, Tera, Value};
 
+use crate::annotations::{self, LinkedTypes, TypeLink};
 use crate::cache::{self, Cache, ModuleDeps, ModuleEntryRef, PageEntry, hash_bytes, hash_parts};
 use crate::docstring::{self, DocSections, DocstringStyle, Kind};
 use crate::highlight::highlight_python;
@@ -227,6 +228,48 @@ struct RenderCtx<'a> {
     origin: &'a str,
     /// What rendering looked at, for the incremental-build cache.
     deps: RefCell<ModuleDeps>,
+    /// How names in this module's annotations resolve.
+    types: TypeContext,
+}
+
+/// The names a module's annotations can link: its own top-level
+/// definitions, then what its imports of the documented code bind.
+struct TypeContext {
+    /// The module's dotted path from the source root ("" for a root
+    /// `__init__.py`).
+    module_path: String,
+    locals: std::collections::HashSet<String>,
+    imports: Vec<(String, String)>,
+    /// Each candidate path resolved so far, so each is looked up (and
+    /// recorded in the cache's dependencies) once.
+    resolved: RefCell<std::collections::HashMap<String, Option<String>>>,
+}
+
+impl TypeContext {
+    fn of(module: &PythonModule) -> Self {
+        let path = module
+            .source_path
+            .strip_suffix(".py")
+            .unwrap_or(&module.source_path)
+            .replace('/', ".");
+        let module_path = match path.strip_suffix("__init__") {
+            Some(package) => package.trim_end_matches('.').to_string(),
+            None => path,
+        };
+        let locals = module
+            .classes
+            .iter()
+            .map(|c| c.name.clone())
+            .chain(module.functions.iter().map(|f| f.name.clone()))
+            .chain(module.variables.iter().map(|v| v.name.clone()))
+            .collect();
+        TypeContext {
+            module_path,
+            locals,
+            imports: module.imports.clone(),
+            resolved: RefCell::new(std::collections::HashMap::new()),
+        }
+    }
 }
 
 /// The previous run's cache (None for a full build) and this run's key.
@@ -708,9 +751,13 @@ impl SiteGenerator {
             let now_hidden = now.is_none() && resolver.is_hidden(target);
             now == *link && now_hidden == *hidden
         }) && deps
-            .images
+            .types
             .iter()
-            .all(|(path, status)| self.image_status(path) == *status)
+            .all(|(path, link)| resolver.resolve_exact(path) == *link)
+            && deps
+                .images
+                .iter()
+                .all(|(path, status)| self.image_status(path) == *status)
     }
 
     /// The side effects of rendering a module that is reused from the
@@ -975,6 +1022,7 @@ impl SiteGenerator {
             resolver,
             origin: &origin,
             deps: RefCell::new(ModuleDeps::default()),
+            types: TypeContext::of(module),
         };
 
         if let Some(raw_doc) = module.docstring.take() {
@@ -996,11 +1044,13 @@ impl SiteGenerator {
                 if let Some(sections) = sections.as_mut() {
                     docstring::merge_signature(sections, &func.args);
                     docstring::merge_return_type(sections, func.return_type.as_deref());
+                    self.link_section_types(sections, &ctx);
                 }
                 func.docstring = html;
                 func.sections = sections;
                 func.raw_docstring = Some(doc);
             }
+            self.link_function(func, &ctx);
         };
 
         let render_variable = |var: &mut PythonVariable| {
@@ -1008,6 +1058,16 @@ impl SiteGenerator {
                 var.summary = summarize(&doc);
                 var.docstring = Some(self.render_markdown(&doc, &ctx));
                 var.raw_docstring = Some(doc);
+            }
+            if let Some(annotation) = &var.annotation {
+                let mut links = Vec::new();
+                if let Some(html) = self.link_type(annotation, &ctx, &mut links) {
+                    var.linked = Some(LinkedTypes {
+                        html,
+                        return_type: None,
+                        links,
+                    });
+                }
             }
         };
 
@@ -1024,10 +1084,14 @@ impl SiteGenerator {
                 ) {
                     docstring::merge_signature(sections, &init.args);
                 }
+                if let Some(sections) = sections.as_mut() {
+                    self.link_section_types(sections, &ctx);
+                }
                 class.docstring = html;
                 class.sections = sections;
                 class.raw_docstring = Some(doc);
             }
+            self.link_bases(class, &ctx);
             class.functions.iter_mut().for_each(render_function);
             class.variables.iter_mut().for_each(render_variable);
             stack.extend(class.classes.iter_mut());
@@ -1035,6 +1099,111 @@ impl SiteGenerator {
         module.functions.iter_mut().for_each(render_function);
         module.variables.iter_mut().for_each(render_variable);
         ctx.deps.into_inner()
+    }
+
+    /// The link for a name in an annotation of the module being rendered:
+    /// one of its own definitions, else a name its imports bind. Anything
+    /// else (builtins, `typing`, other packages) does not link, silently.
+    fn resolve_type(&self, name: &str, ctx: &RenderCtx) -> Option<String> {
+        let types = &ctx.types;
+        let (head, rest) = name.split_once('.').unwrap_or((name, ""));
+        let candidate = if types.locals.contains(head) {
+            if types.module_path.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}.{}", types.module_path, name)
+            }
+        } else {
+            let (_, target) = types.imports.iter().find(|(local, _)| local == head)?;
+            // `import pkg.x` binds the root package itself, whose path is "".
+            match (target.is_empty(), rest.is_empty()) {
+                (_, true) => target.clone(),
+                (true, false) => rest.to_string(),
+                (false, false) => format!("{target}.{rest}"),
+            }
+        };
+        if let Some(known) = types.resolved.borrow().get(&candidate) {
+            return known.clone();
+        }
+        let link = ctx.resolver.resolve_exact(&candidate);
+        types
+            .resolved
+            .borrow_mut()
+            .insert(candidate.clone(), link.clone());
+        ctx.deps.borrow_mut().types.push((candidate, link.clone()));
+        link
+    }
+
+    /// An annotation as HTML with its documented names linked, or None.
+    fn link_type(&self, text: &str, ctx: &RenderCtx, links: &mut Vec<TypeLink>) -> Option<String> {
+        let mut resolve = |name: &str| self.resolve_type(name, ctx);
+        annotations::link(text, &mut resolve, ctx.root_prefix, links)
+    }
+
+    /// Links the annotations of a signature: parameters and return type.
+    fn link_function(&self, func: &mut PythonFunction, ctx: &RenderCtx) {
+        let mut links = Vec::new();
+        let mut resolve = |name: &str| self.resolve_type(name, ctx);
+        let args: Vec<Option<String>> = func
+            .args
+            .iter()
+            .map(|arg| annotations::link_parameter(arg, &mut resolve, ctx.root_prefix, &mut links))
+            .collect();
+        let return_type = func
+            .return_type
+            .as_deref()
+            .and_then(|ty| annotations::link(ty, &mut resolve, ctx.root_prefix, &mut links));
+        if links.is_empty() {
+            return;
+        }
+        func.linked = Some(LinkedTypes {
+            html: args
+                .into_iter()
+                .zip(&func.args)
+                .map(|(html, arg)| html.unwrap_or_else(|| annotations::escape_text(arg)))
+                .collect::<Vec<_>>()
+                .join(", "),
+            return_type: func
+                .return_type
+                .as_deref()
+                .map(|ty| return_type.unwrap_or_else(|| annotations::escape_text(ty))),
+            links,
+        });
+    }
+
+    /// Links the base classes of a class.
+    fn link_bases(&self, class: &mut PythonClass, ctx: &RenderCtx) {
+        let mut links = Vec::new();
+        let bases: Vec<Option<String>> = class
+            .bases
+            .iter()
+            .map(|base| self.link_type(base, ctx, &mut links))
+            .collect();
+        if links.is_empty() {
+            return;
+        }
+        class.linked = Some(LinkedTypes {
+            html: bases
+                .into_iter()
+                .zip(&class.bases)
+                .map(|(html, base)| html.unwrap_or_else(|| annotations::escape_text(base)))
+                .collect::<Vec<_>>()
+                .join(", "),
+            return_type: None,
+            links,
+        });
+    }
+
+    /// Links the types in docstring sections (after the signature filled
+    /// in the missing ones).
+    fn link_section_types(&self, sections: &mut DocSections, ctx: &RenderCtx) {
+        for item in sections.items_mut() {
+            if let Some(ty) = &item.ty {
+                let mut links = Vec::new();
+                item.type_html = self.link_type(ty, ctx, &mut links);
+                item.type_links = links;
+            }
+        }
     }
 
     /// Groups modules by directory into the folder structure used by the

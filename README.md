@@ -260,7 +260,7 @@ The file holds the same API the site shows: after the [Public API](#public-api) 
 * `docstring_html`: as the site renders it, macros included. Its links are relative to the module's `page`;
 * `summary`: the first meaningful line, as plain text.
 
-Functions and classes also have `sections`: the parsed [docstring sections](#docstring-sections) (`params`, `returns`, `raises`, ...), each entry with its `name`, `type`, `default`, `description` and `description_html`. It is `null` when the docstring has none. When it is set, `docstring_html` holds only the rest of the docstring, while `docstring` is still the full text.
+Functions, classes, variables and section entries have `type_links`: the names in their annotations (or base classes) that link to their documentation, each with its `target` page and anchor. Functions and classes also have `sections`: the parsed [docstring sections](#docstring-sections) (`params`, `returns`, `raises`, ...), each entry with its `name`, `type`, `default`, `description` and `description_html`. It is `null` when the docstring has none. When it is set, `docstring_html` holds only the rest of the docstring, while `docstring` is still the full text.
 
 Shortened (`"...": "..."` marks left-out fields):
 
@@ -508,6 +508,22 @@ Classes defined inside a class are shown inside its card, under qualified names 
 Definitions inside `if`, `try` and `with` blocks are documented too, at module and class level. Function bodies and `if __name__ == "__main__":` blocks are not.
 
 When a name is defined in several branches, such as `if sys.version_info >= (3, 11):` and `else:`, or `try:` and `except ImportError:`, only the first definition is shown. Definitions in a branch get a `conditional` badge. Definitions that only exist under `if TYPE_CHECKING:` get a `type-checking` badge, and a runtime definition of the same name always wins over them. Several definitions in the same block, such as `@overload` signatures or a property and its setter, are all kept.
+
+### Linked types
+
+Names in annotations and base classes link to their documentation when they are part of the documented code: parameter and return types, variable annotations, base classes, and the types in docstring sections, including types taken from the signature.
+
+```python
+from .style import Style
+from . import widgets as w
+
+class Console(w.Base):
+    def render(self, style: Optional[Style] = None) -> list["w.Button"]: ...
+```
+
+Here `w.Base`, `Style` and `w.Button` link; `Optional` and `list` do not. A name links when the module defines it, or when one of the module's imports of the documented code binds it: `import pkg.x`, `import pkg.x as y`, `from .a import B`, `from ..pkg import C as D`, also inside `if TYPE_CHECKING:`. Forward references in strings link too; values inside `Literal[...]` do not.
+
+Everything else, such as builtins, `typing` and other packages, stays plain text without a warning. The annotation itself is always shown as written. In Markdown output, a `Types:` line under the signature links the documented names; `api.json` keeps the annotations as written and lists the links in `type_links`.
 
 ### Macros
 

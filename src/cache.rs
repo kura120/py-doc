@@ -29,7 +29,7 @@ use crate::models::PythonModule;
 pub const CACHE_NAME: &str = ".py-doc-cache";
 
 /// Bump when the cache layout or what it records changes.
-const FORMAT: u32 = 4;
+const FORMAT: u32 = 5;
 
 /// A 128-bit content hash as hex.
 pub fn hash_bytes(bytes: &[u8]) -> String {
@@ -86,6 +86,9 @@ pub struct ModuleDeps {
     pub links: Vec<(String, Option<String>, bool)>,
     /// Each local image path and its status (see `SiteGenerator::image_status`).
     pub images: Vec<(String, String)>,
+    /// Each name an annotation tried to link, as a dotted path from the
+    /// source root, and what it resolved to (see `Resolver::resolve_exact`).
+    pub types: Vec<(String, Option<String>)>,
     /// Warnings printed while rendering, replayed when the module is reused.
     pub warnings: Vec<String>,
 }
@@ -276,6 +279,9 @@ mod tests {
             default: Some("1".into()),
             description: "The x.".into(),
             description_html: "<p>The x.</p>".into(),
+            type_html: Some("<a>int</a>".into()),
+            // Not cached, like `LinkedTypes::links`.
+            type_links: vec![],
         };
         let block = DocBlock {
             text: "Careful.".into(),
@@ -311,6 +317,7 @@ mod tests {
             raw_docstring: None,
             summary: Some("Doc.".into()),
             sections: Some(sections.clone()),
+            linked: None,
             is_private: false,
         };
         let variable = PythonVariable {
@@ -324,6 +331,7 @@ mod tests {
             docstring: Some("<p>Limit.</p>".into()),
             raw_docstring: None,
             summary: None,
+            linked: None,
             is_private: false,
         };
         let module = PythonModule {
@@ -358,9 +366,17 @@ mod tests {
                     functions: vec![function.clone()],
                     classes: vec![],
                     variables: vec![variable.clone()],
+                    linked: None,
                     is_private: false,
                 }],
                 variables: vec![variable.clone()],
+                // Every field of the linked annotations is set.
+                linked: Some(crate::annotations::LinkedTypes {
+                    html: "x: <a>T</a>".into(),
+                    return_type: Some("<a>T</a>".into()),
+                    // Not cached: only same-run outputs read it.
+                    links: vec![],
+                }),
                 is_private: false,
             }],
             functions: vec![function],
@@ -372,10 +388,15 @@ mod tests {
             is_document: false,
             all: Some(vec!["C".into()]),
             is_private: false,
+            imports: vec![],
         };
         let deps = ModuleDeps {
             links: vec![("t".into(), Some("x.html".into()), false)],
             images: vec![("i.png".into(), "ok h i.png".into())],
+            types: vec![
+                ("style.Style".into(), Some("style.html#class.Style".into())),
+                ("style.Gone".into(), None),
+            ],
             warnings: vec!["w".into()],
         };
         let entry = ModuleEntryRef {

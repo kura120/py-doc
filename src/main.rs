@@ -10,6 +10,7 @@ macro_rules! status {
     };
 }
 
+mod annotations;
 mod cache;
 mod config;
 mod coverage;

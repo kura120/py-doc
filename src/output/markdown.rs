@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
+use crate::annotations::LinkedTypes;
 use crate::docstring::{self, DocBlock, DocItem, DocSections};
 use crate::generator::{
     DocMacro, SiteGenerator, clean_docstring, extract_z_index_and_clean, root_prefix_for,
@@ -60,16 +61,22 @@ impl Page<'_> {
     /// A doc-link target as a link relative to this page, if it resolves.
     fn link(&self, target: &str) -> Option<String> {
         let resolved = self.resolver.resolve(target)?;
+        Some(self.relative(&resolved))
+    }
+
+    /// A link from the site root (`core/engine.html#class.Engine`) as the
+    /// matching Markdown page and anchor, relative to this page.
+    fn relative(&self, resolved: &str) -> String {
         let (path, anchor) = match resolved.split_once('#') {
             Some((path, anchor)) => (path, Some(anchor)),
-            None => (resolved.as_str(), None),
+            None => (resolved, None),
         };
         let mut link = format!("{}{}", self.root_prefix, md_path(path));
         if let Some(anchor) = anchor {
             link.push('#');
             link.push_str(anchor);
         }
-        Some(link)
+        link
     }
 
     /// Copies an image into `assets/` (once per run, with the generator's
@@ -323,7 +330,13 @@ fn doc_with_sections(
             }
             let mut details = Vec::new();
             if let Some(ty) = &item.ty {
-                details.push(format!("`{ty}`"));
+                // A type that is one documented name links to it.
+                match item.type_links.as_slice() {
+                    [only] if only.name == *ty => {
+                        details.push(format!("[`{ty}`]({})", page.relative(&only.target)))
+                    }
+                    _ => details.push(format!("`{ty}`")),
+                }
             }
             if let Some(default) = &item.default {
                 details.push(format!("default `{default}`"));
@@ -388,9 +401,24 @@ fn doc_with_sections(
     titled(out, "See also", &sections.see_also);
 }
 
+/// The documented types a signature names, as links under its code block
+/// (a fenced block cannot hold links).
+fn type_links(out: &mut String, page: &Page, linked: &Option<LinkedTypes>) {
+    let Some(linked) = linked else { return };
+    let links: Vec<String> = linked
+        .links
+        .iter()
+        .map(|link| format!("[`{}`]({})", link.name, page.relative(&link.target)))
+        .collect();
+    if !links.is_empty() {
+        let _ = write!(out, "Types: {}\n\n", links.join(", "));
+    }
+}
+
 fn function(out: &mut String, page: &Page, func: &PythonFunction, level: usize, id: &str) {
     anchor(out, page, level, id, &format!("`{}()`", func.name));
     code(out, &function_signature(func));
+    type_links(out, page, &func.linked);
     badges(out, &func.badges);
     doc_with_sections(out, page, &func.raw_docstring, &func.sections);
 }
@@ -398,6 +426,7 @@ fn function(out: &mut String, page: &Page, func: &PythonFunction, level: usize, 
 fn variable(out: &mut String, page: &Page, var: &PythonVariable, level: usize, id: &str) {
     anchor(out, page, level, id, &format!("`{}`", var.name));
     code(out, &variable_signature(var));
+    type_links(out, page, &var.linked);
     badges(out, &var.badges);
     doc(out, page, &var.raw_docstring);
 }
@@ -429,6 +458,7 @@ fn class_section(out: &mut String, page: &Page, class: &PythonClass, level: usiz
         &format!("class `{path}`"),
     );
     code(out, &class_signature(class));
+    type_links(out, page, &class.linked);
     badges(out, &class.badges);
     doc_with_sections(out, page, &class.raw_docstring, &class.sections);
     let member = heading(level + 2);

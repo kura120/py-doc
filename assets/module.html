@@ -7,7 +7,7 @@
     <p class="doc-section-title">{{ title }}</p>
     <ul class="doc-items">
         {%- for item in items %}
-        <li class="doc-item">{% if item.name or item.type or item.default %}<span class="doc-item-head">{% if item.name %}<code class="doc-item-name">{{ item.name }}</code>{% endif %}{% if item.type %}<code class="doc-item-type">{{ item.type }}</code>{% endif %}{% if item.default %}<span class="doc-item-default">default <code>{{ item.default }}</code></span>{% endif %}</span>{% endif %}{% if item.description_html %}<div class="doc-item-text">{{ item.description_html | safe }}</div>{% endif %}</li>
+        <li class="doc-item">{% if item.name or item.type or item.default %}<span class="doc-item-head">{% if item.name %}<code class="doc-item-name">{{ item.name }}</code>{% endif %}{% if item.type %}<code class="doc-item-type">{% if item.type_html %}{{ item.type_html | safe }}{% else %}{{ item.type }}{% endif %}</code>{% endif %}{% if item.default %}<span class="doc-item-default">default <code>{{ item.default }}</code></span>{% endif %}</span>{% endif %}{% if item.description_html %}<div class="doc-item-text">{{ item.description_html | safe }}</div>{% endif %}</li>
         {%- endfor %}
     </ul>
 </div>
@@ -38,7 +38,7 @@
 {% component nested_class(cls, @module, @source_url = "") %}
 <div class="method-item" id="class.{{ cls.qualname }}">
     <div class="signature-box">
-        <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ cls.qualname }}</span>{% if cls.bases %}({{ cls.bases | join(sep=", ") }}){% endif %}:</span>
+        <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ cls.qualname }}</span>{% if cls.bases %}({% if cls.linked %}{{ cls.linked.html | safe }}{% else %}{{ cls.bases | join(sep=", ") }}{% endif %}){% endif %}:</span>
         <span class="signature-meta">{% for badge in cls.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ cls.line }}">source</a>{% else %}<span class="source-ref">line {{ cls.line }}</span>{% endif %}</span>
     </div>
     {% if cls.docstring %}<div class="docstring">{{ cls.docstring | safe }}</div>{% endif %}{% if cls.sections %}{{ <doc_sections s={cls.sections}/> }}{% endif %}
@@ -46,7 +46,7 @@
     <div class="method-list">
         <h3 class="method-list-title">Attributes</h3>
         {%- for var in cls.variables %}
-        <div class="method-item" id="attr.{{ cls.qualname }}.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
+        <div class="method-item" id="attr.{{ cls.qualname }}.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {% if var.linked %}{{ var.linked.html | safe }}{% else %}{{ var.annotation }}{% endif %}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
         {%- endfor %}
     </div>
     {%- endif %}
@@ -54,7 +54,7 @@
     <div class="method-list">
         <h3 class="method-list-title">Methods</h3>
         {%- for func in cls.functions %}
-        <div class="method-item" id="method.{{ cls.qualname }}.{{ func.name }}"><div class="signature-box"><span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span><span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span></div>{% if func.docstring %}<div class="docstring">{{ func.docstring | safe }}</div>{% endif %}{% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}</div>
+        <div class="method-item" id="method.{{ cls.qualname }}.{{ func.name }}"><div class="signature-box"><span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({% if func.linked %}{{ func.linked.html | safe }}{% else %}{{ func.args | join(sep=", ") }}{% endif %}){% if func.return_type %} -> {% if func.linked %}{{ func.linked.return_type | safe }}{% else %}{{ func.return_type }}{% endif %}{% endif %}:</span><span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span></div>{% if func.docstring %}<div class="docstring">{{ func.docstring | safe }}</div>{% endif %}{% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}</div>
         {%- endfor %}
     </div>
     {%- endif %}
@@ -112,7 +112,7 @@
                 <h2>Variables</h2>
                 {#- Cards are kept on one line each: large projects have thousands. -#}
                 {%- for var in module.variables %}
-                <div class="item-card" id="var.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
+                <div class="item-card" id="var.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {% if var.linked %}{{ var.linked.html | safe }}{% else %}{{ var.annotation }}{% endif %}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
                 {%- endfor %}
             </section>
             {% endif %}
@@ -125,7 +125,7 @@
                 {% for class in module.classes %}
                     <div class="item-card" id="class.{{ class.name }}">
                         <div class="signature-box">
-                            <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ class.name }}</span>{% if class.bases %}({{ class.bases | join(sep=", ") }}){% endif %}:</span>
+                            <span class="signature-code"><span class="keyword">class</span> <span class="entity-name">{{ class.name }}</span>{% if class.bases %}({% if class.linked %}{{ class.linked.html | safe }}{% else %}{{ class.bases | join(sep=", ") }}{% endif %}){% endif %}:</span>
                             <span class="signature-meta">{% for badge in class.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ class.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ class.line }}</span>{% endif %}</span>
                         </div>
                         {% if class.docstring %}
@@ -136,7 +136,7 @@
                             <div class="method-list">
                                 <h3 class="method-list-title">Attributes</h3>
                                 {%- for var in class.variables %}
-                                <div class="method-item" id="attr.{{ class.name }}.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {{ var.annotation }}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
+                                <div class="method-item" id="attr.{{ class.name }}.{{ var.name }}"><div class="signature-box"><span class="signature-code">{% if var.is_type_alias %}<span class="keyword">type</span> {% endif %}<span class="entity-name">{{ var.name }}</span>{% if var.annotation %}: {% if var.linked %}{{ var.linked.html | safe }}{% else %}{{ var.annotation }}{% endif %}{% endif %}{% if var.value %} = {{ var.value }}{% if var.value_truncated %}<span class="value-truncated" title="Value shortened">…</span>{% endif %}{% endif %}</span><span class="signature-meta">{% for badge in var.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ var.line }}">source</a>{% else %}<span class="source-ref">line {{ var.line }}</span>{% endif %}</span></div>{% if var.docstring %}<div class="docstring">{{ var.docstring | safe }}</div>{% endif %}</div>
                                 {%- endfor %}
                             </div>
                         {% endif %}
@@ -147,7 +147,7 @@
                                 {% for func in class.functions %}
                                     <div class="method-item" id="method.{{ class.name }}.{{ func.name }}">
                                         <div class="signature-box">
-                                            <span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span>
+                                            <span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({% if func.linked %}{{ func.linked.html | safe }}{% else %}{{ func.args | join(sep=", ") }}{% endif %}){% if func.return_type %} -> {% if func.linked %}{{ func.linked.return_type | safe }}{% else %}{{ func.return_type }}{% endif %}{% endif %}:</span>
                                             <span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span>
                                         </div>
                                         {% if func.docstring %}
@@ -179,7 +179,7 @@
                 {% for func in module.functions %}
                     <div class="item-card" id="fn.{{ func.name }}">
                         <div class="signature-box">
-                            <span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span>
+                            <span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({% if func.linked %}{{ func.linked.html | safe }}{% else %}{{ func.args | join(sep=", ") }}{% endif %}){% if func.return_type %} -> {% if func.linked %}{{ func.linked.return_type | safe }}{% else %}{{ func.return_type }}{% endif %}{% endif %}:</span>
                             <span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">{{ module.source_path }}:{{ func.line }}</span>{% endif %}</span>
                         </div>
                         {% if func.docstring %}

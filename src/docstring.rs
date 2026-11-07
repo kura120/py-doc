@@ -55,6 +55,12 @@ pub struct DocItem {
     pub description: String,
     /// Rendered HTML, filled in by the generator.
     pub description_html: String,
+    /// `ty` as HTML with links to documented types; None when nothing links.
+    pub type_html: Option<String>,
+    /// The names in `ty` that link, filled in with `type_html`. Not in the
+    /// template context or the cache (see `LinkedTypes::links`).
+    #[serde(skip)]
+    pub type_links: Vec<crate::annotations::TypeLink>,
 }
 
 /// A free-text section: an example, a note, a warning or "see also".
@@ -1036,7 +1042,7 @@ fn rest(lines: &[&str], code: &[bool], sections: &mut DocSections) -> String {
 
 /// One parameter of a signature as py-doc prints it: `name`, `name=1`,
 /// `name: int`, `name: int = 1`, `*args`, `**kwargs: Any`.
-fn parse_parameter(param: &str) -> Option<(&str, Option<&str>, Option<&str>)> {
+pub(crate) fn parse_parameter(param: &str) -> Option<(&str, Option<&str>, Option<&str>)> {
     let stars = param.len() - param.trim_start_matches('*').len();
     let rest = &param[stars..];
     let name_len = rest

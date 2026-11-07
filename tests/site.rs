@@ -115,7 +115,10 @@ fn signatures_keep_every_parameter_kind() {
 fn classes_show_bases_badges_anchors_and_source_lines() {
     let out = generate_sample("classes", &[]);
     let engine = read(&out, "01_core/engine.html");
-    assert!(engine.contains("<span class=\"entity-name\">Engine</span>(Base):"));
+    // The base class is defined in the same module, so it links.
+    assert!(engine.contains(
+        "<span class=\"entity-name\">Engine</span>(<a class=\"type-link\" href=\"../01_core/engine.html#class.Base\">Base</a>):"
+    ));
     assert!(engine.contains("<span class=\"badge\">property</span>"));
     assert!(engine.contains("<span class=\"badge\">static</span>"));
     assert!(engine.contains("<span class=\"keyword\">async</span>"));

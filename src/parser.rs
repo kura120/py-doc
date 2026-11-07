@@ -121,6 +121,143 @@ fn read_dunder_all(body: &[Stmt]) -> Option<Vec<String>> {
     if dynamic { None } else { all }
 }
 
+/// Where a module's imports are resolved from.
+struct ImportContext<'a> {
+    /// The package the module is in, as path components below the source
+    /// root (its folder; for `__init__.py`, the package itself).
+    package: &'a [String],
+    root: &'a Path,
+    /// The source root's own package name, when the root is a package
+    /// (holds `__init__.py`): `rich` for `--src .../rich`.
+    root_package: Option<&'a str>,
+}
+
+/// The source root's package name, when it is a package.
+fn root_package_name(root: &Path) -> Option<String> {
+    root.join("__init__.py")
+        .is_file()
+        .then(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .flatten()
+}
+
+impl ImportContext<'_> {
+    /// An absolute module path as a dotted path from the source root, if
+    /// it is part of the documented code: `rich.style` -> `style` when the
+    /// root is the `rich` package; `pkg.engine` when the root holds `pkg/`.
+    fn internal(&self, module: &str) -> Option<String> {
+        let first = module.split('.').next()?;
+        match self.root_package {
+            Some(name) if first == name => Some(
+                module
+                    .strip_prefix(name)?
+                    .trim_start_matches('.')
+                    .to_string(),
+            ),
+            Some(_) => None,
+            None => (self.root.join(first).is_dir()
+                || self.root.join(format!("{first}.py")).is_file())
+            .then(|| module.to_string()),
+        }
+    }
+
+    /// `from ..x import y`: the module `level` packages up, then `x`.
+    fn relative(&self, level: u32, module: Option<&str>) -> Option<String> {
+        let up = level as usize - 1;
+        if up > self.package.len() {
+            return None;
+        }
+        let mut parts: Vec<&str> = self.package[..self.package.len() - up]
+            .iter()
+            .map(String::as_str)
+            .collect();
+        if let Some(module) = module {
+            parts.extend(module.split('.'));
+        }
+        Some(parts.join("."))
+    }
+}
+
+fn join_dotted(base: &str, name: &str) -> String {
+    if base.is_empty() {
+        name.to_string()
+    } else {
+        format!("{base}.{name}")
+    }
+}
+
+/// The import table of a module: the names its imports of the documented
+/// code bind, at module level and inside `if`, `try` and `with` blocks
+/// (`if TYPE_CHECKING:` imports are common for annotations). Never inside
+/// functions or classes. A name bound twice keeps its first binding.
+fn read_imports(body: &[Stmt], context: &ImportContext) -> Vec<(String, String)> {
+    fn walk(body: &[Stmt], context: &ImportContext, out: &mut Vec<(String, String)>) {
+        let add = |local: &str, target: String, out: &mut Vec<(String, String)>| {
+            if !out.iter().any(|(name, _)| name == local) {
+                out.push((local.to_string(), target));
+            }
+        };
+        for stmt in body {
+            match stmt {
+                Stmt::Import(import) => {
+                    for alias in &import.names {
+                        let name = alias.name.as_str();
+                        let Some(target) = context.internal(name) else {
+                            continue;
+                        };
+                        match &alias.asname {
+                            // `import pkg.x as y` binds y to pkg.x.
+                            Some(asname) => add(asname.as_str(), target, out),
+                            // `import pkg.x` binds pkg (the first segment).
+                            None => {
+                                let first = name.split('.').next().unwrap_or(name);
+                                if let Some(top) = context.internal(first) {
+                                    add(first, top, out);
+                                }
+                            }
+                        }
+                    }
+                }
+                Stmt::ImportFrom(import) => {
+                    let module = import.module.as_ref().map(|m| m.as_str());
+                    let base = if import.level > 0 {
+                        context.relative(import.level, module)
+                    } else {
+                        module.and_then(|m| context.internal(m))
+                    };
+                    let Some(base) = base else { continue };
+                    for alias in &import.names {
+                        let name = alias.name.as_str();
+                        if name == "*" {
+                            continue;
+                        }
+                        let local = alias.asname.as_ref().map_or(name, |a| a.as_str());
+                        add(local, join_dotted(&base, name), out);
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    walk(&if_stmt.body, context, out);
+                    for clause in &if_stmt.elif_else_clauses {
+                        walk(&clause.body, context, out);
+                    }
+                }
+                Stmt::Try(try_stmt) => {
+                    walk(&try_stmt.body, context, out);
+                    for ast::ExceptHandler::ExceptHandler(handler) in &try_stmt.handlers {
+                        walk(&handler.body, context, out);
+                    }
+                    walk(&try_stmt.orelse, context, out);
+                    walk(&try_stmt.finalbody, context, out);
+                }
+                Stmt::With(with_stmt) => walk(&with_stmt.body, context, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(body, context, &mut out);
+    out
+}
+
 /// Source text plus a line index, for slicing expressions and reporting line numbers.
 struct Source<'a> {
     text: &'a str,
@@ -563,6 +700,7 @@ fn extract_variables(
                 docstring,
                 raw_docstring: None,
                 summary: None,
+                linked: None,
                 is_private: private,
             };
             variables.push((variable, *origin));
@@ -688,9 +826,18 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         is_document: false,
         all: None,
         is_private,
+        imports: Vec::new(),
     };
 
     let syntax_body = parsed.into_syntax().body;
+    module.imports = read_imports(
+        &syntax_body,
+        &ImportContext {
+            package: dir_components,
+            root: root_dir,
+            root_package: root_package_name(root_dir).as_deref(),
+        },
+    );
     module.docstring = leading_docstring(&syntax_body);
     module.all = read_dunder_all(&syntax_body);
     let all = module.all.clone();
@@ -832,6 +979,7 @@ fn extract_function(func: &ast::StmtFunctionDef, source: &Source) -> PythonFunct
         summary: None,
         sections: None,
         // Correct for methods; parse_file overrides it for top-level functions.
+        linked: None,
         is_private: !is_public_name(&func.name, None),
     }
 }
@@ -880,6 +1028,7 @@ fn extract_class(
         functions,
         classes,
         variables,
+        linked: None,
         is_private: false,
     }
 }
@@ -1201,5 +1350,69 @@ mod tests {
         let deep = &outer.classes[0].classes[0];
         assert_eq!(deep.qualname, "Outer.Inner.Deep");
         assert_eq!(deep.functions[0].name, "ping");
+    }
+
+    fn imports_of(
+        code: &str,
+        package: &[&str],
+        root_package: Option<&str>,
+    ) -> Vec<(String, String)> {
+        let body = parse_module(code).unwrap().into_syntax().body;
+        let package: Vec<String> = package.iter().map(|p| p.to_string()).collect();
+        read_imports(
+            &body,
+            &ImportContext {
+                package: &package,
+                root: Path::new("/nonexistent-py-doc-root"),
+                root_package,
+            },
+        )
+    }
+
+    fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
+        list.iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn import_table_resolves_relative_aliased_and_absolute_imports() {
+        let code = "import collections\nimport json\nimport pkg.style\nimport pkg.style as st\n\
+                    from . import base\nfrom .style import Style, Color as Hue\n\
+                    from ..core.engine import Engine\nfrom pkg.widgets import Button\n\
+                    from typing import Optional\nfrom .x import *\n\
+                    if TYPE_CHECKING:\n    from .late import Late\n\
+                    try:\n    from .fast import Speed\nexcept ImportError:\n    Speed = None\n\
+                    def f():\n    from .inner import Hidden\n";
+        assert_eq!(
+            imports_of(code, &["ui", "sub"], Some("pkg")),
+            pairs(&[
+                ("pkg", ""),
+                ("st", "style"),
+                ("base", "ui.sub.base"),
+                ("Style", "ui.sub.style.Style"),
+                ("Hue", "ui.sub.style.Color"),
+                ("Engine", "ui.core.engine.Engine"),
+                ("Button", "widgets.Button"),
+                ("Late", "ui.sub.late.Late"),
+                ("Speed", "ui.sub.fast.Speed"),
+            ])
+        );
+        // A module at the root: `from .x` stays at the root, and too many
+        // dots resolve to nothing.
+        assert_eq!(
+            imports_of(
+                "from .style import Style\nfrom ..up import Nope\n",
+                &[],
+                Some("pkg")
+            ),
+            pairs(&[("Style", "style.Style")])
+        );
+        // Without a root package, other packages' imports are left out
+        // (the folders do not exist here).
+        assert_eq!(
+            imports_of("import json\nfrom os import path\n", &[], None),
+            pairs(&[])
+        );
     }
 }
