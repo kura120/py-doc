@@ -327,10 +327,16 @@ fn assert_matches_sample_snapshots(out: &Path, skip: &[&str]) {
     assert_matches_sample_snapshots_after(out, skip, |html| html.to_string());
 }
 
-/// Removes `<script src="...search-index.js" defer></script>` tags, which
-/// templates written before the index was loaded lazily still carry.
-fn without_eager_search_index(html: &str) -> String {
+/// Brings a page rendered by templates written before two later theme
+/// changes up to date, so the rest of it can be compared with the
+/// snapshots: it drops the `<script src="...search-index.js">` tag (the
+/// index is now loaded on the first search) and swaps in the current
+/// search panel markup (the listbox is now the results list itself, with a
+/// status line next to it). app.js works with the old markup too.
+fn as_current_theme(html: &str) -> String {
     const TAIL: &str = "search-index.js\" defer></script> ";
+    const OLD_PANEL: &str = "<div id=\"search-results\" role=\"listbox\" aria-label=\"Search results\"> <div id=\"results-list\"></div> </div>";
+    const NEW_PANEL: &str = "<div id=\"search-results\"> <div id=\"results-list\" role=\"listbox\" aria-label=\"Search results\"></div> <p id=\"search-status\" role=\"status\" aria-live=\"polite\"></p> </div>";
     let mut out = String::new();
     let mut rest = html;
     while let Some(end) = rest.find(TAIL) {
@@ -339,7 +345,7 @@ fn without_eager_search_index(html: &str) -> String {
         rest = &rest[end + TAIL.len()..];
     }
     out.push_str(rest);
-    out
+    out.replace(OLD_PANEL, NEW_PANEL)
 }
 
 /// Like [`assert_matches_sample_snapshots`], after applying `adjust` to
@@ -529,13 +535,9 @@ fn whole_file_template_overrides_still_work() {
     );
     // engine.html has a class attribute, which the old module.html predates:
     // it still renders, just without the Attributes list. The old templates
-    // also still load search-index.js on every page, which app.js accepts;
-    // the bundled theme now loads it on the first search instead.
-    assert_matches_sample_snapshots_after(
-        &out,
-        &["01_core/engine.html"],
-        without_eager_search_index,
-    );
+    // also still load search-index.js on every page and use the old search
+    // panel markup, both of which app.js accepts.
+    assert_matches_sample_snapshots_after(&out, &["01_core/engine.html"], as_current_theme);
     let engine = read(&out, "01_core/engine.html");
     assert!(engine.contains("id=\"class.Engine\""));
     assert!(!engine.contains("attr.Engine.speed"));
