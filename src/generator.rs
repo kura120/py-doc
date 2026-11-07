@@ -72,7 +72,7 @@ fn escape_html(text: &str) -> String {
 }
 
 /// Helper to dynamically strip Python indentation from docstrings
-fn clean_docstring(docstring: &str) -> String {
+pub(crate) fn clean_docstring(docstring: &str) -> String {
     let lines: Vec<&str> = docstring.lines().collect();
     if lines.is_empty() {
         return String::new();
@@ -99,7 +99,7 @@ fn clean_docstring(docstring: &str) -> String {
 }
 
 /// Helper to parse and strip the `#pd-z-index` macro from a docstring
-fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
+pub(crate) fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
     let mut z_index = i32::MAX;
     let mut cleaned_lines = Vec::new();
 
@@ -175,7 +175,7 @@ impl AlertType {
     }
 }
 
-enum DocMacro<'a> {
+pub(crate) enum DocMacro<'a> {
     Image { path: &'a str },
     Note { text: &'a str },
     Warning { text: &'a str },
@@ -184,7 +184,7 @@ enum DocMacro<'a> {
 }
 
 impl<'a> DocMacro<'a> {
-    fn parse(line: &'a str) -> Option<Self> {
+    pub(crate) fn parse(line: &'a str) -> Option<Self> {
         let trimmed = line.trim();
 
         if let Some(path) = trimmed.strip_prefix("#pd-image:") {
@@ -343,7 +343,7 @@ fn display_module_name<'a>(module: &'a PythonModule, package_name: &'a str) -> &
 }
 
 /// Relative prefix that takes a page back to the site root.
-fn root_prefix_for(link_path: &str) -> String {
+pub(crate) fn root_prefix_for(link_path: &str) -> String {
     match link_path.matches('/').count() {
         0 => "./".to_string(),
         depth => "../".repeat(depth),
@@ -568,7 +568,7 @@ impl SiteGenerator {
 
     /// Resolves an image path (relative to the source root, and inside it)
     /// to the file and its URL path below `assets/`.
-    fn resolve_image(&self, img_path: &str) -> Result<(PathBuf, String)> {
+    pub(crate) fn resolve_image(&self, img_path: &str) -> Result<(PathBuf, String)> {
         let resolved = self
             .src_root
             .join(img_path)
@@ -601,7 +601,12 @@ impl SiteGenerator {
 
     /// Copies an image into the site once per run. With `only_if_missing`
     /// an existing file is kept (the cache vouches for its content).
-    fn copy_image(&self, resolved: &Path, url_path: &str, only_if_missing: bool) -> Result<()> {
+    pub(crate) fn copy_image(
+        &self,
+        resolved: &Path,
+        url_path: &str,
+        only_if_missing: bool,
+    ) -> Result<()> {
         let site_path = format!("assets/{}", url_path);
 
         // Modules render in parallel and often share an image. Copy each
@@ -1124,6 +1129,10 @@ impl SiteGenerator {
     /// the manifest. For output formats other than the HTML site.
     pub fn write_file(&self, site_path: &str, contents: &str) -> Result<()> {
         let path = Path::new(&self.output_dir).join(site_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create output directory {:?}", parent))?;
+        }
         fs::write(&path, contents).with_context(|| format!("Failed to write {:?}", path))?;
         self.record(site_path);
         Ok(())
