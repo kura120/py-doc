@@ -682,6 +682,18 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
+The generated site is checked for WCAG 2.2 AA with [axe-core](https://github.com/dequelabs/axe-core) and for keyboard use, in a real browser. CI runs the same checks:
+
+```bash
+py-doc --config /dev/null --src tests/fixtures/sample --out /tmp/sample-site --name demo
+py-doc --config /dev/null --src tests/fixtures/variables --out /tmp/variables-site --name variables
+py-doc --config /dev/null --src tests/fixtures/nested --out /tmp/nested-site --name nested
+cd tests/a11y && npm ci && npx playwright install chromium
+node audit.js /tmp/sample-site /tmp/variables-site /tmp/nested-site   # every layout x light, dark and slate; --quick for light and dark
+node keyboard.js /tmp/sample-site                    # search, nav tree, theme and layout controls
+node structure.js /tmp/sample-site /tmp/variables-site /tmp/nested-site   # landmarks and heading levels
+```
+
 Release builds are made with `scripts/build.sh [TARGET]` or `scripts/build.ps1 [-Target TARGET]`. Pushing a `v*` tag that matches the version in `Cargo.toml` builds and publishes binaries with SHA-256 checksums, and publishes the `swiftdoc` wheels and sdist to PyPI through trusted publishing. Each wheel is installed and run on its own platform first. The Packaging workflow builds and tests the Linux wheel on pull requests that touch packaging files.
 
 UPX compression is available with `--upx` / `-Upx` for local builds. Published binaries are not packed: the download is already compressed, and packed executables are unsupported on macOS and often flagged by antivirus tools on Windows.

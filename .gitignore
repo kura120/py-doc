@@ -1,3 +1,4 @@
 /target
 /project
 .bench/
+node_modules/
