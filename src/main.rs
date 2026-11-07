@@ -19,6 +19,7 @@ mod models;
 mod output;
 mod parser;
 mod resolver;
+mod serve;
 mod tui;
 
 use anyhow::{Result, bail};
@@ -118,15 +119,10 @@ pub enum OutputFormat {
     Markdown,
 }
 
-/// Every option, as given on the command line or in `[tool.py-doc]`.
-///
-/// This one struct is both the clap CLI and the serde shape of the
-/// `[tool.py-doc]` table, so a field's flag (`--doc-version`) and its key
-/// (`doc-version`) come from the same name. Every field is optional here;
-/// `Config::resolve` merges the layers and applies the defaults. To add an
-/// option: add a field here, then add it to `Config` and its `resolve`.
-#[derive(Parser, Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+/// The command line: the build options, or a subcommand. `serve` takes
+/// the same build options, so they are only on the subcommand's side of a
+/// command line (`py-doc serve --src x`, not `py-doc --src x serve`).
+#[derive(Parser, Debug)]
 #[command(
     author,
     version,
@@ -134,13 +130,24 @@ pub enum OutputFormat {
     long_about = None,
     args_conflicts_with_subcommands = true
 )]
-pub struct Args {
-    /// A subcommand instead of generating docs. Not a `[tool.py-doc]` key:
-    /// `known_keys` lists only arguments, and serde skips this field.
+pub struct Cli {
     #[command(subcommand)]
-    #[serde(skip)]
     pub command: Option<Command>,
 
+    #[command(flatten)]
+    pub args: Args,
+}
+
+/// Every option, as given on the command line or in `[tool.py-doc]`.
+///
+/// This one struct is both the clap arguments and the serde shape of the
+/// `[tool.py-doc]` table, so a field's flag (`--doc-version`) and its key
+/// (`doc-version`) come from the same name. Every field is optional here;
+/// `Config::resolve` merges the layers and applies the defaults. To add an
+/// option: add a field here, then add it to `Config` and its `resolve`.
+#[derive(clap::Args, Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Args {
     /// Path to the Python project (or a single .py file) to document
     #[arg(short, long)]
     pub src: Option<String>,
@@ -236,11 +243,30 @@ pub struct Args {
 
 /// Subcommands. Without one, py-doc generates docs from the flags (or
 /// starts the setup wizard when there are none).
-#[derive(clap::Subcommand, Debug, Clone, PartialEq, Eq)]
+#[derive(clap::Subcommand, Debug, Clone, PartialEq)]
 pub enum Command {
     /// Work with the bundled theme
     #[command(subcommand)]
     Theme(ThemeCommand),
+    /// Build the docs, serve them on 127.0.0.1 and rebuild on every change
+    /// to the sources, templates or CSS, reloading open pages. Takes every
+    /// build option, and reads `[tool.py-doc]` like a normal build.
+    Serve(Box<ServeArgs>),
+}
+
+#[derive(clap::Args, Debug, Clone, PartialEq)]
+pub struct ServeArgs {
+    /// Port to listen on; the next free one is used if it is taken.
+    /// 0 picks any free port
+    #[arg(long, default_value_t = 8000)]
+    pub port: u16,
+
+    /// Open the site in the default browser once it is served
+    #[arg(long)]
+    pub open: bool,
+
+    #[command(flatten)]
+    pub build: Args,
 }
 
 #[derive(clap::Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -259,6 +285,12 @@ pub enum ThemeCommand {
 
 fn run_command(command: Command) -> Result<()> {
     match command {
+        Command::Serve(serve_args) => {
+            let pyproject = config::PyProject::load(&serve_args.build)?;
+            let ServeArgs { port, open, build } = *serve_args;
+            let config = Config::resolve(build, pyproject.as_ref())?;
+            serve::run(config, port, open)
+        }
         Command::Theme(ThemeCommand::Eject { dir, force }) => {
             let written = generator::eject_theme(Path::new(&dir), force)?;
             println!(
@@ -330,6 +362,29 @@ fn collect_python_files(src_path: &Path, user_excludes: &[String]) -> (PathBuf, 
 /// With `args.out` None (a check-only coverage run) it stops after the
 /// coverage report and writes nothing.
 fn run_generation(args: &Config) -> Result<()> {
+    build(args, false)
+}
+
+/// A `serve` build that stopped before writing anything.
+#[derive(Debug)]
+pub(crate) struct NotRebuilt(usize);
+
+impl std::fmt::Display for NotRebuilt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} file(s) failed to parse; the site was not rebuilt",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for NotRebuilt {}
+
+/// [`run_generation`], for `serve` when `serving`: then a file that fails
+/// to parse stops the build before anything is written, so the server
+/// keeps the last good site instead of one with that module missing.
+pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
     let src_path = Path::new(&args.src);
 
     if !src_path.exists() {
@@ -460,6 +515,9 @@ fn run_generation(args: &Config) -> Result<()> {
         for err in &parse_errors {
             eprintln!("    - {}", err);
         }
+        if serving {
+            return Err(NotRebuilt(parse_errors.len()).into());
+        }
     }
 
     // Measured before rendering, which replaces docstrings with HTML. The
@@ -563,8 +621,8 @@ fn run_generation(args: &Config) -> Result<()> {
 
 fn main() -> Result<()> {
     let no_args = std::env::args().len() == 1;
-    let mut cli = Args::parse();
-    if let Some(command) = cli.command.take() {
+    let Cli { command, args: cli } = Cli::parse();
+    if let Some(command) = command {
         return run_command(command);
     }
     let pyproject = config::PyProject::load(&cli)?;

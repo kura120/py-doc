@@ -31,6 +31,9 @@ toml = { version = "1.2.0", default-features = false, features = ["std", "parse"
 dunce = "1"
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 postcard = { version = "1.1.3", default-features = false, features = ["use-std"] }
+tiny_http = "0.12"
+ctrlc = "3.5.2"
+notify = "8.2"
 
 [package.metadata.binstall]
 # Directs cargo-binstall to your GitHub Releases
