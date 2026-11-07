@@ -256,8 +256,9 @@ fn projects_without_private_names_are_unchanged() {
         all.keys().collect::<Vec<_>>()
     );
     for (file, body) in &default {
-        // The manifest lists the same files but is not byte-stable.
-        if file == ".py-doc-manifest" {
+        // The manifest lists the same files but is not byte-stable, and the
+        // build cache's key includes the option.
+        if file == ".py-doc-manifest" || file == ".py-doc-cache" {
             continue;
         }
         assert!(body == &all[file], "{} differs", file);

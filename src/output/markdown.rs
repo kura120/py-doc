@@ -71,11 +71,14 @@ impl Page<'_> {
         Some(link)
     }
 
+    /// Copies an image into `assets/` (once per run, with the generator's
+    /// own copy) and returns its link from this page.
     fn image(&self, path: &str) -> Option<String> {
+        let (resolved, url_path) = self.generator.resolve_image(path).ok()?;
         self.generator
-            .copy_image(path)
-            .ok()
-            .map(|site_path| format!("{}{}", self.root_prefix, site_path))
+            .copy_image(&resolved, &url_path, false)
+            .ok()?;
+        Some(format!("{}assets/{}", self.root_prefix, url_path))
     }
 
     /// Rewrites local `![alt](path)` images to the copied assets.

@@ -14,6 +14,7 @@
 
 use anyhow::{Context, Result, bail};
 use clap::CommandFactory;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use crate::{Args, CoverageFormat, LayoutKind, OutputFormat, ThemeKind};
@@ -29,7 +30,7 @@ pub struct CoverageSettings {
 }
 
 /// The fully resolved settings the rest of the program runs on.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub src: String,
     /// Where to write the site. None in check-only coverage runs: `--coverage`
@@ -48,10 +49,16 @@ pub struct Config {
     pub source_url: Option<String>,
     pub strict: bool,
     pub clean: bool,
+    pub no_cache: bool,
     pub include_private: bool,
-    /// None when no coverage report was asked for.
+    /// None when no coverage report was asked for. Not part of the cache
+    /// key: the report does not change the site.
+    #[serde(skip)]
     pub coverage: Option<CoverageSettings>,
     /// What to write to `out`: sorted, without duplicates, never empty.
+    /// Not part of the cache key: the formats do not change the HTML pages,
+    /// and a run with `json` does not read the cache (see `run_generation`).
+    #[serde(skip)]
     pub formats: Vec<OutputFormat>,
 }
 
@@ -239,6 +246,20 @@ fn missing(key: &str) -> anyhow::Error {
 }
 
 impl Config {
+    /// The settings that can change the generated site, serialized for the
+    /// cache key. Everything except where the site goes and how the run
+    /// behaves (`out`, `strict`, `clean`, `no-cache`), so a new option is
+    /// part of the key unless it is listed here.
+    pub fn cache_settings(&self) -> String {
+        let mut value = serde_json::to_value(self).unwrap_or_default();
+        if let Some(map) = value.as_object_mut() {
+            for key in ["out", "strict", "clean", "no_cache"] {
+                map.remove(key);
+            }
+        }
+        value.to_string()
+    }
+
     /// Merges the CLI over the config file and fills in defaults.
     /// Prints a warning for unknown `[tool.py-doc]` keys (an error when
     /// strict) and a hint when the version falls back because it is dynamic.
@@ -335,6 +356,7 @@ impl Config {
             source_url: cli.source_url.or(tool.source_url),
             strict,
             clean: cli.clean.or(tool.clean).unwrap_or(false),
+            no_cache: cli.no_cache.or(tool.no_cache).unwrap_or(false),
             include_private: cli
                 .include_private
                 .or(tool.include_private)
@@ -380,6 +402,7 @@ exclude = ["tool-ex"]
 source-url = "https://tool"
 strict = true
 clean = true
+no-cache = true
 include-private = true
 coverage = true
 fail-under = 50
@@ -410,6 +433,7 @@ format = ["json"]
         "https://cli",
         "--strict=false",
         "--clean=false",
+        "--no-cache=false",
         "--include-private=false",
         "--fail-under",
         "75.5",
@@ -442,6 +466,7 @@ format = ["json"]
                 source_url: Some("https://cli".into()),
                 strict: false,
                 clean: false,
+                no_cache: false,
                 include_private: false,
                 formats: vec![OutputFormat::Html, OutputFormat::Json],
                 coverage: Some(CoverageSettings {
@@ -471,6 +496,7 @@ format = ["json"]
                 source_url: Some("https://tool".into()),
                 strict: true,
                 clean: true,
+                no_cache: true,
                 include_private: true,
                 formats: vec![OutputFormat::Json],
                 coverage: Some(CoverageSettings {
@@ -507,6 +533,7 @@ format = ["json"]
                 source_url: None,
                 strict: false,
                 clean: false,
+                no_cache: false,
                 include_private: false,
                 formats: vec![OutputFormat::Html],
                 coverage: None,
@@ -572,6 +599,7 @@ format = ["json"]
             "source-url",
             "strict",
             "clean",
+            "no-cache",
             "include-private",
             "coverage",
             "fail-under",
@@ -592,6 +620,33 @@ format = ["json"]
         let file = pyproject("[tool.py-doc]\ncommand = \"theme\"\neject = true\n");
         assert_eq!(file.unknown_keys, ["command", "eject"]);
         assert_eq!(file.tool.unwrap().command, None);
+    }
+
+    #[test]
+    fn cache_settings_leave_out_run_behaviour() {
+        let base = Config::resolve(cli(&["-s", "a", "-o", "b", "-n", "c"]), None).unwrap();
+        let other_run = Config::resolve(
+            cli(&[
+                "-s",
+                "a",
+                "-o",
+                "elsewhere",
+                "-n",
+                "c",
+                "--strict",
+                "--clean",
+                "--no-cache",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(base.cache_settings(), other_run.cache_settings());
+        let other_site = Config::resolve(
+            cli(&["-s", "a", "-o", "b", "-n", "c", "--layout", "modern"]),
+            None,
+        )
+        .unwrap();
+        assert_ne!(base.cache_settings(), other_site.cache_settings());
     }
 
     #[test]
