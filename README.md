@@ -106,6 +106,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
 | `--no-cache` | Ignore the build cache and render every page. See [Incremental builds](#incremental-builds). |
 | `--include-private` | Also document private names and modules. See [Public API](#public-api). |
+| `--docstring-style <STYLE>` | How to read docstring sections: `auto`, `google`, `numpy`, `rest` or `markdown`. Default `auto`. See [Docstring sections](#docstring-sections). |
 | `--coverage` | Print a documentation coverage report. Without `--out` on the command line, no site is written. See [Documentation coverage](#documentation-coverage). |
 | `--fail-under <PERCENT>` | Exit with an error when coverage is below `PERCENT` (0 to 100). Turns on `--coverage`. |
 | `--coverage-format <text\|json>` | Format of the coverage report. Default `text`. |
@@ -258,6 +259,8 @@ The file holds the same API the site shows: after the [Public API](#public-api) 
 * `docstring`: exactly as written in the source, so you can render it your own way;
 * `docstring_html`: as the site renders it, macros included. Its links are relative to the module's `page`;
 * `summary`: the first meaningful line, as plain text.
+
+Functions and classes also have `sections`: the parsed [docstring sections](#docstring-sections) (`params`, `returns`, `raises`, ...), each entry with its `name`, `type`, `default`, `description` and `description_html`. It is `null` when the docstring has none. When it is set, `docstring_html` holds only the rest of the docstring, while `docstring` is still the full text.
 
 Shortened (`"...": "..."` marks left-out fields):
 
@@ -448,6 +451,37 @@ repos:
 ## Writing docs
 
 Docstrings are rendered as Markdown, including tables, strikethrough and task lists. Python code blocks are syntax-highlighted at build time.
+
+### Docstring sections
+
+Google, NumPy and reST sections are shown as lists of parameters, return values and exceptions instead of plain text. The style is detected for each docstring:
+
+```python
+def connect(host: str, port: int = 5432) -> Connection:
+    """Open a connection.
+
+    Args:
+        host: Server to connect to.
+        port: Port number.
+
+    Returns:
+        An open connection.
+
+    Raises:
+        ConnectionError: If the server does not answer.
+    """
+```
+
+The same works with NumPy headers (`Parameters` underlined with dashes) and reST fields (`:param host:`, `:returns:`, `:raises ConnectionError:`).
+
+* Parameter sections: `Args`, `Arguments`, `Parameters`, `Keyword Args`, `Other Parameters`. Types and defaults missing from the docstring are taken from the signature; for a class, from `__init__`. A parameter the docstring documents but the signature lacks is still shown. Parameters it leaves out are not added.
+* `Returns`, `Yields`, `Raises` and `Attributes` are lists too.
+* `Example(s)`, `Note(s)`, `Warning(s)` and `See Also` are shown below them. Notes and warnings use the same boxes as `#pd-note` and `#pd-warning`.
+* Descriptions are Markdown, and macros such as `#pd-doc-link` work in them when they are on their own line.
+
+A section that does not fit its format, such as an `Args:` line that is not `name: text`, is left in the docstring as written. Nothing is ever dropped. A docstring that mixes styles has each style's sections taken out.
+
+`--docstring-style google` (or `numpy`, `rest`) reads only that style. `--docstring-style markdown` turns sections off, and every docstring renders as plain Markdown. In `pyproject.toml`, use `docstring-style = "numpy"`.
 
 ### Variables and attributes
 
@@ -688,10 +722,11 @@ The generated site is checked for WCAG 2.2 AA with [axe-core](https://github.com
 py-doc --config /dev/null --src tests/fixtures/sample --out /tmp/sample-site --name demo
 py-doc --config /dev/null --src tests/fixtures/variables --out /tmp/variables-site --name variables
 py-doc --config /dev/null --src tests/fixtures/nested --out /tmp/nested-site --name nested
+py-doc --config /dev/null --src tests/fixtures/docstrings --out /tmp/docstrings-site --name docstrings
 cd tests/a11y && npm ci && npx playwright install chromium
-node audit.js /tmp/sample-site /tmp/variables-site /tmp/nested-site   # every layout x light, dark and slate; --quick for light and dark
+node audit.js /tmp/sample-site /tmp/variables-site /tmp/nested-site /tmp/docstrings-site   # every layout x light, dark and slate; --quick for light and dark
 node keyboard.js /tmp/sample-site                    # search, nav tree, theme and layout controls
-node structure.js /tmp/sample-site /tmp/variables-site /tmp/nested-site   # landmarks and heading levels
+node structure.js /tmp/sample-site /tmp/variables-site /tmp/nested-site /tmp/docstrings-site   # landmarks and heading levels
 ```
 
 Release builds are made with `scripts/build.sh [TARGET]` or `scripts/build.ps1 [-Target TARGET]`. Pushing a `v*` tag that matches the version in `Cargo.toml` builds and publishes binaries with SHA-256 checksums, and publishes the `swiftdoc` wheels and sdist to PyPI through trusted publishing. Each wheel is installed and run on its own platform first. The Packaging workflow builds and tests the Linux wheel on pull requests that touch packaging files.

@@ -16,6 +16,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
+use crate::docstring::DocstringStyle;
 use crate::{Args, CoverageFormat, LayoutKind, OutputFormat, ThemeKind};
 
 pub const DEFAULT_VERSION: &str = "1.0.0";
@@ -50,6 +51,7 @@ pub struct Config {
     pub clean: bool,
     pub no_cache: bool,
     pub include_private: bool,
+    pub docstring_style: DocstringStyle,
     /// None when no coverage report was asked for. Not part of the cache
     /// key: the report does not change the site.
     #[serde(skip)]
@@ -360,6 +362,10 @@ impl Config {
                 .include_private
                 .or(tool.include_private)
                 .unwrap_or(false),
+            docstring_style: cli
+                .docstring_style
+                .or(tool.docstring_style)
+                .unwrap_or_default(),
             coverage,
             formats,
         })
@@ -409,6 +415,7 @@ coverage = true
 fail-under = 50
 coverage-format = "json"
 format = ["json"]
+docstring-style = "numpy"
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -446,6 +453,8 @@ format = ["json"]
         "html",
         "--format",
         "json",
+        "--docstring-style",
+        "markdown",
     ];
 
     #[test]
@@ -469,6 +478,7 @@ format = ["json"]
                 clean: false,
                 no_cache: false,
                 include_private: false,
+                docstring_style: DocstringStyle::Markdown,
                 formats: vec![OutputFormat::Html, OutputFormat::Json],
                 coverage: Some(CoverageSettings {
                     format: CoverageFormat::Text,
@@ -499,6 +509,7 @@ format = ["json"]
                 clean: true,
                 no_cache: true,
                 include_private: true,
+                docstring_style: DocstringStyle::Numpy,
                 formats: vec![OutputFormat::Json],
                 coverage: Some(CoverageSettings {
                     format: CoverageFormat::Json,
@@ -536,6 +547,7 @@ format = ["json"]
                 clean: false,
                 no_cache: false,
                 include_private: false,
+                docstring_style: DocstringStyle::Auto,
                 formats: vec![OutputFormat::Html],
                 coverage: None,
             }
@@ -648,6 +660,22 @@ format = ["json"]
         )
         .unwrap();
         assert_ne!(base.cache_settings(), other_site.cache_settings());
+        // Sections change every page, so the style is part of the key.
+        let other_style = Config::resolve(
+            cli(&[
+                "-s",
+                "a",
+                "-o",
+                "b",
+                "-n",
+                "c",
+                "--docstring-style",
+                "markdown",
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_ne!(base.cache_settings(), other_style.cache_settings());
     }
 
     #[test]

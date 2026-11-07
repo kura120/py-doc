@@ -316,6 +316,7 @@ mod tests {
             docstring: doc.map(str::to_string),
             raw_docstring: None,
             summary: None,
+            sections: None,
             is_private: false,
         }
     }
@@ -360,6 +361,7 @@ mod tests {
             docstring: None,
             raw_docstring: None,
             summary: None,
+            sections: None,
             badges: vec![],
             functions: vec![function("run", Some("Runs.")), function("stop", None)],
             classes: vec![],
@@ -435,6 +437,7 @@ mod tests {
             docstring: doc.map(str::to_string),
             raw_docstring: None,
             summary: None,
+            sections: None,
             badges: vec![],
             functions: vec![],
             classes,

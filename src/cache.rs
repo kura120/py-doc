@@ -29,7 +29,7 @@ use crate::models::PythonModule;
 pub const CACHE_NAME: &str = ".py-doc-cache";
 
 /// Bump when the cache layout or what it records changes.
-const FORMAT: u32 = 3;
+const FORMAT: u32 = 4;
 
 /// A 128-bit content hash as hex.
 pub fn hash_bytes(bytes: &[u8]) -> String {
@@ -267,7 +267,38 @@ mod tests {
     /// of every model is set here, and a cached module must come back whole.
     #[test]
     fn a_module_survives_the_cache_whole() {
+        use crate::docstring::{DocBlock, DocItem, DocSections};
         use crate::models::{PythonClass, PythonFunction, PythonVariable};
+        // Every list of the sections is filled, and every optional field set.
+        let item = DocItem {
+            name: Some("x".into()),
+            ty: Some("int".into()),
+            default: Some("1".into()),
+            description: "The x.".into(),
+            description_html: "<p>The x.</p>".into(),
+        };
+        let block = DocBlock {
+            text: "Careful.".into(),
+            html: "<p>Careful.</p>".into(),
+        };
+        let sections = DocSections {
+            style: "google".into(),
+            params: vec![item.clone()],
+            keyword_params: vec![item.clone()],
+            other_params: vec![item.clone()],
+            attributes: vec![item.clone()],
+            returns: vec![DocItem {
+                name: None,
+                default: None,
+                ..item.clone()
+            }],
+            yields: vec![item.clone()],
+            raises: vec![item],
+            examples: vec![block.clone()],
+            notes: vec![block.clone()],
+            warnings: vec![block.clone()],
+            see_also: vec![block],
+        };
         let function = PythonFunction {
             name: "f".into(),
             args: vec!["x: int".into()],
@@ -279,6 +310,7 @@ mod tests {
             docstring: Some("<p>Doc.</p>".into()),
             raw_docstring: None,
             summary: Some("Doc.".into()),
+            sections: Some(sections.clone()),
             is_private: false,
         };
         let variable = PythonVariable {
@@ -309,6 +341,7 @@ mod tests {
                 docstring: None,
                 raw_docstring: None,
                 summary: None,
+                sections: Some(sections),
                 badges: vec!["conditional".into()],
                 functions: vec![function.clone()],
                 // A nested class, so the round trip covers the recursion.
@@ -320,6 +353,7 @@ mod tests {
                     docstring: Some("<p>Inner.</p>".into()),
                     raw_docstring: None,
                     summary: Some("Inner.".into()),
+                    sections: None,
                     badges: vec!["type-checking".into()],
                     functions: vec![function.clone()],
                     classes: vec![],

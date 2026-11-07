@@ -337,6 +337,7 @@ impl App {
             clean: self.prefill.clean.unwrap_or(false),
             no_cache: self.prefill.no_cache.unwrap_or(false),
             include_private: self.prefill.include_private.unwrap_or(false),
+            docstring_style: self.prefill.docstring_style.unwrap_or_default(),
             // The wizard only runs without a [tool.py-doc] table, so no
             // coverage settings or extra formats can reach it.
             formats: vec![OutputFormat::Html],
@@ -920,6 +921,7 @@ mod tests {
                 clean: false,
                 no_cache: false,
                 include_private: false,
+                docstring_style: Default::default(),
                 formats: vec![OutputFormat::Html],
                 coverage: None,
             }

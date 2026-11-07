@@ -613,3 +613,28 @@ fn markdown_output_is_a_full_build() {
     assert_eq!(unchanged_files(&out), 4);
     assert_eq!(unchanged_pages(&out), total_pages(&out));
 }
+
+#[test]
+fn docstring_sections_survive_the_cache_and_the_style_is_in_its_key() {
+    let mut project = Project::new("docstring_sections");
+    project.edit(
+        "pkg/engine.py",
+        "\"\"\"Starts the engine.\"\"\"",
+        "\"\"\"Starts the engine.\n\n        Args:\n            speed: How fast.\n        \"\"\"",
+    );
+    project.build_and_compare(&[]);
+    // Only tools.py changes: engine.py and its sections come from the cache.
+    project.edit("pkg/tools.py", "Helps.", "Helps a lot.");
+    let out = project.build_and_compare(&[]);
+    assert!(unchanged_files(&out) > 0);
+    let engine = fs::read_to_string(project.out.join("pkg/engine.html")).unwrap();
+    assert!(engine.contains("<p class=\"doc-section-title\">Parameters</p>"));
+    assert!(engine.contains("<span class=\"doc-item-default\">default <code>1</code>"));
+
+    // Another --docstring-style rebuilds every page.
+    let out = project.build_and_compare(&["--docstring-style", "markdown"]);
+    assert_eq!(unchanged_pages(&out), 0);
+    let engine = fs::read_to_string(project.out.join("pkg/engine.html")).unwrap();
+    assert!(!engine.contains("doc-section"));
+    assert!(engine.contains("Args:"));
+}

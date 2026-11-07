@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
+use crate::docstring::{self, DocBlock, DocItem, DocSections};
 use crate::generator::{
     DocMacro, SiteGenerator, clean_docstring, extract_z_index_and_clean, root_prefix_for,
 };
@@ -293,11 +294,105 @@ fn doc(out: &mut String, page: &Page, raw: &Option<String>) {
     }
 }
 
+/// A docstring with sections: the rest of the docstring, then each section
+/// as a bold title and a list (the HTML site's layout, in plain Markdown).
+fn doc_with_sections(
+    out: &mut String,
+    page: &Page,
+    raw: &Option<String>,
+    sections: &Option<DocSections>,
+) {
+    let (Some(raw), Some(sections)) = (raw, sections) else {
+        return doc(out, page, raw);
+    };
+    let (_, cleaned) = extract_z_index_and_clean(raw);
+    let body = docstring::split(&clean_docstring(&cleaned), page.generator.docstring_style())
+        .map(|split| split.body)
+        .unwrap_or(cleaned);
+    doc(out, page, &Some(body));
+
+    let items = |out: &mut String, title: &str, items: &[DocItem]| {
+        if items.is_empty() {
+            return;
+        }
+        let _ = write!(out, "**{title}**\n\n");
+        for item in items {
+            let mut head = Vec::new();
+            if let Some(name) = &item.name {
+                head.push(format!("`{name}`"));
+            }
+            let mut details = Vec::new();
+            if let Some(ty) = &item.ty {
+                details.push(format!("`{ty}`"));
+            }
+            if let Some(default) = &item.default {
+                details.push(format!("default `{default}`"));
+            }
+            if !details.is_empty() {
+                head.push(if head.is_empty() {
+                    details.join(", ")
+                } else {
+                    format!("({})", details.join(", "))
+                });
+            }
+            let text = page.docstring(&item.description);
+            let line = match (head.is_empty(), text.is_empty()) {
+                (true, _) => text,
+                (false, true) => head.join(" "),
+                (false, false) => format!("{}: {}", head.join(" "), text),
+            };
+            // Continuation lines are indented under the bullet.
+            let mut lines = line.lines();
+            let _ = writeln!(out, "- {}", lines.next().unwrap_or(""));
+            for rest in lines {
+                if rest.is_empty() {
+                    out.push('\n');
+                } else {
+                    let _ = writeln!(out, "  {rest}");
+                }
+            }
+        }
+        out.push('\n');
+    };
+    items(out, "Parameters", &sections.params);
+    items(out, "Keyword arguments", &sections.keyword_params);
+    items(out, "Other parameters", &sections.other_params);
+    items(out, "Attributes", &sections.attributes);
+    items(out, "Returns", &sections.returns);
+    items(out, "Yields", &sections.yields);
+    items(out, "Raises", &sections.raises);
+
+    let titled = |out: &mut String, title: &str, blocks: &[DocBlock]| {
+        for block in blocks {
+            let _ = write!(
+                out,
+                "**{title}**\n\n{}\n\n",
+                page.docstring(&block.text).trim_end()
+            );
+        }
+    };
+    let quoted = |out: &mut String, label: &str, blocks: &[DocBlock]| {
+        for block in blocks {
+            let text = page.docstring(&block.text);
+            let mut lines = text.lines();
+            let _ = writeln!(out, "> **{label}:** {}", lines.next().unwrap_or(""));
+            for rest in lines {
+                let _ = writeln!(out, ">{}{rest}", if rest.is_empty() { "" } else { " " });
+            }
+            out.push('\n');
+        }
+    };
+    titled(out, "Examples", &sections.examples);
+    quoted(out, "Note", &sections.notes);
+    quoted(out, "Warning", &sections.warnings);
+    titled(out, "See also", &sections.see_also);
+}
+
 fn function(out: &mut String, page: &Page, func: &PythonFunction, level: usize, id: &str) {
     anchor(out, page, level, id, &format!("`{}()`", func.name));
     code(out, &function_signature(func));
     badges(out, &func.badges);
-    doc(out, page, &func.raw_docstring);
+    doc_with_sections(out, page, &func.raw_docstring, &func.sections);
 }
 
 fn variable(out: &mut String, page: &Page, var: &PythonVariable, level: usize, id: &str) {
@@ -335,7 +430,7 @@ fn class_section(out: &mut String, page: &Page, class: &PythonClass, level: usiz
     );
     code(out, &class_signature(class));
     badges(out, &class.badges);
-    doc(out, page, &class.raw_docstring);
+    doc_with_sections(out, page, &class.raw_docstring, &class.sections);
     let member = heading(level + 2);
     if !class.variables.is_empty() {
         subheading(out, level + 1, "Attributes");

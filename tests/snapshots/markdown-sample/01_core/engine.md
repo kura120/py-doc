@@ -24,7 +24,7 @@ class Engine(Base): ...
 
 The main engine.
 
-Example:
+**Examples**
 
 ```pycon
 >>> Engine().speed

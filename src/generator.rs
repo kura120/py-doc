@@ -11,6 +11,7 @@ use std::time::Instant;
 use tera::{Context as TeraContext, Kwargs, State, Tera, Value};
 
 use crate::cache::{self, Cache, ModuleDeps, ModuleEntryRef, PageEntry, hash_bytes, hash_parts};
+use crate::docstring::{self, DocSections, DocstringStyle, Kind};
 use crate::highlight::highlight_python;
 use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage, PythonVariable};
 use crate::parser::{self, split_order_prefix};
@@ -312,6 +313,8 @@ pub struct SiteGenerator {
     templates_note: Option<String>,
     /// `--css` files as (site path, contents), linked after style.css.
     extra_css: Vec<(String, String)>,
+    /// How docstring sections are read (`--docstring-style`).
+    docstring_style: DocstringStyle,
 }
 
 /// Where a module's page is written, relative to the site root.
@@ -438,7 +441,64 @@ impl SiteGenerator {
             custom_templates: !custom.is_empty(),
             templates_note,
             extra_css: Vec::new(),
+            docstring_style: DocstringStyle::Auto,
         })
+    }
+
+    /// Sets `--docstring-style`.
+    pub fn with_docstring_style(mut self, style: DocstringStyle) -> Self {
+        self.docstring_style = style;
+        self
+    }
+
+    /// `--docstring-style`, for outputs that split raw docstrings again.
+    pub fn docstring_style(&self) -> DocstringStyle {
+        self.docstring_style
+    }
+
+    /// Renders a function or class docstring: the sections taken out of it
+    /// (with their texts rendered) and the HTML of the rest, None when
+    /// nothing is left. A docstring without sections renders exactly as
+    /// `render_markdown` would render it.
+    fn render_with_sections(
+        &self,
+        doc: &str,
+        ctx: &RenderCtx,
+    ) -> (Option<String>, Option<DocSections>) {
+        if !docstring::may_have_sections(doc, self.docstring_style) {
+            return (Some(self.render_markdown(doc, ctx)), None);
+        }
+        // Dedented once, for both the split and the rendering.
+        let cleaned = clean_docstring(doc);
+        match self.sections_of(&cleaned, ctx) {
+            Some((body, sections)) => (
+                (!body.trim().is_empty()).then(|| self.render_markdown(&body, ctx)),
+                Some(sections),
+            ),
+            None => (Some(self.render_dedented_markdown(&cleaned, ctx)), None),
+        }
+    }
+
+    /// Takes the sections out of a dedented docstring and renders their
+    /// texts. Returns the rest of the docstring and the sections, or None
+    /// when it has no sections.
+    fn sections_of(&self, cleaned: &str, ctx: &RenderCtx) -> Option<(String, DocSections)> {
+        let split = docstring::split(cleaned, self.docstring_style)?;
+        let mut sections = split.sections;
+        for item in sections.items_mut() {
+            if !item.description.is_empty() {
+                item.description_html = self.render_markdown(&item.description, ctx);
+            }
+        }
+        for (kind, block) in sections.blocks_mut() {
+            let html = self.render_markdown(&block.text, ctx);
+            block.html = match kind {
+                Kind::Notes => AlertType::Note.to_html(unwrap_paragraph(&html)),
+                Kind::Warnings => AlertType::Warning.to_html(unwrap_paragraph(&html)),
+                _ => html,
+            };
+        }
+        Some((split.body, sections))
     }
 
     /// Prints which custom templates are used, if --templates was given.
@@ -722,8 +782,11 @@ impl SiteGenerator {
     }
 
     fn render_markdown(&self, markdown: &str, ctx: &RenderCtx) -> String {
-        let dedented_md = clean_docstring(markdown);
+        self.render_dedented_markdown(&clean_docstring(markdown), ctx)
+    }
 
+    /// `render_markdown` for text `clean_docstring` already dedented.
+    fn render_dedented_markdown(&self, dedented_md: &str, ctx: &RenderCtx) -> String {
         let mut processed_md = String::new();
         let mut in_custom_code = false;
         let mut code_language = String::new();
@@ -929,7 +992,13 @@ impl SiteGenerator {
         let render_function = |func: &mut PythonFunction| {
             if let Some(doc) = func.docstring.take() {
                 func.summary = summarize(&doc);
-                func.docstring = Some(self.render_markdown(&doc, &ctx));
+                let (html, mut sections) = self.render_with_sections(&doc, &ctx);
+                if let Some(sections) = sections.as_mut() {
+                    docstring::merge_signature(sections, &func.args);
+                    docstring::merge_return_type(sections, func.return_type.as_deref());
+                }
+                func.docstring = html;
+                func.sections = sections;
                 func.raw_docstring = Some(doc);
             }
         };
@@ -947,7 +1016,16 @@ impl SiteGenerator {
         while let Some(class) = stack.pop() {
             if let Some(doc) = class.docstring.take() {
                 class.summary = summarize(&doc);
-                class.docstring = Some(self.render_markdown(&doc, &ctx));
+                let (html, mut sections) = self.render_with_sections(&doc, &ctx);
+                // A class docstring's Args describe `__init__`.
+                if let (Some(sections), Some(init)) = (
+                    sections.as_mut(),
+                    class.functions.iter().find(|f| f.name == "__init__"),
+                ) {
+                    docstring::merge_signature(sections, &init.args);
+                }
+                class.docstring = html;
+                class.sections = sections;
                 class.raw_docstring = Some(doc);
             }
             class.functions.iter_mut().for_each(render_function);
@@ -1745,6 +1823,19 @@ fn custom_templates(dir: &Path) -> Result<Vec<(String, String)>> {
 
 /// Renders one line of Markdown without the surrounding paragraph, for
 /// macro text such as `#pd-note: use **care**`.
+/// The inside of rendered HTML that is a single paragraph, so it can sit
+/// next to a box's "Note:" label; other HTML is returned as is.
+fn unwrap_paragraph(html: &str) -> &str {
+    let inner = html
+        .trim_end()
+        .strip_prefix("<p>")
+        .and_then(|rest| rest.strip_suffix("</p>"));
+    match inner {
+        Some(inner) if !inner.contains("<p>") => inner,
+        _ => html,
+    }
+}
+
 fn render_inline(text: &str) -> String {
     let mut rendered = String::new();
     html::push_html(

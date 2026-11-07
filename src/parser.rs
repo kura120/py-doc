@@ -830,6 +830,7 @@ fn extract_function(func: &ast::StmtFunctionDef, source: &Source) -> PythonFunct
         docstring: leading_docstring(&func.body),
         raw_docstring: None,
         summary: None,
+        sections: None,
         // Correct for methods; parse_file overrides it for top-level functions.
         is_private: !is_public_name(&func.name, None),
     }
@@ -874,6 +875,7 @@ fn extract_class(
         docstring: leading_docstring(&class_def.body),
         raw_docstring: None,
         summary: None,
+        sections: None,
         badges: Vec::new(),
         functions,
         classes,

@@ -191,7 +191,8 @@ fn assert_links_resolve(out: &Path) -> (usize, usize) {
 
 #[test]
 fn every_link_and_anchor_resolves() {
-    let cases: [(&str, &[&str]); 7] = [
+    let cases: [(&str, &[&str]); 8] = [
+        ("docstrings", &[]),
         ("nested", &[]),
         ("nested", &["--include-private"]),
         ("sample", &[]),
@@ -213,6 +214,45 @@ fn every_link_and_anchor_resolves() {
         total > 40 && anchored > 10,
         "only {total} links ({anchored} with anchors)"
     );
+}
+
+#[test]
+fn docstring_sections_become_lists() {
+    let out = markdown("docstrings", "sections", &[]);
+    let google = read(&out, "google.md");
+    for expected in [
+        "**Parameters**\n\n- `job` (`str`): The job to run.\n\n  See reference: [`google.Engine`](./google.md#class.Engine)\n",
+        "- `retries` (`int`, default `1`): How often to retry.\n\n  > **Note:** Retries back off exponentially.\n",
+        "**Returns**\n\n- `bool`: True if the job **succeeded**.\n",
+        "**Raises**\n\n- `ValueError`: If the job is empty.\n- `RuntimeError`: If the engine is stopped.\n",
+        "**Examples**\n\n```pycon\n>>> Engine().run(\"build\")\nTrue\n```\n",
+        "> **Note:** Jobs run one at a time.\n",
+        "> **Warning:** Never run two engines on one database.\n",
+    ] {
+        assert!(
+            google.contains(expected),
+            "missing {expected:?} in\n{google}"
+        );
+    }
+    assert!(!google.contains("Args:"));
+    // The rest of the docstring stays above the sections.
+    assert!(google.contains("Runs one job.\n\nSome more text about running.\n\n**Parameters**"));
+
+    let numpy = read(&out, "numpy_style.md");
+    assert!(
+        numpy.contains("- `axis` (`int`, default `0`): Axis along which the means are computed.")
+    );
+    assert!(!numpy.contains("----------"));
+
+    // Sections off: the docstrings are written as before.
+    let out = markdown(
+        "docstrings",
+        "sections_off",
+        &["--docstring-style", "markdown"],
+    );
+    let google = read(&out, "google.md");
+    assert!(google.contains("Args:"));
+    assert!(!google.contains("**Parameters**"));
 }
 
 #[test]
