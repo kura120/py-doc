@@ -156,6 +156,10 @@ fn the_ejected_theme_renders_the_default_site() {
     let pages = files(&default_out);
     assert_eq!(files(&ejected_out), pages);
     for page in &pages {
+        // The build cache's key covers the template files, which differ.
+        if page == ".py-doc-cache" {
+            continue;
+        }
         let default = fs::read(default_out.join(page)).unwrap();
         let ejected = fs::read(ejected_out.join(page)).unwrap();
         if page.ends_with(".html") {
