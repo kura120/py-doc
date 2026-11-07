@@ -48,14 +48,14 @@ fn out_dir(test: &str) -> PathBuf {
     dir
 }
 
-/// Runs py-doc with an empty --config, so the repository's own
+/// Runs swiftdoc with an empty --config, so the repository's own
 /// pyproject.toml is never read.
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
     let config = Path::new(env!("CARGO_TARGET_TMPDIR")).join("api-json-empty.toml");
     if !config.exists() {
         fs::write(&config, "").unwrap();
     }
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(&config)
         .arg("--src")
@@ -65,10 +65,10 @@ fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
         .args(["--name", "demo"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     output
@@ -520,8 +520,8 @@ fn json_alone_writes_api_json_and_the_manifest_only() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     files.sort();
-    assert_eq!(files, [".py-doc-manifest", "api.json"]);
-    let manifest = fs::read_to_string(out.join(".py-doc-manifest")).unwrap();
+    assert_eq!(files, [".swiftdoc-manifest", "api.json"]);
+    let manifest = fs::read_to_string(out.join(".swiftdoc-manifest")).unwrap();
     assert_eq!(manifest, "api.json\n");
 }
 
@@ -536,7 +536,7 @@ fn html_and_json_together_write_both() {
     assert!(out.join("index.html").is_file());
     assert!(out.join("search-index.js").is_file());
     assert!(out.join("api.json").is_file());
-    let manifest = fs::read_to_string(out.join(".py-doc-manifest")).unwrap();
+    let manifest = fs::read_to_string(out.join(".swiftdoc-manifest")).unwrap();
     assert!(manifest.lines().any(|l| l == "api.json"));
     assert!(manifest.lines().any(|l| l == "index.html"));
 }
@@ -614,7 +614,7 @@ fn raw_and_rendered_docstrings_are_both_included() {
     assert_eq!(boot["docstring"], "Boot it.");
 
     assert_eq!(api["schema_version"], 1);
-    assert_eq!(api["py_doc_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(api["swiftdoc_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(api["package"]["name"], "demo");
     assert_eq!(api["package"]["version"], "1.0.0");
 }

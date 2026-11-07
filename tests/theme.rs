@@ -1,4 +1,4 @@
-//! End-to-end tests for `py-doc theme eject`.
+//! End-to-end tests for `swiftdoc theme eject`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,18 +29,18 @@ fn scratch(test: &str) -> PathBuf {
     dir
 }
 
-fn py_doc(cwd: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_py-doc"))
+fn swiftdoc(cwd: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .current_dir(cwd)
         .args(args)
         .output()
-        .expect("failed to run py-doc")
+        .expect("failed to run swiftdoc")
 }
 
 fn assert_ok(output: &Output) {
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
 }
@@ -72,10 +72,10 @@ fn normalize_whitespace(text: &str) -> String {
 #[test]
 fn ejected_files_are_the_bundled_theme_byte_for_byte() {
     let cwd = scratch("byte_identical");
-    assert_ok(&py_doc(&cwd, &["theme", "eject"]));
+    assert_ok(&swiftdoc(&cwd, &["theme", "eject"]));
 
     // The default folder name.
-    let theme = cwd.join("py-doc-theme");
+    let theme = cwd.join("swiftdoc-theme");
     let mut expected: Vec<String> = THEME_FILES.iter().map(|s| s.to_string()).collect();
     expected.push("README.md".into());
     expected.sort();
@@ -91,7 +91,7 @@ fn ejected_files_are_the_bundled_theme_byte_for_byte() {
     let readme = fs::read_to_string(theme.join("README.md")).unwrap();
     for topic in [
         "--templates",
-        "py-doc/module.html",
+        "swiftdoc/module.html",
         "{% block",
         "--css",
         "extra_css",
@@ -109,7 +109,7 @@ fn ejected_files_are_the_bundled_theme_byte_for_byte() {
 #[test]
 fn the_ejected_theme_renders_the_default_site() {
     let cwd = scratch("same_output");
-    assert_ok(&py_doc(&cwd, &["theme", "eject", "theme"]));
+    assert_ok(&swiftdoc(&cwd, &["theme", "eject", "theme"]));
     let sample = manifest_dir().join("tests/fixtures/sample");
     let sample = sample.to_str().unwrap();
 
@@ -127,12 +127,12 @@ fn the_ejected_theme_renders_the_default_site() {
         "--name",
         "demo",
     ];
-    let default_run = py_doc(
+    let default_run = swiftdoc(
         &cwd,
         &[&base[..], &["--out", default_out.to_str().unwrap()]].concat(),
     );
     assert_ok(&default_run);
-    let ejected_run = py_doc(
+    let ejected_run = swiftdoc(
         &cwd,
         &[
             &base[..],
@@ -157,7 +157,7 @@ fn the_ejected_theme_renders_the_default_site() {
     assert_eq!(files(&ejected_out), pages);
     for page in &pages {
         // The build cache's key covers the template files, which differ.
-        if page == ".py-doc-cache" {
+        if page == ".swiftdoc-cache" {
             continue;
         }
         let default = fs::read(default_out.join(page)).unwrap();
@@ -183,7 +183,7 @@ fn existing_files_are_kept_unless_forced() {
     fs::write(theme.join("style.css"), "/* mine */").unwrap();
     fs::write(theme.join("module.html"), "mine").unwrap();
 
-    let output = py_doc(&cwd, &["theme", "eject", "theme"]);
+    let output = swiftdoc(&cwd, &["theme", "eject", "theme"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -202,7 +202,7 @@ fn existing_files_are_kept_unless_forced() {
         "/* mine */"
     );
 
-    assert_ok(&py_doc(&cwd, &["theme", "eject", "theme", "--force"]));
+    assert_ok(&swiftdoc(&cwd, &["theme", "eject", "theme", "--force"]));
     assert_eq!(files(&theme).len(), THEME_FILES.len() + 1);
     assert_eq!(
         fs::read(theme.join("style.css")).unwrap(),
@@ -213,7 +213,7 @@ fn existing_files_are_kept_unless_forced() {
 #[test]
 fn subcommands_do_not_mix_with_generation_flags() {
     let cwd = scratch("mixed");
-    let output = py_doc(&cwd, &["--src", ".", "theme", "eject"]);
+    let output = swiftdoc(&cwd, &["--src", ".", "theme", "eject"]);
     assert!(!output.status.success());
-    assert!(!cwd.join("py-doc-theme").exists());
+    assert!(!cwd.join("swiftdoc-theme").exists());
 }

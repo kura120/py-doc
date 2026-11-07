@@ -2,7 +2,7 @@
 
 ## v0.6.0
 
-A large release. py-doc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML.
+A large release. swiftdoc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML.
 
 ### Speed
 
@@ -10,11 +10,11 @@ A large release. py-doc is much faster on big projects, reads its settings from 
 - **Incremental builds.** Files that have not changed since the last run are not parsed again (#45).
 - **Smaller pages.** The search index loads on the first search, not on every page (#43). The no-JS module list is written once, on the index page (#35).
 - Release binaries are built with `opt-level = 3` (#33). They are a little larger.
-- `benchmarks/` compares py-doc with pydoc, pdoc, pdoc3 and Sphinx. The README has the chart (#29, #51).
+- `benchmarks/` compares swiftdoc with pydoc, pdoc, pdoc3 and Sphinx. The README has the chart (#29, #51).
 
 ### Configuration
 
-- **`[tool.py-doc]` in `pyproject.toml`.** Every flag can be set there. The project name and version come from `[project]` (#31). Use `--config` to point at another file.
+- **`[tool.swiftdoc]` in `pyproject.toml`.** Every flag can be set there. The project name and version come from `[project]` (#31). Use `--config` to point at another file.
 
 ### What gets documented
 
@@ -28,26 +28,27 @@ A large release. py-doc is much faster on big projects, reads its settings from 
 
 - `--format json` writes the parsed API as `api.json` (#42).
 - `--format markdown` writes Markdown pages for MkDocs, Docusaurus or LLM context (#44).
-- `py-doc serve` builds the site, serves it on 127.0.0.1 and reloads the page when files change (#48).
+- `swiftdoc serve` builds the site, serves it on 127.0.0.1 and reloads the page when files change (#48).
 - The generated site meets WCAG 2.2 AA. CI checks it with axe and a keyboard test (#47).
 
 ### Themes and templates
 
-- **Block inheritance.** A custom template can extend `py-doc/<name>.html` and override only the blocks it changes (#32).
+- **Block inheritance.** A custom template can extend `swiftdoc/<name>.html` and override only the blocks it changes (#32).
 - `--css` adds a stylesheet. The theme's colors and spacing are CSS custom properties you can override (#38).
-- `py-doc theme eject` copies the bundled theme into your project as a starting point (#41).
+- `swiftdoc theme eject` copies the bundled theme into your project as a starting point (#41).
 
 ### CI and distribution
 
 - `--coverage` prints a documentation coverage report. `--fail-under N` fails the run below N percent. `--coverage-format json` is for scripts (#40). Dunder methods (`__init__`, `__repr__`, ...) are not counted.
 - A GitHub Action and a pre-commit hook (#36).
-- py-doc is published to PyPI as **`swiftdoc`**: `pip install swiftdoc` installs the `py-doc` command (#37).
+- Published to PyPI: `pip install swiftdoc` (#37).
 - Release binaries now include Linux arm64.
 
 ### Upgrading from v0.5.1
 
 - Private names are no longer documented by default. Add `--include-private` to keep them.
 - Docstrings with Google, NumPy or reST sections render differently. Use `--docstring-style markdown` for the old output.
-- The command line has subcommands (`serve`, `theme eject`). Running `py-doc` with flags works as before.
+- The command is `swiftdoc`, and settings live in `[tool.swiftdoc]`. Custom templates extend `swiftdoc/<name>.html`.
+- The command line has subcommands (`serve`, `theme eject`). Running with flags works as before.
 - `--strict` and `--clean` also accept `=false`, so a config file setting can be turned off on the command line.
 - Custom templates written for v0.5.1 keep rendering. A custom `sidebar.html` still renders the full no-JS module list on every page.

@@ -21,7 +21,7 @@ fn out_dir(test: &str) -> PathBuf {
 
 /// An empty pyproject.toml passed as `--config`, so runs against the
 /// fixtures never pick up the repository's own pyproject.toml (the PyPI
-/// packaging metadata), which py-doc would otherwise find by walking up
+/// packaging metadata), which swiftdoc would otherwise find by walking up
 /// from `--src`.
 fn empty_config() -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
@@ -32,7 +32,7 @@ fn empty_config() -> PathBuf {
 }
 
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(empty_config())
         .arg("--src")
@@ -42,7 +42,7 @@ fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
         .args(["--name", "demo"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc")
+        .expect("failed to run swiftdoc")
 }
 
 /// Generates the sample fixture and returns its output directory.
@@ -51,7 +51,7 @@ fn generate_sample(test: &str, extra: &[&str]) -> PathBuf {
     let output = run(&fixture("sample"), &out, extra);
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     out
@@ -323,7 +323,7 @@ fn normalize_whitespace(html: &str) -> String {
 }
 
 /// Compares every page of a generated sample site with the snapshots in
-/// `tests/snapshots/sample`. Set `PY_DOC_UPDATE_SNAPSHOTS=1` to rewrite them
+/// `tests/snapshots/sample`. Set `SWIFTDOC_UPDATE_SNAPSHOTS=1` to rewrite them
 /// after an intended change to the default theme.
 /// Pages listed in `skip` must exist but are not compared.
 fn assert_matches_sample_snapshots(out: &Path, skip: &[&str]) {
@@ -359,7 +359,7 @@ fn assert_matches_sample_snapshots_after(out: &Path, skip: &[&str], adjust: fn(&
         .join("snapshots")
         .join("sample");
     let pages = html_pages(out);
-    if std::env::var_os("PY_DOC_UPDATE_SNAPSHOTS").is_some() {
+    if std::env::var_os("SWIFTDOC_UPDATE_SNAPSHOTS").is_some() {
         let _ = fs::remove_dir_all(&snapshots);
         for page in &pages {
             let target = snapshots.join(page);
@@ -381,10 +381,10 @@ fn assert_matches_sample_snapshots_after(out: &Path, skip: &[&str], adjust: fn(&
     }
 }
 
-/// `--docstring-style markdown` must give the output py-doc gave before
+/// `--docstring-style markdown` must give the output swiftdoc gave before
 /// docstring sections existed. Pages that sections change keep their
 /// Markdown-style snapshot in `tests/snapshots/sample-markdown`; every other
-/// page must equal the default output. With `PY_DOC_UPDATE_SNAPSHOTS` set,
+/// page must equal the default output. With `SWIFTDOC_UPDATE_SNAPSHOTS` set,
 /// that folder is rewritten with the pages that differ.
 #[test]
 fn markdown_docstring_style_keeps_the_output_without_sections() {
@@ -396,7 +396,7 @@ fn markdown_docstring_style_keeps_the_output_without_sections() {
         .join("sample-markdown");
     let pages = html_pages(&markdown);
     assert_eq!(pages, html_pages(&default));
-    if std::env::var_os("PY_DOC_UPDATE_SNAPSHOTS").is_some() {
+    if std::env::var_os("SWIFTDOC_UPDATE_SNAPSHOTS").is_some() {
         let _ = fs::remove_dir_all(&snapshots);
         for page in &pages {
             let text = normalize_whitespace(&read(&markdown, page));
@@ -502,7 +502,7 @@ fn the_search_index_is_loaded_on_demand() {
     assert_eq!(script, format!("const searchIndex = {json};"));
     assert!(json.starts_with('{') && json.contains("slugify"));
     // Both are in the manifest, so --clean manages them.
-    let manifest = read(&out, ".py-doc-manifest");
+    let manifest = read(&out, ".swiftdoc-manifest");
     for file in ["search-index.js", "search-index.json"] {
         assert!(manifest.lines().any(|line| line == file), "{file}");
     }
@@ -528,7 +528,7 @@ fn whole_file_template_overrides_still_work() {
     );
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
@@ -670,7 +670,7 @@ fn css_files_are_copied_and_linked_after_the_theme_on_every_page() {
     }
 
     // The copies are in the manifest, so --clean removes them once dropped.
-    let manifest = read(&out, ".py-doc-manifest");
+    let manifest = read(&out, ".swiftdoc-manifest");
     assert!(manifest.lines().any(|l| l == "custom/0-theme.css"));
     assert!(manifest.lines().any(|l| l == "custom/1-theme.css"));
     let output = run(&fixture("sample"), &out, &["--clean"]);
@@ -764,13 +764,13 @@ fn fixture_runs_ignore_the_repository_pyproject() {
 
 #[test]
 fn version_flag_reports_the_tool_version() {
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--version")
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        format!("py-doc {}", env!("CARGO_PKG_VERSION"))
+        format!("swiftdoc {}", env!("CARGO_PKG_VERSION"))
     );
 }

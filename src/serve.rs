@@ -1,4 +1,4 @@
-//! `py-doc serve`: builds the site, serves `--out` on 127.0.0.1 and
+//! `swiftdoc serve`: builds the site, serves `--out` on 127.0.0.1 and
 //! rebuilds (incrementally, through the build cache) whenever the sources,
 //! the `--templates` folder or a `--css` file change, then reloads every
 //! open page.
@@ -23,7 +23,7 @@ use crate::OutputFormat;
 use crate::config::Config;
 
 /// The long-polling endpoint of the reload script.
-pub const RELOAD_PATH: &str = "/__py-doc/reload";
+pub const RELOAD_PATH: &str = "/__swiftdoc/reload";
 
 /// How long a reload poll waits for a new build before answering anyway.
 const POLL_WAIT: Duration = Duration::from_secs(25);
@@ -38,7 +38,7 @@ const PORT_ATTEMPTS: u16 = 10;
 /// Added before `</body>` of every served HTML page. It asks for the build
 /// number, then waits on the server for it to change and reloads the page.
 /// When the server is gone it retries every second.
-const RELOAD_SCRIPT: &str = r#"<script data-py-doc-reload>(function(){var b=null;function p(){fetch("/__py-doc/reload"+(b===null?"":"?since="+b),{cache:"no-store"}).then(function(r){if(!r.ok)throw r;return r.text()}).then(function(t){if(b!==null&&t!==b){location.reload();return}b=t;p()}).catch(function(){setTimeout(p,1000)})}p()})();</script>"#;
+const RELOAD_SCRIPT: &str = r#"<script data-swiftdoc-reload>(function(){var b=null;function p(){fetch("/__swiftdoc/reload"+(b===null?"":"?since="+b),{cache:"no-store"}).then(function(r){if(!r.ok)throw r;return r.text()}).then(function(t){if(b!==null&&t!==b){location.reload();return}b=t;p()}).catch(function(){setTimeout(p,1000)})}p()})();</script>"#;
 
 /// The number of the last build, which pages wait on to change.
 #[derive(Default)]
@@ -76,7 +76,7 @@ enum Message {
 /// Runs until Ctrl+C.
 pub fn run(config: Config, port: u16, open: bool) -> Result<()> {
     let Some(out) = config.out.clone() else {
-        bail!("serve needs --out (or `out` in [tool.py-doc]): the folder to build and serve");
+        bail!("serve needs --out (or `out` in [tool.swiftdoc]): the folder to build and serve");
     };
     if !config.formats.contains(&OutputFormat::Html) {
         bail!("serve needs the `html` format");
@@ -459,7 +459,7 @@ mod tests {
     fn the_script_goes_before_the_body_end() {
         let page = inject_reload(b"<html><body><p>x</p></BODY></html>".to_vec());
         let page = String::from_utf8(page).unwrap();
-        assert!(page.starts_with("<html><body><p>x</p><script data-py-doc-reload>"));
+        assert!(page.starts_with("<html><body><p>x</p><script data-swiftdoc-reload>"));
         assert!(page.ends_with("</script></BODY></html>"));
         let bare = String::from_utf8(inject_reload(b"<p>x</p>".to_vec())).unwrap();
         assert!(bare.starts_with("<p>x</p><script"));
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn paths_stay_inside_the_site() {
-        let dir = std::env::temp_dir().join(format!("py-doc-serve-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("swiftdoc-serve-{}", std::process::id()));
         fs::create_dir_all(dir.join("pkg")).unwrap();
         fs::write(dir.join("index.html"), "i").unwrap();
         fs::write(dir.join("pkg").join("a b.html"), "a").unwrap();

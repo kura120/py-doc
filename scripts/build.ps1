@@ -12,10 +12,10 @@ $ErrorActionPreference = "Stop"
 Write-Host "Building optimized release binary (opt-level=3, LTO, single codegen unit)..."
 if ($Target) {
     cargo build --release --locked --target $Target
-    $BinPath = "target\$Target\release\py-doc.exe"
+    $BinPath = "target\$Target\release\swiftdoc.exe"
 } else {
     cargo build --release --locked
-    $BinPath = "target\release\py-doc.exe"
+    $BinPath = "target\release\swiftdoc.exe"
 }
 
 if ($LASTEXITCODE -ne 0 -or !(Test-Path $BinPath)) {

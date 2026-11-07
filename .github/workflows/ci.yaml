@@ -58,10 +58,10 @@ jobs:
         # An empty --config keeps the repository's own pyproject.toml out.
         run: |
           cargo build --locked
-          ./target/debug/py-doc --config /dev/null --src tests/fixtures/sample --out "$RUNNER_TEMP/sample-site" --name demo
-          ./target/debug/py-doc --config /dev/null --src tests/fixtures/variables --out "$RUNNER_TEMP/variables-site" --name variables
-          ./target/debug/py-doc --config /dev/null --src tests/fixtures/nested --out "$RUNNER_TEMP/nested-site" --name nested
-          ./target/debug/py-doc --config /dev/null --src tests/fixtures/docstrings --out "$RUNNER_TEMP/docstrings-site" --name docstrings
+          ./target/debug/swiftdoc --config /dev/null --src tests/fixtures/sample --out "$RUNNER_TEMP/sample-site" --name demo
+          ./target/debug/swiftdoc --config /dev/null --src tests/fixtures/variables --out "$RUNNER_TEMP/variables-site" --name variables
+          ./target/debug/swiftdoc --config /dev/null --src tests/fixtures/nested --out "$RUNNER_TEMP/nested-site" --name nested
+          ./target/debug/swiftdoc --config /dev/null --src tests/fixtures/docstrings --out "$RUNNER_TEMP/docstrings-site" --name docstrings
       - name: Install axe-core and Playwright
         working-directory: tests/a11y
         run: |

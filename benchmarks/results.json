@@ -5,7 +5,7 @@
       "name": "requests 2.34.2",
       "detail": "19 files, 6,385 lines of Python",
       "times": {
-        "py-doc": 0.018562809,
+        "swiftdoc": 0.018562809,
         "pydoc": 0.232130459,
         "pdoc": 1.12172365,
         "pdoc3": 0.637418253,
@@ -16,7 +16,7 @@
       "name": "rich 15.0.0",
       "detail": "100 files, 38,515 lines of Python",
       "times": {
-        "py-doc": 0.0419362925,
+        "swiftdoc": 0.0419362925,
         "pydoc": 0.44628453100000004,
         "pdoc": 2.836929367,
         "pdoc3": 1.509497606,
@@ -27,7 +27,7 @@
       "name": "SQLAlchemy 2.1.6",
       "detail": "258 files, 253,528 lines of Python",
       "times": {
-        "py-doc": 0.2411564045,
+        "swiftdoc": 0.2411564045,
         "pydoc": 12.169623926,
         "pdoc": 31.26190809,
         "pdoc3": 12.017830624,

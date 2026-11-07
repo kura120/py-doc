@@ -2,8 +2,8 @@
 set -e
 
 # Configuration
-REPO="kura120/py-doc"
-BINARY_NAME="py-doc"
+REPO="kura120/swiftdoc"
+BINARY_NAME="swiftdoc"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and Architecture

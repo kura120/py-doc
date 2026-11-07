@@ -11,7 +11,7 @@ RESULTS = json.loads((HERE / "results.json").read_text())
 OUT = HERE / "benchmark.svg"
 
 TOOLS = [
-    ("py-doc", "py-doc"),
+    ("swiftdoc", "swiftdoc"),
     ("pydoc", "pydoc (stdlib)"),
     ("pdoc3", "pdoc3"),
     ("pdoc", "pdoc"),
@@ -46,7 +46,7 @@ for corpus in RESULTS["corpora"]:
     times = corpus["times"]
     slowest = max(times[k] for k, _ in TOOLS)
     plot_w = WIDTH - LEFT - LABEL_W - VALUE_W
-    ours = times["py-doc"]
+    ours = times["swiftdoc"]
     parts.append(
         f'<text class="h" x="{LEFT}" y="{y}">{esc(corpus["name"])}</text>'
         f'<text class="s" x="{LEFT}" y="{y + 17}">{esc(corpus["detail"])}</text>'
@@ -56,9 +56,9 @@ for corpus in RESULTS["corpora"]:
         t = times[key]
         w = max(3.0, plot_w * t / slowest)
         x0 = LEFT + LABEL_W
-        cls = "acc" if key == "py-doc" else "mut"
+        cls = "acc" if key == "swiftdoc" else "mut"
         parts.append(
-            f'<text class="{"l b" if key == "py-doc" else "l"}" x="{x0 - 10}" '
+            f'<text class="{"l b" if key == "swiftdoc" else "l"}" x="{x0 - 10}" '
             f'y="{row_y + BAR_H / 2 + 4.5}" text-anchor="end">{esc(label)}</text>'
         )
         # Rounded data-end, square at the baseline.
@@ -69,10 +69,10 @@ for corpus in RESULTS["corpora"]:
             f'h-{w - r:.2f} z"><title>{esc(label)}: {fmt_time(t)}</title></path>'
         )
         value = fmt_time(t)
-        if key != "py-doc":
+        if key != "swiftdoc":
             value += f"  ·  {t / ours:,.0f}× slower"
         parts.append(
-            f'<text class="{"v b" if key == "py-doc" else "v"}" x="{x0 + w + 8:.2f}" '
+            f'<text class="{"v b" if key == "swiftdoc" else "v"}" x="{x0 + w + 8:.2f}" '
             f'y="{row_y + BAR_H / 2 + 4.5}">{esc(value)}</text>'
         )
         row_y += BAR_H + ROW_GAP
@@ -91,7 +91,7 @@ foot = (
 )
 
 svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{height}" viewBox="0 0 {WIDTH} {height}" role="img" aria-labelledby="t d">
-<title id="t">Time to generate HTML API docs: py-doc vs pydoc, pdoc3, pdoc and Sphinx</title>
+<title id="t">Time to generate HTML API docs: swiftdoc vs pydoc, pdoc3, pdoc and Sphinx</title>
 <desc id="d">{esc("; ".join(c["name"] + ": " + ", ".join(f"{lbl} {fmt_time(c['times'][k])}" for k, lbl in TOOLS) for c in RESULTS["corpora"]))}</desc>
 <style>
   .t {{ font: 600 17px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #0b0b0b; }}

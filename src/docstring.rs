@@ -1040,7 +1040,7 @@ fn rest(lines: &[&str], code: &[bool], sections: &mut DocSections) -> String {
 // ---------------------------------------------------------------------------
 // Signature merge
 
-/// One parameter of a signature as py-doc prints it: `name`, `name=1`,
+/// One parameter of a signature as swiftdoc prints it: `name`, `name=1`,
 /// `name: int`, `name: int = 1`, `*args`, `**kwargs: Any`.
 pub(crate) fn parse_parameter(param: &str) -> Option<(&str, Option<&str>, Option<&str>)> {
     let stars = param.len() - param.trim_start_matches('*').len();

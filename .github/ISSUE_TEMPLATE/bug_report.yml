@@ -1,5 +1,5 @@
 name: Bug report
-description: Something is wrong with py-doc or the site it generates.
+description: Something is wrong with swiftdoc or the site it generates.
 labels: ["bug"]
 body:
   - type: markdown
@@ -24,7 +24,7 @@ body:
       label: How to reproduce
       description: The command you ran and a minimal Python file (or a public repository) that triggers the problem.
       placeholder: |
-        py-doc --src ./src --out ./docs --name myproject
+        swiftdoc --src ./src --out ./docs --name myproject
 
         ```python
         class Engine:
@@ -51,9 +51,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: py-doc version
-      description: Output of `py-doc --version`.
-      placeholder: py-doc 0.6.0
+      label: swiftdoc version
+      description: Output of `swiftdoc --version`.
+      placeholder: swiftdoc 0.6.0
     validations:
       required: true
 
@@ -79,5 +79,5 @@ body:
     id: output
     attributes:
       label: Terminal output
-      description: Any errors or warnings py-doc printed. This is shown as code, so no backticks are needed.
+      description: Any errors or warnings swiftdoc printed. This is shown as code, so no backticks are needed.
       render: text

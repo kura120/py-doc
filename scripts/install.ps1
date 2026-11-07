@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 # Configuration
-$Repo = "kura120/py-doc"
-$BinaryName = "py-doc"
+$Repo = "kura120/swiftdoc"
+$BinaryName = "swiftdoc"
 $InstallDir = "$env:USERPROFILE\.cargo\bin" # Use cargo bin path since it's commonly in user PATH
 
 # Ensure target directory exists
@@ -22,7 +22,7 @@ $AssetName = "${BinaryName}-x86_64-pc-windows-msvc.zip"
 $Url = "https://github.com/$Repo/releases/download/$Tag/$AssetName"
 
 # Work in a private temporary directory, removed on any exit.
-$WorkDir = Join-Path $env:TEMP ("py-doc-install-" + [guid]::NewGuid().ToString("N"))
+$WorkDir = Join-Path $env:TEMP ("swiftdoc-install-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $WorkDir | Out-Null
 $ZipPath = Join-Path $WorkDir $AssetName
 

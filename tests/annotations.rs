@@ -20,7 +20,7 @@ fn generate(test: &str, extra: &[&str]) -> PathBuf {
     fs::create_dir_all(&base).unwrap();
     let config = base.join("empty.toml");
     fs::write(&config, "").unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(&config)
         .arg("--src")
@@ -30,10 +30,10 @@ fn generate(test: &str, extra: &[&str]) -> PathBuf {
         .args(["--name", "annotations", "--strict"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc");
+        .expect("failed to run swiftdoc");
     let log = String::from_utf8_lossy(&output.stdout).to_string()
         + &String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "py-doc failed:\n{log}");
+    assert!(output.status.success(), "swiftdoc failed:\n{log}");
     assert!(!log.contains('⚠'), "unexpected warning:\n{log}");
     out
 }

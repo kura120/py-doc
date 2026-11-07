@@ -33,13 +33,13 @@ fn scratch(test: &str) -> PathBuf {
     dir
 }
 
-/// Runs py-doc on the fixture with an empty --config, so the repository's
+/// Runs swiftdoc on the fixture with an empty --config, so the repository's
 /// own pyproject.toml is never read.
 fn run(test: &str, args: &[&str]) -> Output {
     let dir = scratch(test);
     let config = dir.join("empty.toml");
     fs::write(&config, "").unwrap();
-    Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .current_dir(&dir)
         .arg("--config")
         .arg(&config)
@@ -47,7 +47,7 @@ fn run(test: &str, args: &[&str]) -> Output {
         .arg(fixture())
         .args(args)
         .output()
-        .expect("failed to run py-doc")
+        .expect("failed to run swiftdoc")
 }
 
 fn stdout(output: &Output) -> String {
@@ -61,7 +61,7 @@ fn stderr(output: &Output) -> String {
 fn assert_ok(output: &Output) {
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         stderr(output)
     );
 }
@@ -208,23 +208,23 @@ fn coverage_without_out_writes_no_site_even_if_the_config_sets_out() {
     .unwrap();
     fs::write(
         repo.join("pyproject.toml"),
-        "[tool.py-doc]\nsrc = \"pkg\"\nout = \"site\"\nname = \"demo\"\n",
+        "[tool.swiftdoc]\nsrc = \"pkg\"\nout = \"site\"\nname = \"demo\"\n",
     )
     .unwrap();
-    let py_doc = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let swiftdoc = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
             .current_dir(&repo)
             .args(args)
             .output()
-            .expect("failed to run py-doc")
+            .expect("failed to run swiftdoc")
     };
 
-    let output = py_doc(&["--coverage"]);
+    let output = swiftdoc(&["--coverage"]);
     assert_ok(&output);
     assert!(stdout(&output).contains("1/2"), "{}", stdout(&output));
     assert!(!repo.join("site").exists(), "check-only run wrote a site");
 
-    let output = py_doc(&["--coverage", "--out", "cli-site"]);
+    let output = swiftdoc(&["--coverage", "--out", "cli-site"]);
     assert_ok(&output);
     assert!(repo.join("cli-site/index.html").is_file());
     assert!(!repo.join("site").exists());
@@ -233,10 +233,10 @@ fn coverage_without_out_writes_no_site_even_if_the_config_sets_out() {
     // `coverage = true` in the file adds the report to a normal build.
     fs::write(
         repo.join("pyproject.toml"),
-        "[tool.py-doc]\nsrc = \"pkg\"\nout = \"site\"\nname = \"demo\"\ncoverage = true\n",
+        "[tool.swiftdoc]\nsrc = \"pkg\"\nout = \"site\"\nname = \"demo\"\ncoverage = true\n",
     )
     .unwrap();
-    let output = py_doc(&[]);
+    let output = swiftdoc(&[]);
     assert_ok(&output);
     assert!(repo.join("site/index.html").is_file());
     assert!(stdout(&output).contains("Total"));

@@ -2,7 +2,7 @@ name: Action self-test
 
 # Exercises action.yml on each runner OS. "release" downloads the latest
 # published binary (the download, checksum and extract path); "source" builds
-# this commit with cargo, so changes to py-doc itself are covered too.
+# this commit with cargo, so changes to swiftdoc itself are covered too.
 
 on:
   push:
@@ -33,9 +33,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        install: [release, source]
-        # Linux arm64 binaries ship from the release after v0.5.1; until that
-        # is the latest release, only a source build can run there.
+        # "release" joins once v0.6.0, the first swiftdoc release, is published.
+        install: [source]
         include:
           - os: ubuntu-24.04-arm
             install: source
@@ -47,7 +46,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run the action
-        id: py-doc
+        id: swiftdoc
         uses: ./
         with:
           install: ${{ matrix.install }}
@@ -59,8 +58,8 @@ jobs:
       - name: Check the output
         shell: bash
         env:
-          OUT: ${{ steps.py-doc.outputs.out }}
-          VERSION: ${{ steps.py-doc.outputs.version }}
+          OUT: ${{ steps.swiftdoc.outputs.out }}
+          VERSION: ${{ steps.swiftdoc.outputs.version }}
         run: |
           set -x
           test "$OUT" = "_site-test"
@@ -71,16 +70,18 @@ jobs:
           grep -q "1.2.3 beta" _site-test/index.html
 
   pinned:
+    # Runs once v0.6.0, the first swiftdoc release, is published.
+    if: false
     name: Action (ubuntu-latest, pinned version)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Run the action
-        id: py-doc
+        id: swiftdoc
         uses: ./
         with:
-          version: "0.5.1"
+          version: "0.6.0"
           src: tests/fixtures/sample
           out: _site-test
           name: sample
@@ -88,10 +89,10 @@ jobs:
       - name: Check the output
         shell: bash
         env:
-          VERSION: ${{ steps.py-doc.outputs.version }}
+          VERSION: ${{ steps.swiftdoc.outputs.version }}
         run: |
           set -x
-          test "$VERSION" = "0.5.1"
+          test "$VERSION" = "0.6.0"
           test -f _site-test/index.html
 
   pre-commit:
@@ -100,9 +101,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install py-doc
+      # Builds from source until v0.6.0, the first swiftdoc release, is published.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install swiftdoc
         uses: ./
         with:
+          install: source
           src: tests/fixtures/sample
           out: _site-test
 
@@ -123,11 +128,11 @@ jobs:
           printf '"""Package.\n\n#pd-doc-link: pkg.engine.Engine\n"""\n' > pkg/__init__.py
           printf '"""Engine module."""\n\n\nclass Engine:\n    """Runs things."""\n' > pkg/engine.py
           git add -A
-          pre-commit try-repo "$hook_repo" py-doc --all-files
+          pre-commit try-repo "$hook_repo" swiftdoc --all-files
           # A broken doc-link must fail the hook.
           sed -i 's/pkg.engine.Engine/pkg.engine.Missing/' pkg/__init__.py
           git add -A
-          if pre-commit try-repo "$hook_repo" py-doc --all-files; then
+          if pre-commit try-repo "$hook_repo" swiftdoc --all-files; then
             echo "hook passed on a broken doc-link"
             exit 1
           fi

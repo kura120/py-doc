@@ -1,12 +1,12 @@
-//! Settings from the command line, `[tool.py-doc]` and `[project]` in
+//! Settings from the command line, `[tool.swiftdoc]` and `[project]` in
 //! pyproject.toml, merged into one [`Config`].
 //!
-//! Precedence, highest first: CLI flag > `[tool.py-doc]` > `[project]` >
+//! Precedence, highest first: CLI flag > `[tool.swiftdoc]` > `[project]` >
 //! built-in default.
 //!
 //! Adding an option:
 //! 1. add an `Option<T>` field to `Args` (in main.rs). That gives it both
-//!    its `--flag` and its `[tool.py-doc]` key, with the same name;
+//!    its `--flag` and its `[tool.swiftdoc]` key, with the same name;
 //! 2. add the resolved field to [`Config`] and one line to
 //!    [`Config::resolve`], which is where its default lives;
 //! 3. if it is a path, add it to [`rebase_paths`] so a config-file value is
@@ -35,7 +35,7 @@ pub struct Config {
     pub src: String,
     /// Where to write the site. None in check-only coverage runs: `--coverage`
     /// or `--fail-under` on the command line without `--out` there (an `out`
-    /// in `[tool.py-doc]` does not count), so CI can check coverage without
+    /// in `[tool.swiftdoc]` does not count), so CI can check coverage without
     /// building the site.
     pub out: Option<String>,
     pub name: String,
@@ -63,7 +63,7 @@ pub struct Config {
     pub formats: Vec<OutputFormat>,
 }
 
-/// Resolves the coverage options of two layers (CLI over `[tool.py-doc]`).
+/// Resolves the coverage options of two layers (CLI over `[tool.swiftdoc]`).
 /// `fail-under` turns the report on within its own layer, so `--fail-under`
 /// works alone, while an explicit `--coverage=false` still turns it off.
 pub fn resolve_coverage(cli: &Args, tool: &Args) -> Result<Option<CoverageSettings>> {
@@ -90,9 +90,9 @@ pub fn resolve_coverage(cli: &Args, tool: &Args) -> Result<Option<CoverageSettin
 #[derive(Debug, Default)]
 pub struct PyProject {
     pub path: PathBuf,
-    /// `[tool.py-doc]`, with paths already made relative to the file's directory.
+    /// `[tool.swiftdoc]`, with paths already made relative to the file's directory.
     pub tool: Option<Args>,
-    /// Keys in `[tool.py-doc]` that are not options.
+    /// Keys in `[tool.swiftdoc]` that are not options.
     pub unknown_keys: Vec<String>,
     pub project_name: Option<String>,
     pub project_version: Option<String>,
@@ -157,11 +157,11 @@ impl PyProject {
         let tool = doc
             .get("tool")
             .and_then(|t| t.as_table())
-            .and_then(|t| t.get("py-doc"));
+            .and_then(|t| t.get("swiftdoc"));
         if let Some(tool) = tool {
             let table = tool
                 .as_table()
-                .with_context(|| format!("[tool.py-doc] in {} is not a table", path.display()))?;
+                .with_context(|| format!("[tool.swiftdoc] in {} is not a table", path.display()))?;
             let known = known_keys();
             result.unknown_keys = table
                 .keys()
@@ -171,7 +171,7 @@ impl PyProject {
             let mut args: Args = table
                 .clone()
                 .try_into()
-                .with_context(|| format!("invalid [tool.py-doc] in {}", path.display()))?;
+                .with_context(|| format!("invalid [tool.swiftdoc] in {}", path.display()))?;
             rebase_paths(&mut args, base);
             result.tool = Some(args);
         }
@@ -179,16 +179,16 @@ impl PyProject {
         Ok(result)
     }
 
-    /// Whether `[tool.py-doc]` is present, i.e. the project opted in to
-    /// configuration and `py-doc` alone should build it.
+    /// Whether `[tool.swiftdoc]` is present, i.e. the project opted in to
+    /// configuration and `swiftdoc` alone should build it.
     pub fn is_configured(&self) -> bool {
         self.tool.is_some()
     }
 }
 
-/// The `[tool.py-doc]` keys: every long flag except `--config`.
+/// The `[tool.swiftdoc]` keys: every long flag except `--config`.
 fn known_keys() -> Vec<String> {
-    <Args as clap::Args>::augment_args(clap::Command::new("py-doc"))
+    <Args as clap::Args>::augment_args(clap::Command::new("swiftdoc"))
         .get_arguments()
         .filter_map(|arg| arg.get_long())
         .filter(|long| !matches!(*long, "config" | "help" | "version"))
@@ -242,7 +242,7 @@ pub fn file_layer(file: Option<&PyProject>) -> Args {
 
 fn missing(key: &str) -> anyhow::Error {
     anyhow::anyhow!(
-        "missing --{key}: pass it on the command line or set `{key}` in [tool.py-doc] of pyproject.toml"
+        "missing --{key}: pass it on the command line or set `{key}` in [tool.swiftdoc] of pyproject.toml"
     )
 }
 
@@ -262,7 +262,7 @@ impl Config {
     }
 
     /// Merges the CLI over the config file and fills in defaults.
-    /// Prints a warning for unknown `[tool.py-doc]` keys (an error when
+    /// Prints a warning for unknown `[tool.swiftdoc]` keys (an error when
     /// strict) and a hint when the version falls back because it is dynamic.
     pub fn resolve(cli: Args, file: Option<&PyProject>) -> Result<Config> {
         let tool = file.and_then(|f| f.tool.clone()).unwrap_or_default();
@@ -285,7 +285,7 @@ impl Config {
                 .collect::<Vec<_>>()
                 .join(", ");
             let message = format!(
-                "unknown key(s) {keys} in [tool.py-doc] of {}",
+                "unknown key(s) {keys} in [tool.swiftdoc] of {}",
                 file.path.display()
             );
             if strict {
@@ -304,7 +304,7 @@ impl Config {
                 if version_dynamic {
                     eprintln!(
                         "  hint: the version in pyproject.toml is dynamic, so the docs show {DEFAULT_VERSION}. \
-                         Pass --doc-version or set `doc-version` in [tool.py-doc]."
+                         Pass --doc-version or set `doc-version` in [tool.swiftdoc]."
                     );
                 }
                 DEFAULT_VERSION.to_string()
@@ -378,7 +378,7 @@ mod tests {
     use clap::Parser;
 
     fn cli(args: &[&str]) -> Args {
-        crate::Cli::try_parse_from(std::iter::once("py-doc").chain(args.iter().copied()))
+        crate::Cli::try_parse_from(std::iter::once("swiftdoc").chain(args.iter().copied()))
             .unwrap()
             .args
     }
@@ -396,7 +396,7 @@ mod tests {
 name = "proj-name"
 version = "2.0.0"
 
-[tool.py-doc]
+[tool.swiftdoc]
 src = "tool-src"
 out = "tool-out"
 name = "tool-name"
@@ -584,14 +584,15 @@ docstring-style = "numpy"
 
     #[test]
     fn unknown_keys_warn_or_fail_under_strict() {
-        let file = pyproject("[tool.py-doc]\nsrc = \"a\"\nout = \"b\"\nname = \"c\"\nbogus = 1\n");
+        let file =
+            pyproject("[tool.swiftdoc]\nsrc = \"a\"\nout = \"b\"\nname = \"c\"\nbogus = 1\n");
         assert_eq!(file.unknown_keys, ["bogus"]);
         assert!(Config::resolve(cli(&[]), Some(&file)).is_ok());
         let err = Config::resolve(cli(&["--strict"]), Some(&file)).unwrap_err();
         assert!(err.to_string().contains("`bogus`"), "{err}");
 
         let file = pyproject(
-            "[tool.py-doc]\nsrc = \"a\"\nout = \"b\"\nname = \"c\"\nstrict = true\nbogus = 1\n",
+            "[tool.swiftdoc]\nsrc = \"a\"\nout = \"b\"\nname = \"c\"\nstrict = true\nbogus = 1\n",
         );
         assert!(Config::resolve(cli(&[]), Some(&file)).is_err());
     }
@@ -622,7 +623,7 @@ docstring-style = "numpy"
             assert!(keys.iter().any(|k| k == key), "{key}");
         }
         assert!(!keys.iter().any(|k| k == "config"));
-        // Subcommands (`py-doc theme eject`, `py-doc serve`) are not options.
+        // Subcommands (`swiftdoc theme eject`, `swiftdoc serve`) are not options.
         for key in ["command", "eject", "dir", "force", "serve", "port", "open"] {
             assert!(!keys.iter().any(|k| k == key), "{key} must not be a key");
         }
@@ -630,7 +631,7 @@ docstring-style = "numpy"
 
     #[test]
     fn subcommand_fields_are_not_config_keys() {
-        let file = pyproject("[tool.py-doc]\ncommand = \"theme\"\neject = true\n");
+        let file = pyproject("[tool.swiftdoc]\ncommand = \"theme\"\neject = true\n");
         assert_eq!(file.unknown_keys, ["command", "eject"]);
         assert_eq!(file.tool.unwrap(), Args::default());
     }
@@ -680,11 +681,11 @@ docstring-style = "numpy"
 
     #[test]
     fn bad_values_are_errors() {
-        let text = "[tool.py-doc]\nlayout = \"sideways\"\n";
+        let text = "[tool.swiftdoc]\nlayout = \"sideways\"\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
-        let text = "[tool.py-doc]\nexclude = \"not-a-list\"\n";
+        let text = "[tool.swiftdoc]\nexclude = \"not-a-list\"\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
-        let text = "[tool.py-doc]\ncoverage-format = \"xml\"\n";
+        let text = "[tool.swiftdoc]\ncoverage-format = \"xml\"\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
     }
 
@@ -692,7 +693,7 @@ docstring-style = "numpy"
     fn coverage_on_the_command_line_without_out_skips_the_site() {
         // A config-file `out` is for normal builds: a command-line coverage
         // check without --out writes no site, and needs no name.
-        let file = pyproject("[tool.py-doc]\nsrc = \"a\"\nout = \"site\"\n");
+        let file = pyproject("[tool.swiftdoc]\nsrc = \"a\"\nout = \"site\"\n");
         let config = Config::resolve(cli(&["--coverage"]), Some(&file)).unwrap();
         assert_eq!(config.out, None);
         assert_eq!(
@@ -720,7 +721,7 @@ docstring-style = "numpy"
     #[test]
     fn coverage_in_the_config_file_adds_to_a_normal_build() {
         let file = pyproject(
-            "[tool.py-doc]\nsrc = \"a\"\nout = \"site\"\nname = \"n\"\nfail-under = 80\n",
+            "[tool.swiftdoc]\nsrc = \"a\"\nout = \"site\"\nname = \"n\"\nfail-under = 80\n",
         );
         let config = Config::resolve(cli(&[]), Some(&file)).unwrap();
         assert_eq!(config.out, Some(in_proj("site")));
@@ -757,18 +758,18 @@ docstring-style = "numpy"
             [OutputFormat::Json]
         );
 
-        let file = pyproject("[tool.py-doc]\nformat = [\"html\", \"json\"]\n");
+        let file = pyproject("[tool.swiftdoc]\nformat = [\"html\", \"json\"]\n");
         assert_eq!(
             Config::resolve(cli(&base), Some(&file)).unwrap().formats,
             [OutputFormat::Html, OutputFormat::Json]
         );
 
-        let file = pyproject("[tool.py-doc]\nformat = [\"markdown\", \"html\", \"markdown\"]\n");
+        let file = pyproject("[tool.swiftdoc]\nformat = [\"markdown\", \"html\", \"markdown\"]\n");
         assert_eq!(
             Config::resolve(cli(&base), Some(&file)).unwrap().formats,
             [OutputFormat::Html, OutputFormat::Markdown]
         );
-        let text = "[tool.py-doc]\nformat = [\"pdf\"]\n";
+        let text = "[tool.swiftdoc]\nformat = [\"pdf\"]\n";
         assert!(PyProject::parse(text, Path::new("p"), Path::new(".")).is_err());
     }
 }

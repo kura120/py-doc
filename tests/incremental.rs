@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::SystemTime;
 
-const CACHE: &str = ".py-doc-cache";
+const CACHE: &str = ".swiftdoc-cache";
 
 struct Project {
     root: PathBuf,
@@ -95,7 +95,7 @@ def helper(x):
     fn run(&self, out: &Path, extra: &[&str]) -> Output {
         // An empty --config: the pyproject.toml above the target folder
         // must not leak into these builds.
-        Command::new(env!("CARGO_BIN_EXE_py-doc"))
+        Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
             .arg("--config")
             .arg(self.root.join("empty-pyproject.toml"))
             .arg("--src")
@@ -105,7 +105,7 @@ def helper(x):
             .args(["--name", "demo", "--clean"])
             .args(extra)
             .output()
-            .expect("failed to run py-doc")
+            .expect("failed to run swiftdoc")
     }
 
     /// An incremental build into `self.out`.
@@ -113,7 +113,7 @@ def helper(x):
         let output = self.run(&self.out, extra);
         assert!(
             output.status.success(),
-            "py-doc failed:\n{}",
+            "swiftdoc failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
         output
@@ -522,7 +522,7 @@ fn coverage_runs_do_not_use_the_cache() {
     let modified = fs::metadata(&cache).unwrap().modified().unwrap();
 
     // Check-only: no --out, so no cache is read or written.
-    let output = Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(project.root.join("empty-pyproject.toml"))
         .arg("--src")

@@ -21,7 +21,7 @@ fn out_dir(test: &str) -> PathBuf {
 
 /// An empty pyproject.toml passed as `--config`, so runs against the
 /// fixtures never pick up the repository's own pyproject.toml (the PyPI
-/// packaging metadata), which py-doc would otherwise find by walking up
+/// packaging metadata), which swiftdoc would otherwise find by walking up
 /// from `--src`.
 fn empty_config() -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("empty-pyproject.toml");
@@ -32,7 +32,7 @@ fn empty_config() -> PathBuf {
 }
 
 fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_py-doc"))
+    Command::new(env!("CARGO_BIN_EXE_swiftdoc"))
         .arg("--config")
         .arg(empty_config())
         .arg("--src")
@@ -42,14 +42,14 @@ fn run(src: &Path, out: &Path, extra: &[&str]) -> Output {
         .args(["--name", "demo"])
         .args(extra)
         .output()
-        .expect("failed to run py-doc")
+        .expect("failed to run swiftdoc")
 }
 
 fn generate(fixture_name: &str, out: &Path, extra: &[&str]) -> String {
     let output = run(&fixture(fixture_name), out, extra);
     assert!(
         output.status.success(),
-        "py-doc failed:\n{}",
+        "swiftdoc failed:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stderr).to_string()
@@ -286,7 +286,7 @@ fn clean_ignores_manifest_entries_that_point_outside_the_site() {
     fs::write(&outside, "keep me").unwrap();
 
     generate("sample", &out, &[]);
-    let manifest = out.join(".py-doc-manifest");
+    let manifest = out.join(".swiftdoc-manifest");
     let mut body = fs::read_to_string(&manifest).unwrap();
     body.push_str("../clean_escape_outside.txt\n");
     fs::write(&manifest, body).unwrap();

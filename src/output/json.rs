@@ -24,7 +24,7 @@ pub const FILE_NAME: &str = "api.json";
 #[derive(Serialize)]
 struct Api<'a> {
     schema_version: u32,
-    py_doc_version: &'a str,
+    swiftdoc_version: &'a str,
     package: Package<'a>,
     include_private: bool,
     modules: Vec<Module<'a>>,
@@ -337,7 +337,7 @@ pub fn to_string(package: &PythonPackage, version: &str, include_private: bool) 
     });
     let api = Api {
         schema_version: SCHEMA_VERSION,
-        py_doc_version: env!("CARGO_PKG_VERSION"),
+        swiftdoc_version: env!("CARGO_PKG_VERSION"),
         package: Package {
             name: &package.name,
             version,

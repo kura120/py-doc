@@ -1,12 +1,12 @@
-# py-doc
+# swiftdoc
 
 A lightweight and fast documentation tool for Python codebases, powered by Rust.
 
-py-doc reads your `.py` files, never imports or runs them, and writes a static site: one page per module, a searchable index, and three switchable layouts. The theme is built into the binary, so generation works offline.
+swiftdoc reads your `.py` files, never imports or runs them, and writes a static site: one page per module, a searchable index, and three switchable layouts. The theme is built into the binary, so generation works offline.
 
-<p align="center"><img src="https://raw.githubusercontent.com/kura120/py-doc/master/benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 19 ms, pydoc 232 ms, pdoc3 637 ms, pdoc 1.12 s, Sphinx 3.33 s. rich: py-doc 42 ms, pydoc 446 ms, pdoc3 1.51 s, pdoc 2.84 s, Sphinx 7.82 s. SQLAlchemy: py-doc 241 ms, pdoc3 12.0 s, pydoc 12.2 s, pdoc 31.3 s, Sphinx 48.2 s." width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/kura120/swiftdoc/master/benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: swiftdoc 19 ms, pydoc 232 ms, pdoc3 637 ms, pdoc 1.12 s, Sphinx 3.33 s. rich: swiftdoc 42 ms, pydoc 446 ms, pdoc3 1.51 s, pdoc 2.84 s, Sphinx 7.82 s. SQLAlchemy: swiftdoc 241 ms, pdoc3 12.0 s, pydoc 12.2 s, pdoc 31.3 s, Sphinx 48.2 s." width="820"></p>
 
-py-doc documents all 253,000 lines of SQLAlchemy in about a quarter of a second: 50x faster than `pydoc` and `pdoc3`, 130x faster than `pdoc`, and 200x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
+swiftdoc documents all 253,000 lines of SQLAlchemy in about a quarter of a second: 50x faster than `pydoc` and `pdoc3`, 130x faster than `pdoc`, and 200x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
 
 ## Table of Contents
 
@@ -28,7 +28,7 @@ Choose the installation method that fits your environment.
 
 ### Option A: pip, pipx or uv (Recommended)
 
-From the first release that includes wheels, py-doc is on PyPI as `swiftdoc` (the name `py-doc` was taken). The wheels hold the compiled binary, so no Rust toolchain is needed. The command it installs is still `py-doc`.
+From v0.6.0, swiftdoc is on PyPI. The wheels hold the compiled binary, so no Rust toolchain is needed.
 
 ```bash
 pipx install swiftdoc      # or
@@ -44,30 +44,30 @@ You do not need Cargo or Rust installed for this. The script downloads the pre-c
 
 * **macOS / Linux (Bash/Zsh):** installs to `/usr/local/bin`
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kura120/py-doc/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/kura120/swiftdoc/master/scripts/install.sh | sh
 ```
 
 * **Windows (PowerShell):** installs to `%USERPROFILE%\.cargo\bin`
 ```powershell
-irm https://raw.githubusercontent.com/kura120/py-doc/master/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/kura120/swiftdoc/master/scripts/install.ps1 | iex
 ```
 
 ### Option C: Fast Binary Installer (cargo-binstall)
 
-If you have Cargo but want to avoid compile times, install the pre-compiled binary with `cargo-binstall`. py-doc is not published on crates.io, so point it at the repository:
+If you have Cargo but want to avoid compile times, install the pre-compiled binary with `cargo-binstall`. swiftdoc is not published on crates.io, so point it at the repository:
 
 ```bash
 # Install cargo-binstall if you don't have it
 cargo install cargo-binstall
 
-cargo binstall --git https://github.com/kura120/py-doc py-doc
+cargo binstall --git https://github.com/kura120/swiftdoc swiftdoc
 ```
 
 ### Option D: Build from Source
 
 ```bash
-git clone https://github.com/kura120/py-doc.git
-cd py-doc
+git clone https://github.com/kura120/swiftdoc.git
+cd swiftdoc
 cargo install --path .
 ```
 
@@ -75,17 +75,17 @@ cargo install --path .
 
 ## Usage
 
-Run `py-doc` against a Python project directory or a single `.py` file:
+Run `swiftdoc` against a Python project directory or a single `.py` file:
 
 ```bash
-py-doc --src path/to/project --out ./docs --name project-name
+swiftdoc --src path/to/project --out ./docs --name project-name
 ```
 
-Settings can also live in `pyproject.toml`; see [Configuring with pyproject.toml](#configuring-with-pyprojecttoml). In a configured project, `py-doc` alone builds the site.
+Settings can also live in `pyproject.toml`; see [Configuring with pyproject.toml](#configuring-with-pyprojecttoml). In a configured project, `swiftdoc` alone builds the site.
 
-`py-doc theme eject` copies the bundled theme into a folder for customizing; see [Starting from the bundled theme](#starting-from-the-bundled-theme).
+`swiftdoc theme eject` copies the bundled theme into a folder for customizing; see [Starting from the bundled theme](#starting-from-the-bundled-theme).
 
-Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-doc]` table, to use the interactive setup wizard instead. It is prefilled from `pyproject.toml` when there is one. In the wizard, Tab moves between fields, the arrow keys browse folders in path fields, and Enter on the last row generates the site.
+Run `swiftdoc` with no arguments in a terminal, in a project without a `[tool.swiftdoc]` table, to use the interactive setup wizard instead. It is prefilled from `pyproject.toml` when there is one. In the wizard, Tab moves between fields, the arrow keys browse folders in path fields, and Enter on the last row generates the site.
 
 ### Options
 
@@ -111,7 +111,7 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 | `--fail-under <PERCENT>` | Exit with an error when coverage is below `PERCENT` (0 to 100). Turns on `--coverage`. |
 | `--coverage-format <text\|json>` | Format of the coverage report. Default `text`. |
 | `--config <FILE>` | The `pyproject.toml` to read. By default it is found automatically (see below). |
-| `-V`, `--version` | Print the py-doc version. |
+| `-V`, `--version` | Print the swiftdoc version. |
 | `-h`, `--help` | Print help. |
 
 > **Changed in this release:** `-v` / `--version <VERSION>` used to set the version shown in the docs. That is now `--doc-version`, and `--version` reports the tool's own version.
@@ -120,14 +120,14 @@ Run `py-doc` with no arguments in a terminal, in a project without a `[tool.py-d
 
 ### Configuring with pyproject.toml
 
-Put any option in a `[tool.py-doc]` table, using the flag's name as the key:
+Put any option in a `[tool.swiftdoc]` table, using the flag's name as the key:
 
 ```toml
 [project]
 name = "myproject"
 version = "2.1.0"
 
-[tool.py-doc]
+[tool.swiftdoc]
 src = "src/myproject"
 out = "docs"
 layout = "modern"
@@ -137,12 +137,12 @@ source-url = "https://github.com/me/myproject/blob/main"
 strict = true
 ```
 
-Then run `py-doc` with no arguments. The name and version come from `[project]`; set `name` or `doc-version` in `[tool.py-doc]` to show something else. If the version is `dynamic`, py-doc shows `1.0.0` and prints a hint; pass `--doc-version` to set it.
+Then run `swiftdoc` with no arguments. The name and version come from `[project]`; set `name` or `doc-version` in `[tool.swiftdoc]` to show something else. If the version is `dynamic`, swiftdoc shows `1.0.0` and prints a hint; pass `--doc-version` to set it.
 
 Each setting is taken from the first place that has it:
 
 1. the command-line flag;
-2. `[tool.py-doc]`;
+2. `[tool.swiftdoc]`;
 3. `[project]` (for `name` and `doc-version` only);
 4. the built-in default.
 
@@ -150,9 +150,9 @@ A flag replaces the config value, it does not add to it: `--exclude` or `--css` 
 
 Paths in `pyproject.toml` (`src`, `out`, `templates`, `css`) are relative to the directory that holds it. Paths on the command line are relative to the current directory.
 
-py-doc looks for `pyproject.toml` in `--src` (or the current directory, without `--src`) and then in each parent directory, stopping at the repository root (the first directory with a `.git`). `--config <FILE>` names the file instead.
+swiftdoc looks for `pyproject.toml` in `--src` (or the current directory, without `--src`) and then in each parent directory, stopping at the repository root (the first directory with a `.git`). `--config <FILE>` names the file instead.
 
-An unknown key in `[tool.py-doc]` prints a warning naming it. With `strict`, it is an error.
+An unknown key in `[tool.swiftdoc]` prints a warning naming it. With `strict`, it is an error.
 
 ### What is scanned
 
@@ -180,7 +180,7 @@ Hidden items get no page and do not appear in the navigation or search. A `#pd-d
 `--coverage` counts how much of the public API has a docstring:
 
 ```console
-$ py-doc --src src/myproject --coverage
+$ swiftdoc --src src/myproject --coverage
 Module               Documented    Cover
 ----------------------------------------
 myproject.cli               1/6    16.7%
@@ -198,17 +198,17 @@ Modules, classes, functions and methods are counted. Dunder methods (`__init__`,
 Error: documentation coverage is 57.89%, below --fail-under 80%
 ```
 
-**When is the site written?** `--coverage` or `--fail-under` on the command line without `--out` there only checks: nothing is written, even when `pyproject.toml` sets `out`. Add `--out` on the command line to build the site too. Set in `[tool.py-doc]` instead (`coverage = true`, `fail-under = 80`, `coverage-format = "json"`), coverage is added to every normal build.
+**When is the site written?** `--coverage` or `--fail-under` on the command line without `--out` there only checks: nothing is written, even when `pyproject.toml` sets `out`. Add `--out` on the command line to build the site too. Set in `[tool.swiftdoc]` instead (`coverage = true`, `fail-under = 80`, `coverage-format = "json"`), coverage is added to every normal build.
 
 In CI, the check needs no output folder:
 
 ```yaml
-- uses: kura120/py-doc@master
+- uses: kura120/swiftdoc@master
   with:
     args: --fail-under 80
 ```
 
-The action always passes `--out`, so this also builds the site. To only check, run `py-doc --src src/myproject --fail-under 80` in a step instead. The [pre-commit](#pre-commit) hook takes the same flags, for example `args: [--fail-under=80]`.
+The action always passes `--out`, so this also builds the site. To only check, run `swiftdoc --src src/myproject --fail-under 80` in a step instead. The [pre-commit](#pre-commit) hook takes the same flags, for example `args: [--fail-under=80]`.
 
 `--coverage-format json` prints only JSON on stdout (progress goes to stderr), so it can be piped or saved. Shortened to one module:
 
@@ -243,14 +243,14 @@ The action always passes `--out`, so this also builds the site. To only check, r
 
 ### JSON output
 
-`--format json` writes the parsed API to `<out>/api.json`, for tools that build on py-doc's parser: other site generators, API diffs between releases, linters, search indexes.
+`--format json` writes the parsed API to `<out>/api.json`, for tools that build on swiftdoc's parser: other site generators, API diffs between releases, linters, search indexes.
 
 ```bash
-py-doc --src src/myproject --out build --format json                 # api.json only
-py-doc --src src/myproject --out build --format html --format json   # site and api.json
+swiftdoc --src src/myproject --out build --format json                 # api.json only
+swiftdoc --src src/myproject --out build --format html --format json   # site and api.json
 ```
 
-With only `json`, no HTML is written: `--out` gets `api.json`, the `.py-doc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`.
+With only `json`, no HTML is written: `--out` gets `api.json`, the `.swiftdoc-manifest`, and the images docstrings refer to (under `assets/`). `--clean` removes a site left there by an earlier run. In `pyproject.toml`, use `format = ["html", "json"]`.
 
 This is separate from a [coverage check](#documentation-coverage): `--coverage` without `--out` on the command line writes nothing at all, whatever `format` says.
 
@@ -267,7 +267,7 @@ Shortened (`"...": "..."` marks left-out fields):
 ```json
 {
   "schema_version": 1,
-  "py_doc_version": "0.6.0",
+  "swiftdoc_version": "0.6.0",
   "package": { "name": "myproject", "version": "2.1.0" },
   "include_private": false,
   "modules": [
@@ -301,7 +301,7 @@ The full shape is in [`docs/api.schema.json`](docs/api.schema.json) (JSON Schema
 `--format markdown` writes the API reference as Markdown, to drop into an existing MkDocs or Docusaurus site, a wiki, or an LLM's context:
 
 ```bash
-py-doc --src src/myproject --out docs/api --format markdown
+swiftdoc --src src/myproject --out docs/api --format markdown
 ```
 
 It writes one `.md` page per module at the same path as its HTML page (`core/engine.html` becomes `core/engine.md`, a package's `__init__.py` becomes `index.md` in its folder), plus:
@@ -341,28 +341,28 @@ The output is deterministic: the same input gives byte-identical files. Pages fo
 
 ### Keeping the output folder tidy
 
-Each run records the files it wrote in `.py-doc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything py-doc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
+Each run records the files it wrote in `.swiftdoc-manifest` inside `--out`. `--clean` deletes files listed there that the current run did not produce, and removes folders left empty. Anything swiftdoc did not write, such as a `CNAME` file or hand-written pages, is never touched. An output folder from before this feature has no manifest, so its old files are not removed.
 
 ### Incremental builds
 
-Each run saves a cache in `.py-doc-cache` inside `--out`, next to `.py-doc-manifest`. The next run only parses files whose content changed and only rewrites pages whose content would change. A run with no changes writes no pages.
+Each run saves a cache in `.swiftdoc-cache` inside `--out`, next to `.swiftdoc-manifest`. The next run only parses files whose content changed and only rewrites pages whose content would change. A run with no changes writes no pages.
 
 * Editing a docstring re-renders that module's page and the index.
 * Adding, removing or renaming a module, class or function, or changing a one-line summary, re-renders every page, because every page shows the navigation.
 * A page that links to a renamed symbol with `#pd-doc-link`, or shows an image that changed, is re-rendered too.
-* A new py-doc version, a changed option, or a changed template or `--css` file rebuilds everything. With `--templates`, any change to a module re-renders every page, since a custom template can show any module on any page.
+* A new swiftdoc version, a changed option, or a changed template or `--css` file rebuilds everything. With `--templates`, any change to a module re-renders every page, since a custom template can show any module on any page.
 
-The result is always the same as a full build. `--no-cache` forces one (and saves a fresh cache). A coverage report needs every file parsed, so `--coverage` does not read the cache; a coverage-only run (no `--out`) neither reads nor writes one. `--format json` and `--format markdown` are also full builds, since `api.json` and the Markdown pages are made from the raw docstrings that cached modules no longer keep; with `html` too, the run still saves a cache for the next HTML build. The cache belongs to the output folder: if you commit `--out`, add `.py-doc-cache` to your `.gitignore`.
+The result is always the same as a full build. `--no-cache` forces one (and saves a fresh cache). A coverage report needs every file parsed, so `--coverage` does not read the cache; a coverage-only run (no `--out`) neither reads nor writes one. `--format json` and `--format markdown` are also full builds, since `api.json` and the Markdown pages are made from the raw docstrings that cached modules no longer keep; with `html` too, the run still saves a cache for the next HTML build. The cache belongs to the output folder: if you commit `--out`, add `.swiftdoc-cache` to your `.gitignore`.
 
 ### Live preview
 
 ```bash
-py-doc serve --src ./my_project --out ./docs
+swiftdoc serve --src ./my_project --out ./docs
 ```
 
 `serve` builds the site, serves `--out` at `http://127.0.0.1:8000/` and rebuilds whenever a file under `--src`, the `--templates` folder or a `--css` file changes. Open pages reload once the rebuild is done. Rebuilds are incremental, so a docstring edit usually shows up in well under a second.
 
-* It takes every build option and reads `[tool.py-doc]` like a normal build. Put the options after `serve`: `py-doc serve --src x`, not `py-doc --src x serve`.
+* It takes every build option and reads `[tool.swiftdoc]` like a normal build. Put the options after `serve`: `swiftdoc serve --src x`, not `swiftdoc --src x serve`.
 * `--port N` picks the port (default 8000). If it is taken, the next free one is used and the actual URL is printed. `--port 0` picks any free port. Only 127.0.0.1 is bound, so the site is not reachable from other machines.
 * `--open` opens the site in your browser.
 * The reload script is added to pages as they are served. Files on disk never contain it, so the folder is the same as a normal build's and safe to publish.
@@ -373,13 +373,13 @@ py-doc serve --src ./my_project --out ./docs
 ### Linking to source
 
 ```bash
-py-doc --src . --out docs --name myproject \
+swiftdoc --src . --out docs --name myproject \
   --source-url https://github.com/me/myproject/blob/main
 ```
 
 ### GitHub Actions
 
-The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64 or arm64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs py-doc. From v0.5.1 on, a missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
+The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64 or arm64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs swiftdoc. A missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
 
 This workflow builds the docs and publishes them to GitHub Pages. In the repository settings, set Pages to deploy from GitHub Actions.
 
@@ -400,7 +400,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: kura120/py-doc@master
+      - uses: kura120/swiftdoc@master
         with:
           src: src/myproject
           out: site
@@ -421,30 +421,30 @@ jobs:
 
 | Input | Meaning |
 | --- | --- |
-| `version` | Release to install, such as `0.5.1`. Default `latest`. |
-| `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. Releases up to v0.5.1 have no Linux arm64 binary, so use `source` there for those versions. |
-| `src` | `--src`. Default `.`, or `src` from `[tool.py-doc]` when `pyproject.toml` configures py-doc. |
+| `version` | Release to install, such as `0.6.0`. Default `latest`. |
+| `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. |
+| `src` | `--src`. Default `.`, or `src` from `[tool.swiftdoc]` when `pyproject.toml` configures swiftdoc. |
 | `out` | `--out`. Default `site`. |
-| `name` | `--name`. Defaults to the repository name, or the name from `pyproject.toml` when it configures py-doc. |
+| `name` | `--name`. Defaults to the repository name, or the name from `pyproject.toml` when it configures swiftdoc. |
 | `args` | Any other flags, passed through. Quotes group words. |
 | `upload-pages-artifact` | `true` uploads `out` with `actions/upload-pages-artifact`. Default `false`. |
 
-The action's outputs are `version` (the py-doc version installed) and `out`. Once a release includes the action and the hook, pin its tag instead of `master` here and in the pre-commit config below.
+The action's outputs are `version` (the swiftdoc version installed) and `out`. Once a release includes the action and the hook, pin its tag instead of `master` here and in the pre-commit config below.
 
 ### pre-commit
 
-The hook runs `py-doc --strict` into a temporary directory, so a file that fails to parse, or a doc-link, macro or image that cannot be resolved, fails the commit. It does not install py-doc: install it first (see [Installation](#installation)) so `py-doc` is on `PATH`.
+The hook runs `swiftdoc --strict` into a temporary directory, so a file that fails to parse, or a doc-link, macro or image that cannot be resolved, fails the commit. It does not install swiftdoc: install it first (see [Installation](#installation)) so `swiftdoc` is on `PATH`.
 
 ```yaml
 repos:
-  - repo: https://github.com/kura120/py-doc
+  - repo: https://github.com/kura120/swiftdoc
     rev: master
     hooks:
-      - id: py-doc
+      - id: swiftdoc
         args: [--src, src/myproject, --name, myproject]
 ```
 
-`--src` defaults to `.` and `--name` to the folder name, unless `pyproject.toml` has a `[tool.py-doc]` table, in which case both come from it. Any other args are passed to py-doc.
+`--src` defaults to `.` and `--name` to the folder name, unless `pyproject.toml` has a `[tool.swiftdoc]` table, in which case both come from it. Any other args are passed to swiftdoc.
 
 ---
 
@@ -597,7 +597,7 @@ To change colors or fonts, keep the bundled theme and add a stylesheet with `--c
 ```
 
 ```bash
-py-doc --src ./myproject --out ./docs --css brand.css
+swiftdoc --src ./myproject --out ./docs --css brand.css
 ```
 
 In `pyproject.toml`: `css = ["docs/brand.css"]`.
@@ -647,26 +647,26 @@ The HTML files are [Tera](https://keats.github.io/tera/) templates. The bundled 
 
 ### Starting from the bundled theme
 
-`py-doc theme eject` writes the theme built into your py-doc binary to a folder, as a starting point:
+`swiftdoc theme eject` writes the theme built into your swiftdoc binary to a folder, as a starting point:
 
 ```bash
-py-doc theme eject              # writes ./py-doc-theme
-py-doc theme eject my-theme     # or another folder
-py-doc --src ./myproject --out ./docs --templates py-doc-theme
+swiftdoc theme eject              # writes ./swiftdoc-theme
+swiftdoc theme eject my-theme     # or another folder
+swiftdoc --src ./myproject --out ./docs --templates swiftdoc-theme
 ```
 
 The files are exact copies, so the folder renders the default site until you change it. It also gets a short `README.md` about blocks, `--css` and `extra_css`. If any of the files already exists, nothing is written and the existing ones are listed; `--force` overwrites them.
 
-Delete the files you don't change. They fall back to the bundled theme, so later py-doc releases can still fix them.
+Delete the files you don't change. They fall back to the bundled theme, so later swiftdoc releases can still fix them.
 
 ### Overriding one block
 
-You do not have to copy a whole page to change part of it. The bundled templates are also available under the `py-doc/` prefix, so a custom template can extend the one it replaces and override only the blocks it changes. Everything else keeps the bundled default.
+You do not have to copy a whole page to change part of it. The bundled templates are also available under the `swiftdoc/` prefix, so a custom template can extend the one it replaces and override only the blocks it changes. Everything else keeps the bundled default.
 
 This `module.html` gives every module page a new header and leaves the rest of the page alone:
 
 ```html
-{% extends "py-doc/module.html" %}
+{% extends "swiftdoc/module.html" %}
 
 {% block header %}
 <h1 class="module-title">{{ display_module_name }} <small>{{ package.name }} {{ version }}</small></h1>
@@ -697,7 +697,7 @@ Use `{{ super() }}` inside a block to keep the bundled content and add to it:
 
 `module.html` also splits `content` into `module_docstring`, `classes` and `functions`.
 
-A custom `base.html` that extends `py-doc/base.html` changes every page at once, for example to add a footer to the whole site.
+A custom `base.html` that extends `swiftdoc/base.html` changes every page at once, for example to add a footer to the whole site.
 
 Any other `*.html` file in the directory, including ones in subfolders, can be included or extended by name: `{% include "partials/footer.html" %}`. Whole-file replacements still work: a template that does not use `extends` is rendered as it is.
 
@@ -707,20 +707,20 @@ Any other `*.html` file in the directory, including ones in subfolders, can be i
 
 Each tool generated HTML API docs for three packages from PyPI. Every run started from an empty output folder, and the figure is the median of 3 to 20 runs measured with [hyperfine](https://github.com/sharkdp/hyperfine) on a 4-core Linux machine.
 
-| Package | Size | py-doc | pydoc | pdoc3 | pdoc | Sphinx + autodoc |
+| Package | Size | swiftdoc | pydoc | pdoc3 | pdoc | Sphinx + autodoc |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | requests 2.34.2 | 19 files, 6.4k lines | **19 ms** | 232 ms | 637 ms | 1.12 s | 3.33 s |
 | rich 15.0.0 | 100 files, 38.5k lines | **42 ms** | 446 ms | 1.51 s | 2.84 s | 7.82 s |
 | SQLAlchemy 2.1.6 | 258 files, 254k lines | **241 ms** | 12.2 s | 12.0 s | 31.3 s | 48.2 s |
 | SQLAlchemy, peak memory | | **130 MB** | 146 MB | 133 MB | 1,077 MB | 524 MB |
 
-These are cold builds with py-doc's defaults: public API only, with module variables, nested classes, structured docstring sections and linked types all included, and no build cache (each run starts from an empty folder). A rebuild that reuses the cache is faster still; see [Incremental builds](#incremental-builds).
+These are cold builds with swiftdoc's defaults: public API only, with module variables, nested classes, structured docstring sections and linked types all included, and no build cache (each run starts from an empty folder). A rebuild that reuses the cache is faster still; see [Incremental builds](#incremental-builds).
 
-**Why the gap is so large.** pydoc, pdoc, pdoc3 and Sphinx's autodoc all *import* your package and inspect the live objects, so they pay for Python startup, every import side effect and runtime introspection. py-doc parses the source with Ruff's Rust parser instead and renders pages in parallel on every core.
+**Why the gap is so large.** pydoc, pdoc, pdoc3 and Sphinx's autodoc all *import* your package and inspect the live objects, so they pay for Python startup, every import side effect and runtime introspection. swiftdoc parses the source with Ruff's Rust parser instead and renders pages in parallel on every core.
 
-**What that trade-off costs.** Import-based tools see things a parser cannot, such as attributes created at runtime, members inherited from other packages, and docstrings assigned with `__doc__ = ...`. Because py-doc never imports, it also works without your dependencies installed and never runs your code.
+**What that trade-off costs.** Import-based tools see things a parser cannot, such as attributes created at runtime, members inherited from other packages, and docstrings assigned with `__doc__ = ...`. Because swiftdoc never imports, it also works without your dependencies installed and never runs your code.
 
-**Fairness.** Every tool used the same Python and the same package versions. Sphinx ran with `-j auto`, so it used all cores the same way py-doc does. Import-based tools were given only modules that import cleanly on the test machine; py-doc parsed every file, so it did slightly more work.
+**Fairness.** Every tool used the same Python and the same package versions. Sphinx ran with `-j auto`, so it used all cores the same way swiftdoc does. Import-based tools were given only modules that import cleanly on the test machine; swiftdoc parsed every file, so it did slightly more work.
 
 To reproduce, run `cargo build --release && python3 benchmarks/bench.py`, then `python3 benchmarks/make_chart.py` to redraw the chart. Raw numbers are in [`benchmarks/results.json`](benchmarks/results.json).
 
@@ -737,10 +737,10 @@ cargo fmt --check
 The generated site is checked for WCAG 2.2 AA with [axe-core](https://github.com/dequelabs/axe-core) and for keyboard use, in a real browser. CI runs the same checks:
 
 ```bash
-py-doc --config /dev/null --src tests/fixtures/sample --out /tmp/sample-site --name demo
-py-doc --config /dev/null --src tests/fixtures/variables --out /tmp/variables-site --name variables
-py-doc --config /dev/null --src tests/fixtures/nested --out /tmp/nested-site --name nested
-py-doc --config /dev/null --src tests/fixtures/docstrings --out /tmp/docstrings-site --name docstrings
+swiftdoc --config /dev/null --src tests/fixtures/sample --out /tmp/sample-site --name demo
+swiftdoc --config /dev/null --src tests/fixtures/variables --out /tmp/variables-site --name variables
+swiftdoc --config /dev/null --src tests/fixtures/nested --out /tmp/nested-site --name nested
+swiftdoc --config /dev/null --src tests/fixtures/docstrings --out /tmp/docstrings-site --name docstrings
 cd tests/a11y && npm ci && npx playwright install chromium
 node audit.js /tmp/sample-site /tmp/variables-site /tmp/nested-site /tmp/docstrings-site   # every layout x light, dark and slate; --quick for light and dark
 node keyboard.js /tmp/sample-site                    # search, nav tree, theme and layout controls
@@ -755,7 +755,7 @@ UPX compression is available with `--upx` / `-Upx` for local builds. Published b
 
 ## Troubleshooting
 
-### 'py-doc' is not recognized as a command
+### 'swiftdoc' is not recognized as a command
 
 If you chose Option D (or your script path environment variable is missing), your shell cannot locate the executable. You must add Cargo's binary directory to your PATH.
 
