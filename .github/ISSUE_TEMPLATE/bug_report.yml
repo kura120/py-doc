@@ -53,7 +53,7 @@ body:
     attributes:
       label: py-doc version
       description: Output of `py-doc --version`.
-      placeholder: py-doc 0.5.1
+      placeholder: py-doc 0.6.0
     validations:
       required: true
 

@@ -123,7 +123,10 @@ fn items(module: &PythonModule) -> Vec<(Kind, String, bool)> {
     while let Some(class) = stack.pop() {
         let class_name = qualify(base, &class.qualname);
         items.push((Kind::Class, class_name.clone(), has_doc(&class.docstring)));
-        for method in &class.functions {
+        // Dunder methods (`__init__`, `__repr__`, ...) are not counted:
+        // constructor parameters are usually documented in the class
+        // docstring, and protocol methods rarely need their own.
+        for method in class.functions.iter().filter(|m| !is_dunder(&m.name)) {
             items.push((
                 Kind::Method,
                 qualify(&class_name, &method.name),
@@ -140,6 +143,10 @@ fn items(module: &PythonModule) -> Vec<(Kind, String, bool)> {
         ));
     }
     items
+}
+
+fn is_dunder(name: &str) -> bool {
+    name.len() > 4 && name.starts_with("__") && name.ends_with("__")
 }
 
 fn is_document(module: &PythonModule) -> bool {

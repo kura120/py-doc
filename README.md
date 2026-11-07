@@ -190,7 +190,7 @@ myproject                   1/1   100.0%
 Total                     11/19    57.9%
 ```
 
-Modules, classes, functions and methods are counted. "Public" follows the [Public API](#public-api) rules, so with `--include-private` everything counts. An item is documented when its docstring is not empty after whitespace is stripped. Doc-only `#pd-write` pages are not counted, and files that fail to parse are left out (they are reported as usual). Rows are sorted worst first.
+Modules, classes, functions and methods are counted. Dunder methods (`__init__`, `__repr__`, ...) and variables are not: constructor parameters are usually documented in the class docstring, protocol methods rarely need their own, and constants rarely carry docstrings. "Public" follows the [Public API](#public-api) rules, so with `--include-private` everything counts. An item is documented when its docstring is not empty after whitespace is stripped. Doc-only `#pd-write` pages are not counted, and files that fail to parse are left out (they are reported as usual). Rows are sorted worst first.
 
 `--fail-under 80` turns the report on and exits with an error when the total is below 80%:
 
@@ -267,7 +267,7 @@ Shortened (`"...": "..."` marks left-out fields):
 ```json
 {
   "schema_version": 1,
-  "py_doc_version": "0.5.1",
+  "py_doc_version": "0.6.0",
   "package": { "name": "myproject", "version": "2.1.0" },
   "include_private": false,
   "modules": [
