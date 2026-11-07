@@ -31,27 +31,12 @@ impl PythonPackage {
 
             let mut stub = module.empty_like();
             (module.classes, stub.classes) = split_private(module.classes, |c| c.is_private);
-            for class in module.classes.iter_mut() {
-                let hidden_methods;
-                let hidden_attributes;
-                (class.functions, hidden_methods) =
-                    split_private(std::mem::take(&mut class.functions), |f| f.is_private);
-                (class.variables, hidden_attributes) =
-                    split_private(std::mem::take(&mut class.variables), |v| v.is_private);
-                if !hidden_methods.is_empty() || !hidden_attributes.is_empty() {
-                    stub.classes.push(PythonClass {
-                        name: class.name.clone(),
-                        bases: Vec::new(),
-                        line: class.line,
-                        docstring: None,
-                        raw_docstring: None,
-                        summary: None,
-                        functions: hidden_methods,
-                        variables: hidden_attributes,
-                        is_private: false,
-                    });
-                }
-            }
+            stub.classes.extend(
+                module
+                    .classes
+                    .iter_mut()
+                    .filter_map(PythonClass::hide_private),
+            );
             (module.functions, stub.functions) = split_private(module.functions, |f| f.is_private);
             (module.variables, stub.variables) = split_private(module.variables, |v| v.is_private);
 
@@ -62,6 +47,44 @@ impl PythonPackage {
             public.push(module);
         }
         self.modules = public;
+    }
+}
+
+impl PythonClass {
+    /// Removes private members, recursively through nested classes, and
+    /// returns a stub holding them (None if there were none).
+    fn hide_private(&mut self) -> Option<PythonClass> {
+        let functions;
+        let variables;
+        let mut classes;
+        (self.functions, functions) =
+            split_private(std::mem::take(&mut self.functions), |f| f.is_private);
+        (self.variables, variables) =
+            split_private(std::mem::take(&mut self.variables), |v| v.is_private);
+        (self.classes, classes) =
+            split_private(std::mem::take(&mut self.classes), |c| c.is_private);
+        classes.extend(
+            self.classes
+                .iter_mut()
+                .filter_map(PythonClass::hide_private),
+        );
+        if functions.is_empty() && variables.is_empty() && classes.is_empty() {
+            return None;
+        }
+        Some(PythonClass {
+            name: self.name.clone(),
+            qualname: self.qualname.clone(),
+            bases: Vec::new(),
+            line: self.line,
+            docstring: None,
+            raw_docstring: None,
+            summary: None,
+            badges: Vec::new(),
+            functions,
+            classes,
+            variables,
+            is_private: false,
+        })
     }
 }
 
@@ -126,6 +149,9 @@ impl PythonModule {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonClass {
     pub name: String,
+    /// Dotted name inside its module: "Outer.Inner" for a nested class,
+    /// the same as `name` otherwise. Used in anchors and search.
+    pub qualname: String,
     pub bases: Vec<String>,
     pub line: usize,
     pub docstring: Option<String>,
@@ -133,7 +159,11 @@ pub struct PythonClass {
     #[serde(skip)]
     pub raw_docstring: Option<String>,
     pub summary: Option<String>,
+    /// "conditional" or "type-checking" (see `parser::dedupe`).
+    pub badges: Vec<String>,
     pub functions: Vec<PythonFunction>,
+    /// Classes defined in the class body.
+    pub classes: Vec<PythonClass>,
     /// Class attributes, including enum members and dataclass fields.
     pub variables: Vec<PythonVariable>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).

@@ -274,12 +274,64 @@ fn output_matches_the_schema() {
         &variables,
         &["--format", "json", "--include-private"],
     );
+    let nested = out_dir("schema_nested");
+    run(
+        &fixture("nested"),
+        &nested,
+        &["--format", "json", "--include-private"],
+    );
     assert_valid(&[
         &api(&sample),
         &api(&visibility),
         &api(&macros),
         &api(&variables),
+        &api(&nested),
     ]);
+}
+
+#[test]
+fn nested_classes_and_branch_badges_are_included() {
+    let out = out_dir("nested");
+    run(&fixture("nested"), &out, &["--format", "json"]);
+    let api = api(&out);
+    let compat = module(&api, "compat");
+    let classes = compat["classes"].as_array().unwrap();
+    assert_eq!(names(&compat["classes"]), ["Outer"]);
+    let outer = &classes[0];
+    assert_eq!(outer["qualname"], "compat.Outer");
+    let nested = outer["classes"].as_array().unwrap();
+    assert_eq!(
+        names(&outer["classes"]),
+        ["Inner", "Meta"],
+        "private nested classes are filtered"
+    );
+    let inner = &nested[0];
+    assert_eq!(inner["qualname"], "compat.Outer.Inner");
+    assert_eq!(
+        inner["variables"][0]["qualname"],
+        "compat.Outer.Inner.LIMIT"
+    );
+    let deep = &inner["classes"][0];
+    assert_eq!(deep["qualname"], "compat.Outer.Inner.Deep");
+    assert_eq!(
+        deep["methods"][0]["qualname"],
+        "compat.Outer.Inner.Deep.ping"
+    );
+    assert_eq!(outer["methods"][0]["badges"][0], "conditional");
+
+    let functions = compat["functions"].as_array().unwrap();
+    let read_config = functions
+        .iter()
+        .find(|f| f["name"] == "read_config")
+        .unwrap();
+    assert_eq!(read_config["badges"][0], "conditional");
+    let handler = compat["variables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == "Handler")
+        .unwrap();
+    assert_eq!(handler["badges"][0], "type-checking");
 }
 
 #[test]

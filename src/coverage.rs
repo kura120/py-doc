@@ -118,8 +118,10 @@ fn qualify(module: &str, name: &str) -> String {
 fn items(module: &PythonModule) -> Vec<(Kind, String, bool)> {
     let base = &module.qualname;
     let mut items = vec![(Kind::Module, base.clone(), has_doc(&module.docstring))];
-    for class in &module.classes {
-        let class_name = qualify(base, &class.name);
+    // Nested classes follow their parent, depth first.
+    let mut stack: Vec<_> = module.classes.iter().rev().collect();
+    while let Some(class) = stack.pop() {
+        let class_name = qualify(base, &class.qualname);
         items.push((Kind::Class, class_name.clone(), has_doc(&class.docstring)));
         for method in &class.functions {
             items.push((
@@ -128,6 +130,7 @@ fn items(module: &PythonModule) -> Vec<(Kind, String, bool)> {
                 has_doc(&method.docstring),
             ));
         }
+        stack.extend(class.classes.iter().rev());
     }
     for function in &module.functions {
         items.push((
@@ -351,12 +354,15 @@ mod tests {
         let mut m = module("pkg.core", Some("Core."));
         m.classes.push(PythonClass {
             name: "Engine".into(),
+            qualname: "Engine".into(),
             bases: vec![],
             line: 1,
             docstring: None,
             raw_docstring: None,
             summary: None,
+            badges: vec![],
             functions: vec![function("run", Some("Runs.")), function("stop", None)],
+            classes: vec![],
             variables: vec![],
             is_private: false,
         });
@@ -416,6 +422,48 @@ mod tests {
                 documented: 0,
                 total: 1
             }
+        );
+    }
+
+    #[test]
+    fn nested_classes_are_counted_under_their_qualified_names() {
+        let class = |qualname: &str, doc: Option<&str>, classes: Vec<PythonClass>| PythonClass {
+            name: qualname.rsplit('.').next().unwrap().into(),
+            qualname: qualname.into(),
+            bases: vec![],
+            line: 1,
+            docstring: doc.map(str::to_string),
+            raw_docstring: None,
+            summary: None,
+            badges: vec![],
+            functions: vec![],
+            classes,
+            variables: vec![],
+            is_private: false,
+        };
+        let mut m = module("pkg", Some("Pkg."));
+        let mut deep = class("Outer.Inner.Deep", None, vec![]);
+        deep.functions.push(function("ping", None));
+        let inner = class("Outer.Inner", Some("Inner."), vec![deep]);
+        let meta = class("Outer.Meta", None, vec![]);
+        m.classes
+            .push(class("Outer", Some("Outer."), vec![inner, meta]));
+        let report = Report::of(&package(vec![m]), false);
+
+        assert_eq!(
+            report.kinds.class,
+            Count {
+                documented: 2,
+                total: 4
+            }
+        );
+        assert_eq!(
+            report.modules[0].undocumented,
+            [
+                "pkg.Outer.Inner.Deep",
+                "pkg.Outer.Inner.Deep.ping",
+                "pkg.Outer.Meta"
+            ]
         );
     }
 
