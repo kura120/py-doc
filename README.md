@@ -643,7 +643,7 @@ Custom templates get the copied files' paths as `extra_css`. The bundled `base.h
 base.html  index.html  module.html  document.html  sidebar.html  style.css  app.js
 ```
 
-The HTML files are [Tera](https://keats.github.io/tera/) templates. The bundled versions in [`assets/`](assets) are the reference for the variables available.
+The HTML files are [Tera](https://keats.github.io/tera/) templates. [`docs/templates.md`](docs/templates.md) lists every variable they can use. `context_version` is bumped when one of them is renamed, removed or changes type.
 
 ### Starting from the bundled theme
 

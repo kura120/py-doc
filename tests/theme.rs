@@ -217,3 +217,64 @@ fn subcommands_do_not_mix_with_generation_flags() {
     assert!(!output.status.success());
     assert!(!cwd.join("swiftdoc-theme").exists());
 }
+
+#[test]
+fn custom_templates_see_every_page_variable() {
+    // Tera fails on an undefined variable, so this breaks if one of the
+    // page variables in docs/templates.md is renamed or removed.
+    let dir = scratch("page_variables");
+    fs::create_dir_all(dir.join("pkg")).unwrap();
+    fs::write(
+        dir.join("pkg/__init__.py"),
+        "\"\"\"Root docs.\"\"\"\n\ndef run():\n    \"\"\"Run.\"\"\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("pkg/engine.py"), "\"\"\"Engine.\"\"\"\n").unwrap();
+    fs::write(dir.join("empty.toml"), "").unwrap();
+    let templates = dir.join("templates");
+    fs::create_dir_all(&templates).unwrap();
+    let shared = "{{ context_version }}|{{ package.name }}|{{ nav_groups | length }}|{{ version }}|\
+                  {{ root_path }}|{{ layout }}|{{ theme }}|{{ source_url }}|{{ extra_css | length }}";
+    fs::write(
+        templates.join("index.html"),
+        format!(
+            "{shared}|{{{{ total_modules }}}}|{{{{ total_classes }}}}|{{{{ total_functions }}}}|\
+             {{{{ package_docstring | safe }}}}|{{{{ package_link_path }}}}"
+        ),
+    )
+    .unwrap();
+    fs::write(
+        templates.join("module.html"),
+        format!("{shared}|{{{{ module.qualname }}}}|{{{{ display_module_name }}}}"),
+    )
+    .unwrap();
+
+    let output = swiftdoc(
+        &dir,
+        &[
+            "--config",
+            "empty.toml",
+            "--src",
+            "pkg",
+            "--out",
+            "site",
+            "--name",
+            "demo",
+            "--templates",
+            "templates",
+            "--theme",
+            "dark",
+            "--source-url",
+            "https://example.com/src",
+        ],
+    );
+    assert_ok(&output);
+    let index = fs::read_to_string(dir.join("site/index.html")).unwrap();
+    assert!(
+        index.starts_with("1|demo|") && index.contains("|dark|https://example.com/src|"),
+        "{index}"
+    );
+    assert!(index.contains("<p>Root docs.</p>"), "{index}");
+    let engine = fs::read_to_string(dir.join("site/engine.html")).unwrap();
+    assert!(engine.ends_with("|engine|engine"), "{engine}");
+}
