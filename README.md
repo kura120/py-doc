@@ -4,9 +4,9 @@ A lightweight and fast documentation tool for Python codebases, powered by Rust.
 
 py-doc reads your `.py` files, never imports or runs them, and writes a static site: one page per module, a searchable index, and three switchable layouts. The theme is built into the binary, so generation works offline.
 
-<p align="center"><img src="https://raw.githubusercontent.com/kura120/py-doc/master/benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 20 ms, pydoc 305 ms, pdoc3 868 ms, pdoc 1.50 s, Sphinx 4.27 s. rich: py-doc 44 ms, pydoc 571 ms, pdoc3 1.95 s, pdoc 3.88 s, Sphinx 10.8 s. SQLAlchemy: py-doc 344 ms, pdoc3 15.5 s, pydoc 15.9 s, pdoc 39.7 s, Sphinx 62.6 s." width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/kura120/py-doc/master/benchmarks/benchmark.svg" alt="Time to generate HTML API docs. requests: py-doc 19 ms, pydoc 232 ms, pdoc3 637 ms, pdoc 1.12 s, Sphinx 3.33 s. rich: py-doc 42 ms, pydoc 446 ms, pdoc3 1.51 s, pdoc 2.84 s, Sphinx 7.82 s. SQLAlchemy: py-doc 241 ms, pdoc3 12.0 s, pydoc 12.2 s, pdoc 31.3 s, Sphinx 48.2 s." width="820"></p>
 
-py-doc documents all 253,000 lines of SQLAlchemy in about a third of a second: 45x faster than `pydoc` and `pdoc3`, 115x faster than `pdoc`, and 180x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
+py-doc documents all 253,000 lines of SQLAlchemy in about a quarter of a second: 50x faster than `pydoc` and `pdoc3`, 130x faster than `pdoc`, and 200x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
 
 ## Table of Contents
 
@@ -709,10 +709,12 @@ Each tool generated HTML API docs for three packages from PyPI. Every run starte
 
 | Package | Size | py-doc | pydoc | pdoc3 | pdoc | Sphinx + autodoc |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| requests 2.34.2 | 19 files, 6.4k lines | **20 ms** | 305 ms | 868 ms | 1.50 s | 4.27 s |
-| rich 15.0.0 | 100 files, 38.5k lines | **44 ms** | 571 ms | 1.95 s | 3.88 s | 10.8 s |
-| SQLAlchemy 2.1.6 | 258 files, 254k lines | **344 ms** | 15.9 s | 15.5 s | 39.7 s | 62.6 s |
-| SQLAlchemy, peak memory | | **94 MB** | 146 MB | 133 MB | 1,077 MB | 523 MB |
+| requests 2.34.2 | 19 files, 6.4k lines | **19 ms** | 232 ms | 637 ms | 1.12 s | 3.33 s |
+| rich 15.0.0 | 100 files, 38.5k lines | **42 ms** | 446 ms | 1.51 s | 2.84 s | 7.82 s |
+| SQLAlchemy 2.1.6 | 258 files, 254k lines | **241 ms** | 12.2 s | 12.0 s | 31.3 s | 48.2 s |
+| SQLAlchemy, peak memory | | **130 MB** | 146 MB | 133 MB | 1,077 MB | 524 MB |
+
+These are cold builds with py-doc's defaults: public API only, with module variables, nested classes, structured docstring sections and linked types all included, and no build cache (each run starts from an empty folder). A rebuild that reuses the cache is faster still; see [Incremental builds](#incremental-builds).
 
 **Why the gap is so large.** pydoc, pdoc, pdoc3 and Sphinx's autodoc all *import* your package and inspect the live objects, so they pay for Python startup, every import side effect and runtime introspection. py-doc parses the source with Ruff's Rust parser instead and renders pages in parallel on every core.
 
