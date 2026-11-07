@@ -10,6 +10,7 @@
 
 use serde::Serialize;
 
+use crate::docstring::{DocBlock, DocItem, DocSections};
 use crate::models::{PythonClass, PythonFunction, PythonModule, PythonPackage, PythonVariable};
 
 /// Version of the file's shape. Bump it when a field is renamed, removed or
@@ -84,6 +85,7 @@ struct Class<'a> {
     doc: Doc<'a>,
     /// "conditional" or "type-checking".
     badges: &'a [String],
+    sections: Option<Sections<'a>>,
     is_private: bool,
     methods: Vec<Function<'a>>,
     /// Class attributes, dataclass fields and enum members.
@@ -105,7 +107,85 @@ struct Function<'a> {
     is_async: bool,
     #[serde(flatten)]
     doc: Doc<'a>,
+    sections: Option<Sections<'a>>,
     is_private: bool,
+}
+
+/// Docstring sections (`Args:`, `Parameters` + dashes, `:param x:`), taken
+/// out of the docstring: `docstring` keeps the full text as written, while
+/// `docstring_html` then holds only the rest of it.
+#[derive(Serialize)]
+struct Sections<'a> {
+    /// "google", "numpy" or "rest".
+    style: &'a str,
+    params: Vec<Item<'a>>,
+    keyword_params: Vec<Item<'a>>,
+    other_params: Vec<Item<'a>>,
+    attributes: Vec<Item<'a>>,
+    returns: Vec<Item<'a>>,
+    yields: Vec<Item<'a>>,
+    raises: Vec<Item<'a>>,
+    examples: Vec<Block<'a>>,
+    notes: Vec<Block<'a>>,
+    warnings: Vec<Block<'a>>,
+    see_also: Vec<Block<'a>>,
+}
+
+#[derive(Serialize)]
+struct Item<'a> {
+    name: Option<&'a str>,
+    /// As written in the docstring, else from the signature; for raises,
+    /// the exception class.
+    #[serde(rename = "type")]
+    ty: Option<&'a str>,
+    /// From the signature.
+    default: Option<&'a str>,
+    description: &'a str,
+    description_html: &'a str,
+}
+
+#[derive(Serialize)]
+struct Block<'a> {
+    text: &'a str,
+    html: &'a str,
+}
+
+fn items(list: &[DocItem]) -> Vec<Item<'_>> {
+    list.iter()
+        .map(|i| Item {
+            name: i.name.as_deref(),
+            ty: i.ty.as_deref(),
+            default: i.default.as_deref(),
+            description: &i.description,
+            description_html: &i.description_html,
+        })
+        .collect()
+}
+
+fn blocks(list: &[DocBlock]) -> Vec<Block<'_>> {
+    list.iter()
+        .map(|b| Block {
+            text: &b.text,
+            html: &b.html,
+        })
+        .collect()
+}
+
+fn sections(s: &Option<DocSections>) -> Option<Sections<'_>> {
+    s.as_ref().map(|s| Sections {
+        style: s.style,
+        params: items(&s.params),
+        keyword_params: items(&s.keyword_params),
+        other_params: items(&s.other_params),
+        attributes: items(&s.attributes),
+        returns: items(&s.returns),
+        yields: items(&s.yields),
+        raises: items(&s.raises),
+        examples: blocks(&s.examples),
+        notes: blocks(&s.notes),
+        warnings: blocks(&s.warnings),
+        see_also: blocks(&s.see_also),
+    })
 }
 
 #[derive(Serialize)]
@@ -143,6 +223,7 @@ fn function<'a>(f: &'a PythonFunction, parent: &str) -> Function<'a> {
         badges: &f.badges,
         is_async: f.is_async,
         doc: Doc::new(&f.raw_docstring, &f.docstring, &f.summary),
+        sections: sections(&f.sections),
         is_private: f.is_private,
     }
 }
@@ -176,6 +257,7 @@ fn class<'a>(c: &'a PythonClass, module: &str) -> Class<'a> {
         bases: &c.bases,
         doc: Doc::new(&c.raw_docstring, &c.docstring, &c.summary),
         badges: &c.badges,
+        sections: sections(&c.sections),
         is_private: c.is_private,
         methods: c.functions.iter().map(|f| function(f, &qualname)).collect(),
         variables: c.variables.iter().map(|v| variable(v, &qualname)).collect(),

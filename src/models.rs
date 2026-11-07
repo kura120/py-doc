@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::docstring::DocSections;
+
 #[derive(Debug, Serialize, Clone)]
 pub struct PythonPackage {
     pub name: String,
@@ -79,6 +81,7 @@ impl PythonClass {
             docstring: None,
             raw_docstring: None,
             summary: None,
+            sections: None,
             badges: Vec::new(),
             functions,
             classes,
@@ -159,6 +162,8 @@ pub struct PythonClass {
     #[serde(skip)]
     pub raw_docstring: Option<String>,
     pub summary: Option<String>,
+    /// Sections of the class docstring (see `PythonFunction::sections`).
+    pub sections: Option<DocSections>,
     /// "conditional" or "type-checking" (see `parser::dedupe`).
     pub badges: Vec<String>,
     pub functions: Vec<PythonFunction>,
@@ -185,6 +190,9 @@ pub struct PythonFunction {
     #[serde(skip)]
     pub raw_docstring: Option<String>,
     pub summary: Option<String>,
+    /// `Args:` / `Returns:` / ... sections taken out of the docstring;
+    /// None when it has none (or with `--docstring-style markdown`).
+    pub sections: Option<DocSections>,
     /// Hidden unless `--include-private` (see `parser::is_public_name`).
     pub is_private: bool,
 }

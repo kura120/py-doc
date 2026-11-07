@@ -12,6 +12,7 @@ macro_rules! status {
 
 mod config;
 mod coverage;
+mod docstring;
 mod generator;
 mod highlight;
 mod models;
@@ -219,6 +220,12 @@ pub struct Args {
     #[arg(long, value_enum)]
     pub coverage_format: Option<CoverageFormat>,
 
+    /// How to read docstring sections (`Args:`, `Parameters` + dashes,
+    /// `:param x:`). `auto` detects the style of each docstring; `markdown`
+    /// renders every docstring as plain Markdown [default: auto]
+    #[arg(long, value_enum, value_name = "STYLE")]
+    pub docstring_style: Option<docstring::DocstringStyle>,
+
     /// pyproject.toml to read `[tool.py-doc]` and `[project]` from. By default
     /// it is looked for in --src (or the current directory) and its parents,
     /// stopping at the repository root.
@@ -416,7 +423,8 @@ fn run_generation(args: &Config) -> Result<()> {
             args.theme.as_baked(),
             args.source_url.as_deref(),
         )?
-        .with_extra_css(&args.css)?;
+        .with_extra_css(&args.css)?
+        .with_docstring_style(args.docstring_style);
 
         generator.render(&mut package)?;
 

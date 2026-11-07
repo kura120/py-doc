@@ -1072,6 +1072,41 @@ a.source-ref:hover { color: var(--accent-blue); text-decoration: underline; }
 .item-card:target > .signature-box,
 .method-item:target > .signature-box { border-color: var(--accent-blue); }
 
+/* Docstring sections (Args, Returns, Raises, ...): see docstring.rs.
+   Only theme tokens, so every palette and layout keeps its contrast. */
+.doc-sections { margin: 10px 0 4px; }
+.doc-section { margin: 12px 0; }
+.doc-section-title {
+    margin: 0 0 6px;
+    font-family: var(--font-heading);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted-color);
+}
+.doc-items { list-style: none; margin: 0; padding: 0; }
+.doc-item {
+    padding: 6px 0 6px 12px;
+    border-left: 2px solid var(--border-color);
+}
+.doc-item + .doc-item { margin-top: 2px; }
+.doc-item-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+.doc-item-name { font-weight: 600; color: var(--text-color); }
+.doc-item-type { color: var(--text-color); }
+.doc-item-default { font-family: var(--font-body); font-size: 0.8rem; color: var(--muted-color); }
+.doc-item-default code { color: var(--text-color); }
+.doc-item-name, .doc-item-type, .doc-item-default code { overflow-wrap: anywhere; }
+.doc-item-text > :first-child { margin-top: 2px; }
+.doc-item-text > :last-child { margin-bottom: 0; }
+
 /* Build-time Python highlighting (see src/highlight.rs) */
 .tok-kw { color: var(--accent-red); font-weight: 600; }
 .tok-fn, .tok-dec { color: var(--accent-blue); }

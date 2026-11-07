@@ -1,5 +1,38 @@
 {% extends "base.html" %}
 
+{#- Docstring sections (Args, Returns, Raises, ...) taken out of a docstring:
+    see `docstring::DocSections`. Descriptions are already rendered HTML. -#}
+{% component doc_items(title, items) %}
+<div class="doc-section">
+    <p class="doc-section-title">{{ title }}</p>
+    <ul class="doc-items">
+        {%- for item in items %}
+        <li class="doc-item">{% if item.name or item.type or item.default %}<span class="doc-item-head">{% if item.name %}<code class="doc-item-name">{{ item.name }}</code>{% endif %}{% if item.type %}<code class="doc-item-type">{{ item.type }}</code>{% endif %}{% if item.default %}<span class="doc-item-default">default <code>{{ item.default }}</code></span>{% endif %}</span>{% endif %}{% if item.description_html %}<div class="doc-item-text">{{ item.description_html | safe }}</div>{% endif %}</li>
+        {%- endfor %}
+    </ul>
+</div>
+{% endcomponent doc_items %}
+
+{% component doc_sections(s) %}
+<div class="doc-sections">
+    {%- if s.params %}{{ <doc_items title="Parameters" items={s.params}/> }}{% endif %}
+    {%- if s.keyword_params %}{{ <doc_items title="Keyword arguments" items={s.keyword_params}/> }}{% endif %}
+    {%- if s.other_params %}{{ <doc_items title="Other parameters" items={s.other_params}/> }}{% endif %}
+    {%- if s.attributes %}{{ <doc_items title="Attributes" items={s.attributes}/> }}{% endif %}
+    {%- if s.returns %}{{ <doc_items title="Returns" items={s.returns}/> }}{% endif %}
+    {%- if s.yields %}{{ <doc_items title="Yields" items={s.yields}/> }}{% endif %}
+    {%- if s.raises %}{{ <doc_items title="Raises" items={s.raises}/> }}{% endif %}
+    {%- for block in s.examples %}
+    <div class="doc-section"><p class="doc-section-title">Examples</p>{{ block.html | safe }}</div>
+    {%- endfor %}
+    {%- for block in s.notes %}{{ block.html | safe }}{% endfor %}
+    {%- for block in s.warnings %}{{ block.html | safe }}{% endfor %}
+    {%- for block in s.see_also %}
+    <div class="doc-section"><p class="doc-section-title">See also</p>{{ block.html | safe }}</div>
+    {%- endfor %}
+</div>
+{% endcomponent doc_sections %}
+
 {#- A class defined inside another class, rendered inside its parent's card.
     Anchors use the qualified name ("Outer.Inner"). Calls itself for deeper nesting. -#}
 {% component nested_class(cls, @module, @source_url = "") %}
@@ -9,6 +42,7 @@
         <span class="signature-meta">{% for badge in cls.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ cls.line }}">source</a>{% else %}<span class="source-ref">line {{ cls.line }}</span>{% endif %}</span>
     </div>
     {% if cls.docstring %}<div class="docstring">{{ cls.docstring | safe }}</div>{% endif %}
+    {% if cls.sections %}{{ <doc_sections s={cls.sections}/> }}{% endif %}
     {%- if cls.variables %}
     <div class="method-list">
         <h3 class="method-list-title">Attributes</h3>
@@ -21,7 +55,7 @@
     <div class="method-list">
         <h3 class="method-list-title">Methods</h3>
         {%- for func in cls.functions %}
-        <div class="method-item" id="method.{{ cls.qualname }}.{{ func.name }}"><div class="signature-box"><span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span><span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span></div>{% if func.docstring %}<div class="docstring">{{ func.docstring | safe }}</div>{% endif %}</div>
+        <div class="method-item" id="method.{{ cls.qualname }}.{{ func.name }}"><div class="signature-box"><span class="signature-code">{% if func.is_async %}<span class="keyword">async</span> {% endif %}<span class="keyword">def</span> <span class="entity-name">{{ func.name }}</span>({{ func.args | join(sep=", ") }}){% if func.return_type %} -> {{ func.return_type }}{% endif %}:</span><span class="signature-meta">{% for badge in func.badges %}<span class="badge">{{ badge }}</span>{% endfor %}{% if source_url %}<a class="source-ref" href="{{ source_url }}/{{ module.source_path }}#L{{ func.line }}">source</a>{% else %}<span class="source-ref">line {{ func.line }}</span>{% endif %}</span></div>{% if func.docstring %}<div class="docstring">{{ func.docstring | safe }}</div>{% endif %}{% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}</div>
         {%- endfor %}
     </div>
     {%- endif %}
@@ -98,6 +132,7 @@
                         {% if class.docstring %}
                             <div class="docstring">{{ class.docstring | safe }}</div>
                         {% endif %}
+                        {% if class.sections %}{{ <doc_sections s={class.sections}/> }}{% endif %}
 
                         {% if class.variables %}
                             <div class="method-list">
@@ -120,6 +155,7 @@
                                         {% if func.docstring %}
                                             <div class="docstring">{{ func.docstring | safe }}</div>
                                         {% endif %}
+                                        {% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}
                                     </div>
                                 {% endfor %}
                             </div>
@@ -152,6 +188,7 @@
                         {% if func.docstring %}
                             <div class="docstring">{{ func.docstring | safe }}</div>
                         {% endif %}
+                        {% if func.sections %}{{ <doc_sections s={func.sections}/> }}{% endif %}
                     </div>
                 {% endfor %}
             </section>

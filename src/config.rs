@@ -16,6 +16,7 @@ use anyhow::{Context, Result, bail};
 use clap::CommandFactory;
 use std::path::{Path, PathBuf};
 
+use crate::docstring::DocstringStyle;
 use crate::{Args, CoverageFormat, LayoutKind, OutputFormat, ThemeKind};
 
 pub const DEFAULT_VERSION: &str = "1.0.0";
@@ -49,6 +50,7 @@ pub struct Config {
     pub strict: bool,
     pub clean: bool,
     pub include_private: bool,
+    pub docstring_style: DocstringStyle,
     /// None when no coverage report was asked for.
     pub coverage: Option<CoverageSettings>,
     /// What to write to `out`: sorted, without duplicates, never empty.
@@ -345,6 +347,10 @@ impl Config {
                 .include_private
                 .or(tool.include_private)
                 .unwrap_or(false),
+            docstring_style: cli
+                .docstring_style
+                .or(tool.docstring_style)
+                .unwrap_or_default(),
             coverage,
             formats,
         })
@@ -391,6 +397,7 @@ coverage = true
 fail-under = 50
 coverage-format = "json"
 format = ["json"]
+docstring-style = "numpy"
 "#;
 
     const ALL_CLI: &[&str] = &[
@@ -427,6 +434,8 @@ format = ["json"]
         "html",
         "--format",
         "json",
+        "--docstring-style",
+        "markdown",
     ];
 
     #[test]
@@ -449,6 +458,7 @@ format = ["json"]
                 strict: false,
                 clean: false,
                 include_private: false,
+                docstring_style: DocstringStyle::Markdown,
                 formats: vec![OutputFormat::Html, OutputFormat::Json],
                 coverage: Some(CoverageSettings {
                     format: CoverageFormat::Text,
@@ -478,6 +488,7 @@ format = ["json"]
                 strict: true,
                 clean: true,
                 include_private: true,
+                docstring_style: DocstringStyle::Numpy,
                 formats: vec![OutputFormat::Json],
                 coverage: Some(CoverageSettings {
                     format: CoverageFormat::Json,
@@ -514,6 +525,7 @@ format = ["json"]
                 strict: false,
                 clean: false,
                 include_private: false,
+                docstring_style: DocstringStyle::Auto,
                 formats: vec![OutputFormat::Html],
                 coverage: None,
             }

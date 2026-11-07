@@ -126,10 +126,17 @@ fn classes_show_bases_badges_anchors_and_source_lines() {
 
 #[test]
 fn doctests_render_as_code_blocks() {
-    let out = generate_sample("doctests", &[]);
+    let out = generate_sample("doctests", &["--docstring-style", "markdown"]);
     let engine = read(&out, "01_core/engine.html");
     assert!(engine.contains("<p>Example:</p>"));
     assert!(engine.contains("<pre><code class=\"language-pycon\">&gt;&gt;&gt; Engine().speed\n"));
+
+    // By default `Example:` is a section, and its doctest still a code block.
+    let out = generate_sample("doctests_sections", &[]);
+    let engine = read(&out, "01_core/engine.html");
+    assert!(engine.contains(
+        "<p class=\"doc-section-title\">Examples</p><pre><code class=\"language-pycon\">&gt;&gt;&gt; Engine().speed\n"
+    ));
 }
 
 #[test]
@@ -362,6 +369,51 @@ fn assert_matches_sample_snapshots_after(out: &Path, skip: &[&str], adjust: fn(&
             page,
             page
         );
+    }
+}
+
+/// `--docstring-style markdown` must give the output py-doc gave before
+/// docstring sections existed. Pages that sections change keep their
+/// Markdown-style snapshot in `tests/snapshots/sample-markdown`; every other
+/// page must equal the default output. With `PY_DOC_UPDATE_SNAPSHOTS` set,
+/// that folder is rewritten with the pages that differ.
+#[test]
+fn markdown_docstring_style_keeps_the_output_without_sections() {
+    let markdown = generate_sample("markdown_style", &["--docstring-style", "markdown"]);
+    let default = generate_sample("markdown_style_default", &[]);
+    let snapshots = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("snapshots")
+        .join("sample-markdown");
+    let pages = html_pages(&markdown);
+    assert_eq!(pages, html_pages(&default));
+    if std::env::var_os("PY_DOC_UPDATE_SNAPSHOTS").is_some() {
+        let _ = fs::remove_dir_all(&snapshots);
+        for page in &pages {
+            let text = normalize_whitespace(&read(&markdown, page));
+            if text != normalize_whitespace(&read(&default, page)) {
+                let target = snapshots.join(page);
+                fs::create_dir_all(target.parent().unwrap()).unwrap();
+                fs::write(&target, text + "\n").unwrap();
+            }
+        }
+        return;
+    }
+    for page in &pages {
+        let text = normalize_whitespace(&read(&markdown, page));
+        match fs::read_to_string(snapshots.join(page)) {
+            Ok(expected) => assert_eq!(
+                text,
+                expected.trim_end(),
+                "{page} differs from tests/snapshots/sample-markdown/{page}"
+            ),
+            Err(_) => assert_eq!(
+                text,
+                normalize_whitespace(&read(&default, page)),
+                "{page}: --docstring-style markdown changed a page without sections; \
+                 add its snapshot to tests/snapshots/sample-markdown"
+            ),
+        }
     }
 }
 

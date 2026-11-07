@@ -280,13 +280,84 @@ fn output_matches_the_schema() {
         &nested,
         &["--format", "json", "--include-private"],
     );
+    let docstrings = out_dir("schema_docstrings");
+    run(&fixture("docstrings"), &docstrings, &["--format", "json"]);
     assert_valid(&[
         &api(&sample),
         &api(&visibility),
         &api(&macros),
         &api(&variables),
         &api(&nested),
+        &api(&docstrings),
     ]);
+}
+
+#[test]
+fn docstring_sections_are_included() {
+    let out = out_dir("sections");
+    run(&fixture("docstrings"), &out, &["--format", "json"]);
+    let api = api(&out);
+    let google = module(&api, "google");
+    let engine = &google["classes"][0];
+    let run_method = engine["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["name"] == "run")
+        .unwrap();
+    let sections = &run_method["sections"];
+    assert_eq!(sections["style"], "google");
+    let retries = &sections["params"][2];
+    assert_eq!(retries["name"], "retries");
+    assert_eq!(retries["type"], "int");
+    assert_eq!(retries["default"], "1");
+    assert!(
+        retries["description"]
+            .as_str()
+            .unwrap()
+            .contains("#pd-note: Retries back off exponentially.")
+    );
+    assert!(
+        retries["description_html"]
+            .as_str()
+            .unwrap()
+            .contains("alert-note")
+    );
+    assert_eq!(sections["returns"][0]["type"], "bool");
+    assert_eq!(sections["raises"][1]["type"], "RuntimeError");
+    assert!(
+        sections["notes"][0]["html"]
+            .as_str()
+            .unwrap()
+            .contains("alert-note")
+    );
+    // `docstring` stays the full text; `docstring_html` is what is left.
+    assert!(run_method["docstring"].as_str().unwrap().contains("Args:"));
+    assert_eq!(
+        run_method["docstring_html"],
+        "<p>Runs one job.</p>\n<p>Some more text about running.</p>\n"
+    );
+    assert_eq!(engine["sections"]["params"][0]["default"], "\"main\"");
+
+    // No sections: null, and the docstring renders as before.
+    let plain = module(&api, "odd")["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == "plain")
+        .unwrap()
+        .clone();
+    assert_eq!(plain["sections"], Value::Null);
+
+    let out = out_dir("sections_markdown");
+    run(
+        &fixture("docstrings"),
+        &out,
+        &["--format", "json", "--docstring-style", "markdown"],
+    );
+    let api = crate::api(&out);
+    let engine = &module(&api, "google")["classes"][0];
+    assert_eq!(engine["sections"], Value::Null);
 }
 
 #[test]
