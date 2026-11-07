@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonPackage {
     pub name: String,
     pub modules: Vec<PythonModule>,
@@ -88,7 +88,7 @@ impl PythonClass {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonModule {
     pub name: String,
     /// Path relative to the source root, with forward slashes (e.g. "01_core/engine.py").
@@ -146,7 +146,7 @@ impl PythonModule {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonClass {
     pub name: String,
     /// Dotted name inside its module: "Outer.Inner" for a nested class,
@@ -170,7 +170,7 @@ pub struct PythonClass {
     pub is_private: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonFunction {
     pub name: String,
     pub args: Vec<String>,
@@ -191,7 +191,7 @@ pub struct PythonFunction {
 
 /// A module variable or class attribute: `NAME = value`, `name: T = value`,
 /// `name: T` or `type Alias = ...`.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PythonVariable {
     pub name: String,
     pub annotation: Option<String>,
