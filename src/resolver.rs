@@ -33,7 +33,7 @@ fn add_class(symbols: &mut HashMap<String, &'static str>, class: &PythonClass) {
     symbols.insert(qualname.clone(), "class");
 }
 
-/// Resolves `#pd-doc-link` targets against the modules that were actually parsed.
+/// Resolves `#sd-doc-link` targets against the modules that were actually parsed.
 pub struct Resolver {
     package_name: String,
     modules: Vec<ModuleEntry>,

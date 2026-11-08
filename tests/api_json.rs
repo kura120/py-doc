@@ -318,7 +318,7 @@ fn docstring_sections_are_included() {
         retries["description"]
             .as_str()
             .unwrap()
-            .contains("#pd-note: Retries back off exponentially.")
+            .contains("#sd-note: Retries back off exponentially.")
     );
     assert!(
         retries["description_html"]

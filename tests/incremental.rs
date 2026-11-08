@@ -62,8 +62,8 @@ def build():
             "pkg/tools.py",
             r#""""Tools module.
 
-#pd-doc-link: pkg.engine.Engine
-#pd-image: logo.png
+#sd-doc-link: pkg.engine.Engine
+#sd-image: logo.png
 """
 
 
@@ -73,7 +73,7 @@ def helper(x):
         );
         project.write(
             "guide.py",
-            "\"\"\"#pd-write\n# Guide\n\nRead this first.\n\"\"\"\n",
+            "\"\"\"#sd-write\n# Guide\n\nRead this first.\n\"\"\"\n",
         );
         project.write("logo.png", "first image");
         project
@@ -444,8 +444,8 @@ fn private_names_stay_hidden_across_incremental_builds() {
     );
     project.edit(
         "pkg/tools.py",
-        "#pd-image: logo.png",
-        "#pd-image: logo.png\n#pd-doc-link: pkg._internal.secret",
+        "#sd-image: logo.png",
+        "#sd-image: logo.png\n#sd-doc-link: pkg._internal.secret",
     );
     project.edit(
         "pkg/tools.py",

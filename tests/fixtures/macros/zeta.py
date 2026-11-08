@@ -1,18 +1,18 @@
 """Zeta is last alphabetically but is pinned to the top.
 
-#pd-z-index: 1
+#sd-z-index: 1
 """
 
 
 class Widget:
     """A widget.
 
-    #pd-note: Use **care** with `Widget`.
-    #pd-warning: Not thread safe.
+    #sd-note: Use **care** with `Widget`.
+    #sd-warning: Not thread safe.
     """
 
     def spin(self) -> None:
         """Spin it.
 
-        #pd-doc-link: alpha.target
+        #sd-doc-link: alpha.target
         """

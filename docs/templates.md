@@ -41,7 +41,7 @@ Tests check that each object below lists exactly the fields the code has, and th
 
 ## module.html and document.html only
 
-`document.html` renders `#pd-write` pages; `module.html` renders everything else.
+`document.html` renders `#sd-write` pages; `module.html` renders everything else.
 
 | Variable | Type | Description |
 |---|---|---|
@@ -84,9 +84,9 @@ Tests check that each object below lists exactly the fields the code has, and th
 | `functions` | list of [Function](#function) | Functions, in source order. |
 | `variables` | list of [Variable](#variable) | Module variables, constants and type aliases, in source order. |
 | `all` | list of strings, optional | Names in a literal `__all__`; `none` without one. |
-| `is_document` | boolean | A `#pd-write` page, rendered with `document.html`. |
+| `is_document` | boolean | A `#sd-write` page, rendered with `document.html`. |
 | `is_private` | boolean | The module or one of its packages starts with `_`. Only shown with `--include-private`. |
-| `z_index` | integer | Sort key from `#pd-z-index`. |
+| `z_index` | integer | Sort key from `#sd-z-index`. |
 
 ### Class
 
@@ -181,4 +181,4 @@ Every list is empty when the docstring has no such section.
 | Field | Type | Description |
 |---|---|---|
 | `text` | string | The section as written (Markdown). |
-| `html` | HTML | The section, rendered. Notes and warnings use the same boxes as `#pd-note` and `#pd-warning`. |
+| `html` | HTML | The section, rendered. Notes and warnings use the same boxes as `#sd-note` and `#sd-warning`. |

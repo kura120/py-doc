@@ -1,4 +1,4 @@
-//! End-to-end tests for the `#pd-` docstring macros and for `--clean`,
+//! End-to-end tests for the `#sd-` docstring macros and for `--clean`,
 //! run against `tests/fixtures/macros` and `tests/fixtures/sample`.
 
 use std::fs;
@@ -71,8 +71,8 @@ fn note_and_warning_render_boxes_with_inline_markdown() {
     assert!(zeta.contains("class=\"alert alert-warning\""));
     assert!(zeta.contains("Warning:</strong> Not thread safe."));
     // The macro source never leaks into the page.
-    assert!(!zeta.contains("#pd-note"));
-    assert!(!zeta.contains("#pd-warning"));
+    assert!(!zeta.contains("#sd-note"));
+    assert!(!zeta.contains("#sd-warning"));
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn write_macro_makes_a_document_page() {
     let handbook = read(&out, "handbook.html");
     assert!(handbook.contains("document-canvas"));
     assert!(handbook.contains("<h1>Handbook</h1>"));
-    assert!(!handbook.contains("#pd-write"));
+    assert!(!handbook.contains("#sd-write"));
     // A module with code stays a module page.
     assert!(!read(&out, "zeta.html").contains("document-canvas"));
 }
@@ -101,16 +101,16 @@ fn code_macro_accepts_both_spellings_and_highlights_python() {
     let out = out_dir("macro_code");
     generate("macros", &out, &[]);
     let handbook = read(&out, "handbook.html");
-    // "#pd-code python"
+    // "#sd-code python"
     assert!(handbook.contains(
         "<pre><code class=\"language-python\"><span class=\"tok-kw\">def</span> <span class=\"tok-fn\">hello</span>():"
     ));
-    // "#pd-code: python"
+    // "#sd-code: python"
     assert!(
         handbook
             .contains("<pre><code class=\"language-python\">x = <span class=\"tok-num\">1</span>")
     );
-    // Bare "#pd-code" is Python.
+    // Bare "#sd-code" is Python.
     assert!(
         handbook.contains(
             "<pre><code class=\"language-python\">y = <span class=\"tok-kw\">None</span>"
@@ -118,7 +118,7 @@ fn code_macro_accepts_both_spellings_and_highlights_python() {
     );
     // Another language can still be named, and is left unhighlighted.
     assert!(handbook.contains("<pre><code class=\"language-text\">plain &lt;output&gt;\n</code>"));
-    assert!(!handbook.contains("#pd-code"));
+    assert!(!handbook.contains("#sd-code"));
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn macros_inside_a_fenced_block_stay_literal() {
     let handbook = read(&out, "handbook.html");
     assert!(
         handbook
-            .contains("<pre><code class=\"language-text\">#pd-note: this stays as text\n</code>")
+            .contains("<pre><code class=\"language-text\">#sd-note: this stays as text\n</code>")
     );
 }
 
@@ -187,7 +187,7 @@ fn z_index_macro_orders_the_navigation_and_is_hidden() {
     let alpha = nav
         .find("\"link_path\":\"alpha.html\"")
         .expect("alpha in nav");
-    assert!(zeta < alpha, "zeta has #pd-z-index: 1 and must come first");
+    assert!(zeta < alpha, "zeta has #sd-z-index: 1 and must come first");
     assert!(!read(&out, "zeta.html").contains("pd-z-index"));
 }
 
@@ -196,11 +196,11 @@ fn broken_macros_warn_and_never_drop_content() {
     let out = out_dir("macro_problems");
     let stderr = generate("macros", &out, &[]);
     for expected in [
-        "pkg/problems.py: '#pd-warn' is not a macro that works here",
-        "pkg/problems.py: #pd-doc-link target 'nowhere.at_all' was not found",
+        "pkg/problems.py: '#sd-warn' is not a macro that works here",
+        "pkg/problems.py: #sd-doc-link target 'nowhere.at_all' was not found",
         "pkg/problems.py: Image file not found: '../outside.png'",
-        "pkg/problems.py: #pd-code block is not closed",
-        "pkg/problems.py: '#pd-z-index' is not a macro that works here (it only applies in a module docstring)",
+        "pkg/problems.py: #sd-code block is not closed",
+        "pkg/problems.py: '#sd-z-index' is not a macro that works here (it only applies in a module docstring)",
     ] {
         assert!(
             stderr.contains(expected),

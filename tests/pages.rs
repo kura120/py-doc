@@ -60,7 +60,7 @@ fn pages_render_in_order_with_working_links() {
     let tuning = read(site.join("docs/advanced/tuning.html"));
     assert!(tuning.contains(r#"href="../01_install.html""#), "{tuning}");
 
-    // #pd-doc-link works from a Markdown page.
+    // #sd-doc-link works from a Markdown page.
     assert!(
         install.contains(r#"href="../engine.html#class.Engine""#),
         "{install}"

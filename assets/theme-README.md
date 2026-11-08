@@ -36,7 +36,7 @@ A file you delete falls back to the bundled one, so a newer swiftdoc can still f
 | `base.html` | Page skeleton. Blocks: `head` (with `title`, `description`, `stylesheets`), `body_attributes`, `sidebar`, `header`, `content`, `outline`, `footer` (empty), `scripts` |
 | `index.html` | The landing page; extends `base.html` |
 | `module.html` | A module page; extends `base.html`. `content` holds `module_docstring`, `classes` and `functions` |
-| `document.html` | A `#pd-write` page; extends `base.html` |
+| `document.html` | A `#sd-write` page; extends `base.html` |
 | `sidebar.html` | Navigation, search and the layout and theme selectors |
 | `style.css` | All styles. Colors, fonts and sizes are CSS custom properties |
 | `app.js` | Navigation tree, search and theme switching |

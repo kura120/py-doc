@@ -1,32 +1,32 @@
-"""#pd-write
+"""#sd-write
 # Handbook
 
 Intro paragraph.
-#pd-note: Macros work directly after a paragraph line.
+#sd-note: Macros work directly after a paragraph line.
 
-#pd-code python
+#sd-code python
 def hello():
     return "hi"
 ```
 
-#pd-code: python
+#sd-code: python
 x = 1
 ```
 
-#pd-code
+#sd-code
 y = None
 ```
 
-#pd-code text
+#sd-code text
 plain <output>
 ```
 
 A fenced block keeps macro-looking lines literal:
 
 ```text
-#pd-note: this stays as text
+#sd-note: this stays as text
 ```
 
-#pd-image: img/pic.png
+#sd-image: img/pic.png
 ![inline picture](img/pic.png)
 """

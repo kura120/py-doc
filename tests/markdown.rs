@@ -315,7 +315,7 @@ fn macros_become_plain_markdown() {
         "doc-only page keeps its own heading"
     );
     assert!(
-        !handbook.contains("#pd-write") && !handbook.contains("#pd-code"),
+        !handbook.contains("#sd-write") && !handbook.contains("#sd-code"),
         "{handbook}"
     );
     assert!(
@@ -327,7 +327,7 @@ fn macros_become_plain_markdown() {
         "{handbook}"
     );
     assert!(
-        handbook.contains("```text\n#pd-note: this stays as text\n```"),
+        handbook.contains("```text\n#sd-note: this stays as text\n```"),
         "fenced macro-looking lines stay literal:\n{handbook}"
     );
     assert!(handbook.contains("![](./assets/img/pic.png)"), "{handbook}");
@@ -444,7 +444,7 @@ fn crlf_sources_give_lf_markdown() {
     fs::write(
         src.join("win.py"),
         "\"\"\"Windows module.\r\n\r\nSecond paragraph.\r\n\"\"\"\r\n\r\n\
-         def f():\r\n    \"\"\"Does f.\r\n\r\n    #pd-note: careful\r\n    >>> f()\r\n    \"\"\"\r\n",
+         def f():\r\n    \"\"\"Does f.\r\n\r\n    #sd-note: careful\r\n    >>> f()\r\n    \"\"\"\r\n",
     )
     .unwrap();
     let out = out_dir("crlf_out");

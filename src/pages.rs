@@ -2,7 +2,7 @@
 //! next to the API reference.
 //!
 //! Each `.md` file becomes a doc-only module, so it goes through the same
-//! rendering as a `#pd-write` module: macros, doc-links, search, the
+//! rendering as a `#sd-write` module: macros, doc-links, search, the
 //! manifest and `--clean` all work unchanged. A top-level `index.md` is not
 //! a page: it replaces the landing page's introduction.
 
@@ -68,9 +68,9 @@ pub fn collect(dir: &Path, root: &Path) -> Result<(Vec<ModuleSource>, Option<Int
             .title
             .or_else(|| first_heading(body))
             .unwrap_or_else(|| plain_stem.to_string());
-        let mut docstring = String::from("#pd-write\n");
+        let mut docstring = String::from("#sd-write\n");
         if let Some(order) = front.order.or(prefix_order) {
-            docstring.push_str(&format!("#pd-z-index: {order}\n"));
+            docstring.push_str(&format!("#sd-z-index: {order}\n"));
         }
         docstring.push_str(body);
 

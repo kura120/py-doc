@@ -24,10 +24,10 @@ class Engine:
 
         Args:
             job: The job to run.
-                #pd-doc-link: google.Engine
+                #sd-doc-link: google.Engine
             *args: Passed to the job.
             retries (int, optional): How often to retry.
-                #pd-note: Retries back off exponentially.
+                #sd-note: Retries back off exponentially.
             **kwargs: Options for the job.
             ghost: Documented but not in the signature.
 

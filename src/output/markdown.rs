@@ -4,7 +4,7 @@
 //!
 //! Pages mirror the HTML site's paths (`core/engine.html` becomes
 //! `core/engine.md`). Docstrings are written from the raw text, which is
-//! Markdown already, with the `#pd-` macros turned into plain Markdown.
+//! Markdown already, with the `#sd-` macros turned into plain Markdown.
 //!
 //! Anchors: every symbol heading is preceded by `<a id="..."></a>` with the
 //! same id the HTML site uses (`class.Engine`, `fn.boot`, `var.TIMEOUT`,
@@ -109,7 +109,7 @@ impl Page<'_> {
             .into_owned()
     }
 
-    /// A raw docstring as Markdown: dedented, `#pd-` macros converted,
+    /// A raw docstring as Markdown: dedented, `#sd-` macros converted,
     /// doctest sessions fenced as `pycon`, and fenced blocks kept as written.
     fn docstring(&self, raw: &str) -> String {
         let (_, cleaned) = extract_z_index_and_clean(raw);
@@ -156,7 +156,7 @@ impl Page<'_> {
                 out.push('\n');
                 continue;
             }
-            if trimmed.starts_with("#pd-write") {
+            if trimmed.starts_with("#sd-write") {
                 continue;
             }
 
@@ -525,7 +525,7 @@ fn module_page(module: &PythonModule, package: &PythonPackage, page: &Page) -> S
 }
 
 /// Modules in the site's order: `SiteGenerator::render` sorts them by
-/// `#pd-z-index`, then name, then path, so pinned modules come first and
+/// `#sd-z-index`, then name, then path, so pinned modules come first and
 /// the order is stable.
 fn sorted(package: &PythonPackage) -> Vec<&PythonModule> {
     package.modules.iter().collect()

@@ -1,9 +1,9 @@
 """A module whose public API is fixed by `__all__`.
 
-#pd-doc-link: api.connect
-#pd-doc-link: api._make_pool
-#pd-doc-link: plain._secret
-#pd-doc-link: _helpers.normalize
+#sd-doc-link: api.connect
+#sd-doc-link: api._make_pool
+#sd-doc-link: plain._secret
+#sd-doc-link: _helpers.normalize
 """
 
 __all__ = ["connect", "Client"]

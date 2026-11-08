@@ -199,7 +199,7 @@ By default only the public API is documented, the way pdoc does it:
 * Otherwise, names starting with `_` are hidden. Dunder methods such as `__init__` and `__call__` are always shown.
 * A module whose name starts with `_` is hidden, and so is everything inside a package whose name starts with `_`.
 
-Hidden items get no page and do not appear in the navigation or search. A `#pd-doc-link` to one is reported as a warning instead of being linked. Pass `--include-private` to document everything.
+Hidden items get no page and do not appear in the navigation or search. A `#sd-doc-link` to one is reported as a warning instead of being linked. Pass `--include-private` to document everything.
 
 ### Documentation coverage
 
@@ -216,7 +216,7 @@ myproject                   1/1   100.0%
 Total                     11/19    57.9%
 ```
 
-Modules, classes, functions and methods are counted. Dunder methods (`__init__`, `__repr__`, ...) and variables are not: constructor parameters are usually documented in the class docstring, protocol methods rarely need their own, and constants rarely carry docstrings. "Public" follows the [Public API](#public-api) rules, so with `--include-private` everything counts. An item is documented when its docstring is not empty after whitespace is stripped. Doc-only `#pd-write` pages are not counted, and files that fail to parse are left out (they are reported as usual). Rows are sorted worst first.
+Modules, classes, functions and methods are counted. Dunder methods (`__init__`, `__repr__`, ...) and variables are not: constructor parameters are usually documented in the class docstring, protocol methods rarely need their own, and constants rarely carry docstrings. "Public" follows the [Public API](#public-api) rules, so with `--include-private` everything counts. An item is documented when its docstring is not empty after whitespace is stripped. Doc-only `#sd-write` pages are not counted, and files that fail to parse are left out (they are reported as usual). Rows are sorted worst first.
 
 `--fail-under 80` turns the report on and exits with an error when the total is below 80%:
 
@@ -336,15 +336,15 @@ It writes one `.md` page per module at the same path as its HTML page (`core/eng
 * `llms.txt`: a short index in the [llms.txt](https://llmstxt.org) format, for AI tools;
 * `llms-full.txt`: every page in one file.
 
-Each page has the module docstring, then **Variables**, **Classes** (each with its attributes and methods) and **Functions**. Every symbol has a `python` code block with its signature, then its docstring as written (docstrings are Markdown already). The `#pd-` macros become plain Markdown:
+Each page has the module docstring, then **Variables**, **Classes** (each with its attributes and methods) and **Functions**. Every symbol has a `python` code block with its signature, then its docstring as written (docstrings are Markdown already). The `#sd-` macros become plain Markdown:
 
 | Macro | Markdown |
 | --- | --- |
-| `#pd-note: text` | `> **Note:** text` |
-| `#pd-warning: text` | `> **Warning:** text` |
-| `#pd-doc-link: target` | `See reference: [target](../core/engine.md#class.Engine)` |
-| `#pd-image: path` | `![](../assets/path)`, with the image copied to `assets/` |
-| `#pd-code lang` | a fenced `lang` block |
+| `#sd-note: text` | `> **Note:** text` |
+| `#sd-warning: text` | `> **Warning:** text` |
+| `#sd-doc-link: target` | `See reference: [target](../core/engine.md#class.Engine)` |
+| `#sd-image: path` | `![](../assets/path)`, with the image copied to `assets/` |
+| `#sd-code lang` | a fenced `lang` block |
 
 `>>>` doctest sessions are fenced as `pycon`. A doc-link or image that cannot be resolved stays as text, so no link is ever broken.
 
@@ -363,7 +363,7 @@ validation:
 
 Docusaurus 3 reads `.md` files as MDX by default, and MDX rejects some plain Markdown, such as a `{` or `<` in a docstring. Set `markdown: { format: 'detect' }` in `docusaurus.config.js` so `.md` files are read as CommonMark.
 
-The output is deterministic: the same input gives byte-identical files. Pages follow the site's order (`#pd-z-index`, then name).
+The output is deterministic: the same input gives byte-identical files. Pages follow the site's order (`#sd-z-index`, then name).
 
 ### Keeping the output folder tidy
 
@@ -375,7 +375,7 @@ Each run saves a cache in `.swiftdoc-cache` inside `--out`, next to `.swiftdoc-m
 
 * Editing a docstring re-renders that module's page and the index.
 * Adding, removing or renaming a module, class or function, or changing a one-line summary, re-renders every page, because every page shows the navigation.
-* A page that links to a renamed symbol with `#pd-doc-link`, or shows an image that changed, is re-rendered too.
+* A page that links to a renamed symbol with `#sd-doc-link`, or shows an image that changed, is re-rendered too.
 * A new swiftdoc version, a changed option, or a changed template or `--css` file rebuilds everything. With `--templates`, any change to a module re-renders every page, since a custom template can show any module on any page.
 
 The result is always the same as a full build. `--no-cache` forces one (and saves a fresh cache). A coverage report needs every file parsed, so `--coverage` does not read the cache; a coverage-only run (no `--out`) neither reads nor writes one. `--format json` and `--format markdown` are also full builds, since `api.json` and the Markdown pages are made from the raw docstrings that cached modules no longer keep; with `html` too, the run still saves a cache for the next HTML build. The cache belongs to the output folder: if you commit `--out`, add `.swiftdoc-cache` to your `.gitignore`.
@@ -441,8 +441,8 @@ swiftdoc --src src/myproject --out docs --intersphinx python=https://docs.python
 In `pyproject.toml`: `intersphinx = ["python=https://docs.python.org/3", "numpy=https://numpy.org/doc/stable"]`.
 
 * Annotations link when the name is written in full (`pathlib.Path`) or imported (`from pathlib import Path`, then `-> Path`).
-* `#pd-doc-link: os.getcwd` links to the other project's page when no symbol of your own matches.
-* Inventories are downloaded once and cached in your user cache folder (`SWIFTDOC_CACHE_DIR` overrides it), so later builds work offline. A cached copy is refreshed after a week, and kept when the refresh fails.
+* `#sd-doc-link: os.getcwd` links to the other project's page when no symbol of your own matches.
+* Inventories are downloaded with `curl` (included in Linux, macOS and Windows 10 and later) once and cached in your user cache folder (`SWIFTDOC_CACHE_DIR` overrides it), so later builds work offline. A cached copy is refreshed after a week, and kept when the refresh fails.
 * An inventory that cannot be loaded prints a warning and the build continues. With `--strict` the build fails.
 
 ### GitHub Actions
@@ -544,8 +544,8 @@ The same works with NumPy headers (`Parameters` underlined with dashes) and reST
 
 * Parameter sections: `Args`, `Arguments`, `Parameters`, `Keyword Args`, `Other Parameters`. Types and defaults missing from the docstring are taken from the signature; for a class, from `__init__`. A parameter the docstring documents but the signature lacks is still shown. Parameters it leaves out are not added.
 * `Returns`, `Yields`, `Raises` and `Attributes` are lists too.
-* `Example(s)`, `Note(s)`, `Warning(s)` and `See Also` are shown below them. Notes and warnings use the same boxes as `#pd-note` and `#pd-warning`.
-* Descriptions are Markdown, and macros such as `#pd-doc-link` work in them when they are on their own line.
+* `Example(s)`, `Note(s)`, `Warning(s)` and `See Also` are shown below them. Notes and warnings use the same boxes as `#sd-note` and `#sd-warning`.
+* Descriptions are Markdown, and macros such as `#sd-doc-link` work in them when they are on their own line.
 
 A section that does not fit its format, such as an `Args:` line that is not `name: text`, is left in the docstring as written. Nothing is ever dropped. A docstring that mixes styles has each style's sections taken out.
 
@@ -571,7 +571,7 @@ Class attributes starting with `_` are private, dunders included. `__slots__`, `
 
 ### Nested and conditional definitions
 
-Classes defined inside a class are shown inside its card, under qualified names such as `Outer.Inner`. Link to them the same way: `#pd-doc-link: engine.Outer.Inner`.
+Classes defined inside a class are shown inside its card, under qualified names such as `Outer.Inner`. Link to them the same way: `#sd-doc-link: engine.Outer.Inner`.
 
 Definitions inside `if`, `try` and `with` blocks are documented too, at module and class level. Function bodies and `if __name__ == "__main__":` blocks are not.
 
@@ -599,37 +599,37 @@ Put a macro on its own line inside any docstring.
 
 | Macro | Effect |
 | --- | --- |
-| `#pd-note: text` | A highlighted note box. The text may use inline Markdown. |
-| `#pd-warning: text` | A highlighted warning box. The text may use inline Markdown. |
-| `#pd-doc-link: target` | A "See Reference" link to a module, class, function, method, variable or attribute. |
-| `#pd-image: path` | An image. The path is relative to `--src` and must stay inside it. |
-| `#pd-code` | Starts a Python code block that ends at the next line containing only ```` ``` ````. For another language, name it: `#pd-code json`. |
-| `#pd-write` | As the first line of a module docstring, in a module with no classes or functions: renders the module as a plain document page. |
-| `#pd-z-index: N` | In a module docstring: sort position in the navigation. Lower numbers come first. |
+| `#sd-note: text` | A highlighted note box. The text may use inline Markdown. |
+| `#sd-warning: text` | A highlighted warning box. The text may use inline Markdown. |
+| `#sd-doc-link: target` | A "See Reference" link to a module, class, function, method, variable or attribute. |
+| `#sd-image: path` | An image. The path is relative to `--src` and must stay inside it. |
+| `#sd-code` | Starts a Python code block that ends at the next line containing only ```` ``` ````. For another language, name it: `#sd-code json`. |
+| `#sd-write` | As the first line of a module docstring, in a module with no classes or functions: renders the module as a plain document page. |
+| `#sd-z-index: N` | In a module docstring: sort position in the navigation. Lower numbers come first. |
 
-`#pd-doc-link` targets are dotted paths. All of these work, as long as they identify exactly one thing:
+`#sd-doc-link` targets are dotted paths. All of these work, as long as they identify exactly one thing:
 
 ```text
-#pd-doc-link: core.engine                 a module
-#pd-doc-link: core.engine.Engine          a class
-#pd-doc-link: core.engine.Engine.run      a method
-#pd-doc-link: helpers.slugify             a unique trailing path is enough
-#pd-doc-link: Engine                      a bare name, if only one module defines it
+#sd-doc-link: core.engine                 a module
+#sd-doc-link: core.engine.Engine          a class
+#sd-doc-link: core.engine.Engine.run      a method
+#sd-doc-link: helpers.slugify             a unique trailing path is enough
+#sd-doc-link: Engine                      a bare name, if only one module defines it
 ```
 
-A target that cannot be found is shown as "(not found)" and reported as a warning. So are a misspelled macro, a missing image and a `#pd-code` block that is never closed. Macro-looking lines inside an ordinary fenced code block are left as text.
+A target that cannot be found is shown as "(not found)" and reported as a warning. So are a misspelled macro, a missing image and a `#sd-code` block that is never closed. Macro-looking lines inside an ordinary fenced code block are left as text.
 
 ### A documentation-only page
 
 ```python
-"""#pd-write
-#pd-z-index: 1
+"""#sd-write
+#sd-z-index: 1
 # Getting Started
 
 Welcome to the project.
 
-#pd-note: Requires Python 3.10 or newer.
-#pd-doc-link: core.engine.Engine
+#sd-note: Requires Python 3.10 or newer.
+#sd-doc-link: core.engine.Engine
 """
 ```
 
@@ -646,7 +646,7 @@ order: 1
 
 Read [the configuration guide](advanced/config.md#options) next.
 
-#pd-doc-link: core.engine.Engine
+#sd-doc-link: core.engine.Engine
 ```
 
 * The title comes from `title` in the front matter, else the first `# ` heading, else the file name.

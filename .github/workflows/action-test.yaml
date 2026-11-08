@@ -125,7 +125,7 @@ jobs:
           mkdir -p "$work/pkg"
           cd "$work"
           git init -q .
-          printf '"""Package.\n\n#pd-doc-link: pkg.engine.Engine\n"""\n' > pkg/__init__.py
+          printf '"""Package.\n\n#sd-doc-link: pkg.engine.Engine\n"""\n' > pkg/__init__.py
           printf '"""Engine module."""\n\n\nclass Engine:\n    """Runs things."""\n' > pkg/engine.py
           git add -A
           pre-commit try-repo "$hook_repo" swiftdoc --all-files

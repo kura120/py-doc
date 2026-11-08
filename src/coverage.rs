@@ -4,7 +4,7 @@
 //! "Public" is whatever is left in [`PythonPackage::modules`] after
 //! `hide_private` (the `__all__`, underscore and private-module rules), or
 //! everything with `--include-private`. "Documented" means a docstring that
-//! is not empty once whitespace is stripped. Doc-only `#pd-write` modules are
+//! is not empty once whitespace is stripped. Doc-only `#sd-write` modules are
 //! pages, not API, so they are not counted.
 
 use serde::Serialize;
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn doc_only_pages_are_not_counted() {
-        let guide = module("guide", Some("#pd-z-index: 1\n#pd-write\n# Guide"));
+        let guide = module("guide", Some("#sd-z-index: 1\n#sd-write\n# Guide"));
         let report = Report::of(&package(vec![guide, module("api", None)]), false);
         assert_eq!(report.modules.len(), 1);
         assert_eq!(

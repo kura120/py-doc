@@ -102,13 +102,13 @@ pub(crate) fn clean_docstring(docstring: &str) -> String {
     cleaned
 }
 
-/// Helper to parse and strip the `#pd-z-index` macro from a docstring
+/// Helper to parse and strip the `#sd-z-index` macro from a docstring
 pub(crate) fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
     let mut z_index = i32::MAX;
     let mut cleaned_lines = Vec::new();
 
     for line in docstring.lines() {
-        if let Some(value) = line.trim().strip_prefix("#pd-z-index:") {
+        if let Some(value) = line.trim().strip_prefix("#sd-z-index:") {
             if let Ok(parsed_val) = value.trim().parse::<i32>() {
                 z_index = parsed_val;
             }
@@ -120,14 +120,14 @@ pub(crate) fn extract_z_index_and_clean(docstring: &str) -> (i32, String) {
     (z_index, cleaned_lines.join("\n"))
 }
 
-fn starts_with_pd_write(cleaned_doc: &str) -> bool {
-    cleaned_doc.trim_start().starts_with("#pd-write")
+fn starts_with_sd_write(cleaned_doc: &str) -> bool {
+    cleaned_doc.trim_start().starts_with("#sd-write")
 }
 
-/// True when a raw module docstring marks a doc-only page (`#pd-write`,
-/// possibly after a `#pd-z-index` line). Shared with the coverage report.
+/// True when a raw module docstring marks a doc-only page (`#sd-write`,
+/// possibly after a `#sd-z-index` line). Shared with the coverage report.
 pub fn is_document_docstring(raw_doc: &str) -> bool {
-    starts_with_pd_write(&extract_z_index_and_clean(raw_doc).1)
+    starts_with_sd_write(&extract_z_index_and_clean(raw_doc).1)
 }
 
 /// First meaningful line of a raw docstring as plain text, for cards and search.
@@ -135,7 +135,7 @@ fn summarize(docstring: &str) -> Option<String> {
     docstring
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty() && !line.starts_with("#pd-") && !line.starts_with("```"))
+        .find(|line| !line.is_empty() && !line.starts_with("#sd-") && !line.starts_with("```"))
         .map(|line| {
             let line = line.trim_start_matches('#').trim();
             let mut summary: String = line.chars().take(160).collect();
@@ -191,19 +191,19 @@ impl<'a> DocMacro<'a> {
     pub(crate) fn parse(line: &'a str) -> Option<Self> {
         let trimmed = line.trim();
 
-        if let Some(path) = trimmed.strip_prefix("#pd-image:") {
+        if let Some(path) = trimmed.strip_prefix("#sd-image:") {
             Some(DocMacro::Image { path: path.trim() })
-        } else if let Some(text) = trimmed.strip_prefix("#pd-note:") {
+        } else if let Some(text) = trimmed.strip_prefix("#sd-note:") {
             Some(DocMacro::Note { text: text.trim() })
-        } else if let Some(text) = trimmed.strip_prefix("#pd-warning:") {
+        } else if let Some(text) = trimmed.strip_prefix("#sd-warning:") {
             Some(DocMacro::Warning { text: text.trim() })
-        } else if let Some(target) = trimmed.strip_prefix("#pd-doc-link:") {
+        } else if let Some(target) = trimmed.strip_prefix("#sd-doc-link:") {
             Some(DocMacro::DocLink {
                 target: target.trim(),
             })
-        } else if let Some(lang_part) = trimmed.strip_prefix("#pd-code") {
-            // Accepts "#pd-code", "#pd-code python", "#pd-code: python" and
-            // "#pd-code ```python". With no language the block is Python.
+        } else if let Some(lang_part) = trimmed.strip_prefix("#sd-code") {
+            // Accepts "#sd-code", "#sd-code python", "#sd-code: python" and
+            // "#sd-code ```python". With no language the block is Python.
             let language = lang_part
                 .trim()
                 .trim_start_matches(':')
@@ -858,7 +858,7 @@ impl SiteGenerator {
                         self.warn_at(
                             ctx,
                             &format!(
-                                "#pd-doc-link target '{}' is private and hidden from the docs (see --include-private)",
+                                "#sd-doc-link target '{}' is private and hidden from the docs (see --include-private)",
                                 target
                             ),
                         );
@@ -867,7 +867,7 @@ impl SiteGenerator {
                     None => {
                         self.warn_at(
                             ctx,
-                            &format!("#pd-doc-link target '{}' was not found", target),
+                            &format!("#sd-doc-link target '{}' was not found", target),
                         );
                         format!("{} <em>(not found)</em>", label)
                     }
@@ -944,7 +944,7 @@ impl SiteGenerator {
                 continue;
             }
 
-            if trimmed.starts_with("#pd-write") {
+            if trimmed.starts_with("#sd-write") {
                 continue;
             }
 
@@ -960,9 +960,9 @@ impl SiteGenerator {
                 continue;
             }
 
-            if trimmed.starts_with("#pd-") {
+            if trimmed.starts_with("#sd-") {
                 let name = trimmed.split([':', ' ']).next().unwrap_or(trimmed);
-                let hint = if name == "#pd-z-index" {
+                let hint = if name == "#sd-z-index" {
                     " (it only applies in a module docstring)"
                 } else {
                     ""
@@ -983,7 +983,7 @@ impl SiteGenerator {
             // Never drop content: an unterminated block runs to the end of the docstring.
             self.warn_at(
                 ctx,
-                "#pd-code block is not closed with a line containing only ```",
+                "#sd-code block is not closed with a line containing only ```",
             );
             processed_md.push_str(&format!(
                 "\n\n```{}\n{}\n```\n\n",
@@ -1100,7 +1100,7 @@ impl SiteGenerator {
             let (z_val, cleaned_doc) = extract_z_index_and_clean(&raw_doc);
             module.z_index = z_val;
             // Must be decided on the raw docstring: render_markdown strips the marker.
-            module.is_document = starts_with_pd_write(&cleaned_doc)
+            module.is_document = starts_with_sd_write(&cleaned_doc)
                 && module.classes.is_empty()
                 && module.functions.is_empty();
             module.summary = summarize(&cleaned_doc);
@@ -2112,7 +2112,7 @@ fn custom_templates(dir: &Path) -> Result<Vec<(String, String)>> {
 }
 
 /// Renders one line of Markdown without the surrounding paragraph, for
-/// macro text such as `#pd-note: use **care**`.
+/// macro text such as `#sd-note: use **care**`.
 /// The inside of rendered HTML that is a single paragraph, so it can sit
 /// next to a box's "Note:" label; other HTML is returned as is.
 fn unwrap_paragraph(html: &str) -> &str {
@@ -2407,15 +2407,15 @@ mod tests {
 
     #[test]
     fn z_index_macro_is_parsed_and_removed() {
-        let (z, cleaned) = extract_z_index_and_clean("#pd-write\n#pd-z-index: 3\n# Title");
+        let (z, cleaned) = extract_z_index_and_clean("#sd-write\n#sd-z-index: 3\n# Title");
         assert_eq!(z, 3);
-        assert_eq!(cleaned, "#pd-write\n# Title");
+        assert_eq!(cleaned, "#sd-write\n# Title");
     }
 
     #[test]
     fn summary_skips_macros_and_heading_markers() {
         assert_eq!(
-            summarize("#pd-write\n\n# Getting Started\nBody").as_deref(),
+            summarize("#sd-write\n\n# Getting Started\nBody").as_deref(),
             Some("Getting Started")
         );
         assert_eq!(summarize("\n  \n"), None);
