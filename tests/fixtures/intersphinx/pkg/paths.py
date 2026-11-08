@@ -1,6 +1,6 @@
 """Paths.
 
-#pd-doc-link: os.getcwd
+#sd-doc-link: os.getcwd
 """
 
 from pathlib import Path

@@ -994,7 +994,7 @@ h1.module-title, h1.package-title {
     box-shadow: var(--shadow-card);
 }
 
-/* Doc-generator macro output: #pd-note / #pd-warning / image errors */
+/* Doc-generator macro output: #sd-note / #sd-warning / image errors */
 .alert {
     margin: 1.2em 0;
     padding: 12px 16px;
@@ -1014,7 +1014,7 @@ h1.module-title, h1.package-title {
 .alert-warning { border-left-color: #e3a008; background: color-mix(in srgb, #e3a008 10%, var(--code-bg)); }
 .alert-error { border-left-color: var(--accent-red); background: color-mix(in srgb, var(--accent-red) 10%, var(--code-bg)); }
 
-/* Doc-generator macro output: #pd-doc-link cross references */
+/* Doc-generator macro output: #sd-doc-link cross references */
 .doc-link-container {
     margin: 1em 0;
     padding: 10px 14px;

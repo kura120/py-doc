@@ -35,7 +35,7 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 
 - **Markdown pages.** `--pages <DIR>` publishes `.md` files as guides above the API reference, with front-matter titles and ordering, links between pages, macros and search. A top-level `index.md` replaces the landing page's intro (#27).
 - **Sphinx inventories.** Every HTML build writes `objects.inv`, so Sphinx projects can link to your API with intersphinx (#25).
-- **Links to other projects.** `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, such as `pathlib.Path` to the Python docs. Inventories are cached, so builds work offline (#25).
+- **Links to other projects.** `--intersphinx NAME=URL` links annotations and `#sd-doc-link` to other projects' Sphinx docs, such as `pathlib.Path` to the Python docs. Inventories are cached, so builds work offline (#25).
 - **Several versions.** `--version-dir ROOT` builds each release into `ROOT/<version>/`, with a version switcher, `versions.json` and a redirect to the latest (#24).
 
 ### Themes and templates
@@ -58,6 +58,7 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 
 ### Upgrading from v0.5.1
 
+- Docstring macros start with `#sd-`: `#sd-write`, `#sd-doc-link`, `#sd-note`, `#sd-warning`, `#sd-code`, `#sd-image` and `#sd-z-index`. Replace the old prefix in your docstrings, for example with `sed -i 's/#pd-/#sd-/g'`.
 - Private names are no longer documented by default. Add `--include-private` to keep them.
 - Docstrings with Google, NumPy or reST sections render differently. Use `--docstring-style markdown` for the old output.
 - The command is `swiftdoc`, and settings live in `[tool.swiftdoc]`. Custom templates extend `swiftdoc/<name>.html`.

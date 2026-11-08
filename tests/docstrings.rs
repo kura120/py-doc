@@ -158,7 +158,7 @@ fn macros_work_inside_section_descriptions() {
     let run = card(&page, "method.Engine.run");
     assert!(run.contains("href=\"./google.html#class.Engine\" class=\"doc-internal-link\""));
     assert!(run.contains("Retries back off exponentially."));
-    assert!(!run.contains("#pd-"));
+    assert!(!run.contains("#sd-"));
 }
 
 #[test]

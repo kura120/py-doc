@@ -165,11 +165,11 @@ fn source_url_turns_line_references_into_links() {
 }
 
 #[test]
-fn pd_write_modules_use_the_document_template() {
+fn sd_write_modules_use_the_document_template() {
     let out = generate_sample("document", &[]);
     let guide = read(&out, "guide.html");
     assert!(guide.contains("document-canvas"));
-    assert!(!guide.contains("#pd-write"));
+    assert!(!guide.contains("#sd-write"));
     assert!(guide.contains("alert-note"));
     assert!(guide.contains("alert-warning"));
     assert!(guide.contains("<table>"));

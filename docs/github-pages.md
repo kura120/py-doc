@@ -4,7 +4,7 @@ The [README](../README.md#github-actions) has the basic workflow: the swiftdoc a
 
 ## One version (the latest)
 
-Use the README workflow as is. Each push replaces the site. `--strict` fails the build on a broken `#pd-doc-link` or a missing image, so a broken page never ships.
+Use the README workflow as is. Each push replaces the site. `--strict` fails the build on a broken `#sd-doc-link` or a missing image, so a broken page never ships.
 
 ## Every release, with a version switcher
 

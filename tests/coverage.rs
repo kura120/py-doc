@@ -7,7 +7,7 @@
 //!                listed not (`Public.__init__` is a dunder;
 //!                `unlisted` and `Public._hidden` not public) 2/4
 //!   plain        no module docstring; `blank` is whitespace 0/2
-//!   guide        `#pd-write` page, not counted
+//!   guide        `#sd-write` page, not counted
 //! With --include-private (5/12): api adds `_hidden` and `unlisted` (2/6),
 //! plain adds the documented `_private` (1/3), and `_internal` counts
 //! (module undocumented, `helper` documented: 1/2).

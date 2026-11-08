@@ -131,21 +131,25 @@ fn fetch_cached(name: &str, base: &str) -> Result<Vec<u8>> {
 }
 
 fn download(url: &str) -> Result<Vec<u8>> {
-    let agent = ureq::AgentBuilder::new()
-        .try_proxy_from_env(true)
-        .timeout(Duration::from_secs(30))
-        .build();
-    let response = agent
-        .get(url)
-        .call()
-        .with_context(|| format!("could not download {url}"))?;
-    let mut bytes = Vec::new();
-    response
-        .into_reader()
-        .take(64 * 1024 * 1024)
-        .read_to_end(&mut bytes)
-        .with_context(|| format!("could not download {url}"))?;
-    Ok(bytes)
+    // curl ships with Linux, macOS and Windows 10+, and follows the usual
+    // proxy settings, so swiftdoc needs no TLS stack of its own.
+    let output = std::process::Command::new("curl")
+        .args(["--fail", "--silent", "--show-error", "--location"])
+        .args(["--max-time", "30", "--max-filesize", "67108864"])
+        .args(["--proto", "=https,http", "--"])
+        .arg(url)
+        .output()
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                anyhow!("could not download {url}: curl is not installed")
+            }
+            _ => anyhow!("could not download {url}: {e}"),
+        })?;
+    if !output.status.success() {
+        let reason = String::from_utf8_lossy(&output.stderr);
+        bail!("could not download {url}: {}", reason.trim());
+    }
+    Ok(output.stdout)
 }
 
 /// Adds the Python objects of a version 2 inventory to `urls`. Names

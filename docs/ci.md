@@ -8,7 +8,7 @@ A full build takes well under a second on most projects (a quarter of a second o
 swiftdoc --src src/myproject --out site --strict
 ```
 
-`--strict` turns problems into a failed build: a `#pd-doc-link` that does not resolve, a missing image, a file that does not parse, an unknown `[tool.swiftdoc]` key, or an `--intersphinx` inventory that cannot be loaded.
+`--strict` turns problems into a failed build: a `#sd-doc-link` that does not resolve, a missing image, a file that does not parse, an unknown `[tool.swiftdoc]` key, or an `--intersphinx` inventory that cannot be loaded.
 
 ## Require documentation coverage
 

@@ -66,7 +66,7 @@
         "docstring": { "$ref": "#/$defs/nullable_string", "description": "Exactly as written in the source." },
         "docstring_html": { "$ref": "#/$defs/nullable_string", "description": "As rendered for the HTML site." },
         "summary": { "$ref": "#/$defs/nullable_string", "description": "First meaningful line, as plain text." },
-        "is_document": { "type": "boolean", "description": "A doc-only `#pd-write` page." },
+        "is_document": { "type": "boolean", "description": "A doc-only `#sd-write` page." },
         "is_private": { "type": "boolean" },
         "all": { "type": ["array", "null"], "items": { "type": "string" }, "description": "A literal __all__, in order; null when there is none." },
         "classes": { "type": "array", "items": { "$ref": "#/$defs/class" }, "description": "In source order." },
@@ -174,7 +174,7 @@
         "required": ["text", "html"],
         "properties": {
           "text": { "type": "string", "description": "As written (Markdown)." },
-          "html": { "type": "string", "description": "Notes and warnings are rendered as the #pd-note and #pd-warning boxes." }
+          "html": { "type": "string", "description": "Notes and warnings are rendered as the #sd-note and #sd-warning boxes." }
         }
       }
     }

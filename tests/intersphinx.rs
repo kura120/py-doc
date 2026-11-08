@@ -65,7 +65,7 @@ fn annotations_and_doc_links_use_cached_inventories() {
     assert_eq!(page.matches(path).count(), 2, "{page}");
     assert!(
         page.contains(r#"href="https://docs.python.org/3/library/os.html#os.getcwd""#),
-        "#pd-doc-link falls back to the inventory:\n{page}"
+        "#sd-doc-link falls back to the inventory:\n{page}"
     );
     assert!(
         !stderr(&output).contains("not found"),

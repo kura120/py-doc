@@ -1,8 +1,8 @@
 """Doc-links to variables.
 
-#pd-doc-link: config.TIMEOUT
-#pd-doc-link: config.Point.x
-#pd-doc-link: Mode.FAST
+#sd-doc-link: config.TIMEOUT
+#sd-doc-link: config.Point.x
+#sd-doc-link: Mode.FAST
 """
 
 VERSION = "1.0"

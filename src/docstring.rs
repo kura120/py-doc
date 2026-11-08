@@ -6,7 +6,7 @@
 //! parsed sections. It never drops text: a section it cannot parse is left
 //! in the body as written, and every word of the input ends up either in the
 //! body or in a section field. Descriptions stay raw Markdown here; the
-//! generator renders them through the same Markdown and `#pd-` macro
+//! generator renders them through the same Markdown and `#sd-` macro
 //! pipeline as the rest of the docstring.
 
 use serde::{Deserialize, Serialize};
@@ -69,7 +69,7 @@ pub struct DocBlock {
     /// Raw Markdown.
     pub text: String,
     /// Rendered HTML, filled in by the generator. Notes and warnings are
-    /// rendered as the same boxes as `#pd-note` and `#pd-warning`.
+    /// rendered as the same boxes as `#sd-note` and `#sd-warning`.
     pub html: String,
 }
 
@@ -309,20 +309,20 @@ fn detect(doc: &str) -> Vec<DocstringStyle> {
         .collect()
 }
 
-/// Marks the lines inside ``` fences and `#pd-code` blocks (and their
+/// Marks the lines inside ``` fences and `#sd-code` blocks (and their
 /// delimiters), where nothing is a section header.
 fn code_mask(lines: &[&str]) -> Vec<bool> {
     let mut mask = Vec::with_capacity(lines.len());
     let mut in_fence = false;
-    let mut in_pd_code = false;
+    let mut in_sd_code = false;
     for line in lines {
         let trimmed = line.trim();
-        if in_pd_code {
+        if in_sd_code {
             mask.push(true);
-            in_pd_code = trimmed != "```";
-        } else if trimmed.starts_with("#pd-code") {
+            in_sd_code = trimmed != "```";
+        } else if trimmed.starts_with("#sd-code") {
             mask.push(true);
-            in_pd_code = true;
+            in_sd_code = true;
         } else if trimmed.starts_with("```") {
             mask.push(true);
             in_fence = !in_fence;

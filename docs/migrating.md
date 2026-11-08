@@ -10,7 +10,7 @@ swiftdoc reads source files instead of importing them, so a migration is mostly 
 | `automodule` / `autoclass` directives | Not needed: every public module, class, function and variable is documented. `__all__` decides what is public. |
 | reST field lists (`:param x:`), Napoleon (Google / NumPy) | Read directly; `--docstring-style` picks one style if detection guesses wrong. See [Docstring sections](../README.md#docstring-sections). |
 | Narrative `.rst` pages, `toctree` | Markdown pages with `--pages docs`; see [Markdown pages](../README.md#markdown-pages). reST pages need converting to Markdown, for example with `pandoc -f rst -t gfm`. |
-| `:py:class:` cross-references | `#pd-doc-link: package.module.Class`, and type annotations link on their own |
+| `:py:class:` cross-references | `#sd-doc-link: package.module.Class`, and type annotations link on their own |
 | `intersphinx_mapping` | `--intersphinx python=https://docs.python.org/3`; see [Linking to other projects](../README.md#linking-to-other-projects) |
 | Other projects linking to you through intersphinx | Keep working: every build writes `objects.inv`. See [Linking from Sphinx](../README.md#linking-from-sphinx). |
 | Versions on Read the Docs | `--version-dir`; see [Several versions](../README.md#several-versions) and [Deploying to GitHub Pages](github-pages.md) |

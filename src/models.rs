@@ -118,7 +118,7 @@ pub struct PythonModule {
     #[serde(skip)]
     pub dir: String,
     pub link_path: String,
-    /// True for doc-only modules (`#pd-write` docstring, no code), rendered with document.html.
+    /// True for doc-only modules (`#sd-write` docstring, no code), rendered with document.html.
     pub is_document: bool,
     /// Names listed in a literal `__all__`, in order; None when the module
     /// does not define one (or builds it dynamically).

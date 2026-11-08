@@ -81,7 +81,7 @@ pub fn source_path_for(path: &Path, root: &Path) -> String {
 /// What rendering one module looked at, besides its own source.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModuleDeps {
-    /// Each `#pd-doc-link` target, what it resolved to and, when it did
+    /// Each `#sd-doc-link` target, what it resolved to and, when it did
     /// not resolve, whether it names a hidden private symbol.
     pub links: Vec<(String, Option<String>, bool)>,
     /// Each local image path and its status (see `SiteGenerator::image_status`).

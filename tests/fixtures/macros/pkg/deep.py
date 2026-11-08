@@ -1,8 +1,8 @@
 """A nested module.
 
-#pd-doc-link: alpha.target
-#pd-doc-link: zeta.Widget
-#pd-doc-link: zeta.Widget.spin
-#pd-doc-link: handbook
-#pd-image: img/pic.png
+#sd-doc-link: alpha.target
+#sd-doc-link: zeta.Widget
+#sd-doc-link: zeta.Widget.spin
+#sd-doc-link: handbook
+#sd-image: img/pic.png
 """

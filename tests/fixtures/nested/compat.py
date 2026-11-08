@@ -1,10 +1,10 @@
 """Definitions inside if / try / with / TYPE_CHECKING blocks.
 
-#pd-doc-link: compat.Outer.Inner
-#pd-doc-link: compat.Outer.Inner.Deep.ping
-#pd-doc-link: Outer.Inner.LIMIT
-#pd-doc-link: compat.Outer.Meta
-#pd-doc-link: compat.Outer._Private
+#sd-doc-link: compat.Outer.Inner
+#sd-doc-link: compat.Outer.Inner.Deep.ping
+#sd-doc-link: Outer.Inner.LIMIT
+#sd-doc-link: compat.Outer.Meta
+#sd-doc-link: compat.Outer._Private
 """
 
 import sys
