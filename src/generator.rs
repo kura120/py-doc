@@ -64,6 +64,8 @@ pub struct NavGroup {
     pub functions: Vec<PythonFunction>,
     /// Child modules of this folder, excluding its own __init__/__main__.
     pub modules: Vec<PythonModule>,
+    /// The group of `--pages` Markdown pages, listed first.
+    pub pages: bool,
 }
 
 fn escape_html(text: &str) -> String {
@@ -230,6 +232,9 @@ struct RenderCtx<'a> {
     deps: RefCell<ModuleDeps>,
     /// How names in this module's annotations resolve.
     types: TypeContext,
+    /// For Markdown pages (`--pages`): relative `.md` links become `.html`,
+    /// prefixed with this (the pages folder, from the landing page).
+    md_links: Option<&'a str>,
 }
 
 /// The names a module's annotations can link: its own top-level
@@ -289,6 +294,8 @@ pub struct Prepared {
     key: String,
     /// Whether the modules differ from the previous cache's.
     modules_changed: bool,
+    /// The rendered `--pages` index.md.
+    intro: Option<String>,
 }
 
 /// One source file handed to [`SiteGenerator::render`].
@@ -356,13 +363,18 @@ pub struct SiteGenerator {
     templates_note: Option<String>,
     /// `--css` files as (site path, contents), linked after style.css.
     extra_css: Vec<(String, String)>,
+    /// `index.md` of `--pages`: (pages folder name, Markdown).
+    intro: Option<(String, String)>,
     /// How docstring sections are read (`--docstring-style`).
     docstring_style: DocstringStyle,
 }
 
 /// Where a module's page is written, relative to the site root.
 fn output_path_for(source_path: &str) -> String {
-    let stem = source_path.strip_suffix(".py").unwrap_or(source_path);
+    let stem = source_path
+        .strip_suffix(".py")
+        .or_else(|| source_path.strip_suffix(".md"))
+        .unwrap_or(source_path);
     if stem == "__init__" {
         // The root package's __init__.py must not claim index.html: that
         // is the site's landing page.
@@ -489,11 +501,19 @@ impl SiteGenerator {
             custom_templates: !custom.is_empty(),
             templates_note,
             extra_css: Vec::new(),
+            intro: None,
             docstring_style: DocstringStyle::Auto,
         })
     }
 
     /// Sets `--docstring-style`.
+    /// The `--pages` folder's `index.md`, shown on the landing page instead
+    /// of the root `__init__.py` docstring.
+    pub fn with_intro(mut self, intro: Option<(String, String)>) -> Self {
+        self.intro = intro;
+        self
+    }
+
     pub fn with_docstring_style(mut self, style: DocstringStyle) -> Self {
         self.docstring_style = style;
         self
@@ -974,6 +994,23 @@ impl SiteGenerator {
                         ))));
                     }
                 }
+                Event::Start(Tag::Link {
+                    link_type,
+                    dest_url,
+                    title,
+                    id,
+                }) if ctx.md_links.is_some() => {
+                    let dest_url = match crate::pages::rewrite_link(&dest_url) {
+                        Some(page) => CowStr::from(format!("{}{page}", ctx.md_links.unwrap_or(""))),
+                        None => dest_url,
+                    };
+                    events.push(Event::Start(Tag::Link {
+                        link_type,
+                        dest_url,
+                        title,
+                        id,
+                    }));
+                }
                 Event::Start(Tag::Image {
                     link_type,
                     dest_url,
@@ -1028,6 +1065,7 @@ impl SiteGenerator {
             origin: &origin,
             deps: RefCell::new(ModuleDeps::default()),
             types: TypeContext::of(module),
+            md_links: module.source_path.ends_with(".md").then_some(""),
         };
 
         if let Some(raw_doc) = module.docstring.take() {
@@ -1280,6 +1318,7 @@ impl SiteGenerator {
                     classes,
                     functions,
                     modules: mods,
+                    pages: dir == crate::pages::PAGES_DIR,
                 },
             ));
         }
@@ -1297,8 +1336,11 @@ impl SiteGenerator {
                 group.modules.len() + group.classes.len() + group.functions.len()
             };
 
-            effective_z(z_a, group_a)
-                .cmp(&effective_z(z_b, group_b))
+            // Markdown pages come before the API reference.
+            group_b
+                .pages
+                .cmp(&group_a.pages)
+                .then_with(|| effective_z(z_a, group_a).cmp(&effective_z(z_b, group_b)))
                 // descending: bigger/busier folders surface first
                 .then_with(|| size(group_b).cmp(&size(group_a)))
                 .then_with(|| group_a.name.cmp(&group_b.name))
@@ -1484,6 +1526,20 @@ impl SiteGenerator {
         // Built from names only, so cached (rendered) modules serve as well
         // as freshly parsed ones.
         let resolver = Resolver::build(&package);
+        let intro = self.intro.as_ref().map(|(folder, markdown)| {
+            let landing = PythonModule::default();
+            let prefix = format!("{folder}/");
+            let origin = format!("{folder}/index.md");
+            let ctx = RenderCtx {
+                root_prefix: "./",
+                resolver: &resolver,
+                origin: &origin,
+                deps: RefCell::new(ModuleDeps::default()),
+                types: TypeContext::of(&landing),
+                md_links: Some(&prefix),
+            };
+            self.render_markdown(markdown, &ctx)
+        });
 
         // A cached module whose doc-links now resolve differently, or whose
         // images changed, is parsed and rendered again. The file itself is
@@ -1565,6 +1621,7 @@ impl SiteGenerator {
             old_pages,
             key,
             modules_changed,
+            intro,
         })
     }
 
@@ -1666,9 +1723,13 @@ impl SiteGenerator {
         }
         let global = hash_parts(global_parts);
         let index_inputs = hash_parts(
-            [global.as_str(), "index.html"]
-                .into_iter()
-                .chain(rendered.iter().map(|info| info.rendered.full_hash.as_str())),
+            [
+                global.as_str(),
+                "index.html",
+                prepared.intro.as_deref().unwrap_or(""),
+            ]
+            .into_iter()
+            .chain(rendered.iter().map(|info| info.rendered.full_hash.as_str())),
         );
         let page_inputs: Vec<String> = package
             .modules
@@ -1713,7 +1774,9 @@ impl SiteGenerator {
                 index_context.insert("total_modules", &total_modules);
                 index_context.insert("total_classes", &total_classes);
                 index_context.insert("total_functions", &total_functions);
-                if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
+                if let Some(intro) = &prepared.intro {
+                    index_context.insert("package_docstring", intro);
+                } else if let Some(doc) = root_init.and_then(|m| m.docstring.as_ref()) {
                     index_context.insert("package_docstring", doc);
                 }
                 if let Some(root) = root_init

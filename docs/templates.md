@@ -66,6 +66,7 @@ Tests check that each object below lists exactly the fields the code has, and th
 | `classes` | list of [Class](#class) | Classes defined in the folder's `__init__.py`. |
 | `functions` | list of [Function](#function) | Functions defined in the folder's `__init__.py`. |
 | `modules` | list of [Module](#module) | The folder's other modules. |
+| `pages` | boolean | The group of `--pages` Markdown pages (named "Guides"), always first. |
 
 ### Module
 

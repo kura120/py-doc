@@ -19,6 +19,7 @@ mod generator;
 mod highlight;
 mod models;
 mod output;
+mod pages;
 mod parser;
 mod resolver;
 mod serve;
@@ -188,6 +189,11 @@ pub struct Args {
     #[arg(long, value_name = "FILE")]
     #[serde(default)]
     pub css: Vec<String>,
+
+    /// Folder of Markdown pages (guides, tutorials) to publish next to the
+    /// API reference. A top-level index.md replaces the landing page's intro.
+    #[arg(long, value_name = "DIR")]
+    pub pages: Option<String>,
 
     /// Starting UI layout for the generated site [default: classic]
     #[arg(long, value_enum)]
@@ -424,6 +430,10 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
     );
 
     let (root, py_files) = collect_python_files(src_path, &args.exclude);
+    let (page_sources, intro) = match (&args.pages, &args.out) {
+        (Some(dir), Some(_)) => pages::collect(Path::new(dir), &root)?,
+        _ => (Vec::new(), None),
+    };
 
     // The generator comes first: the cache key includes its theme files.
     // A coverage report needs every module parsed, so it never reads the
@@ -444,7 +454,8 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
                 args.source_url.as_deref(),
             )?
             .with_extra_css(&args.css)?
-            .with_docstring_style(args.docstring_style),
+            .with_docstring_style(args.docstring_style)
+            .with_intro(intro),
         ),
         None => None,
     };
@@ -499,7 +510,7 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
         })
         .collect();
 
-    let mut sources = Vec::new();
+    let mut sources = page_sources;
     let mut parse_errors: Vec<String> = Vec::new();
     for (path, source_hash, result) in results {
         match result {

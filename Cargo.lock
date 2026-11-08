@@ -1018,36 +1018,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
-name = "swiftdoc"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "clap",
- "crossterm",
- "ctrlc",
- "dunce",
- "get-size2",
- "indicatif",
- "notify",
- "postcard",
- "pulldown-cmark",
- "ratatui",
- "rayon",
- "regex",
- "ruff_python_ast",
- "ruff_python_parser",
- "ruff_text_size",
- "serde",
- "serde_json",
- "tera",
- "tiny_http",
- "toml",
- "tui-input",
- "walkdir",
- "xxhash-rust",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,6 +1411,36 @@ dependencies = [
  "quote",
  "rustversion",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "swiftdoc"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossterm",
+ "ctrlc",
+ "dunce",
+ "get-size2",
+ "indicatif",
+ "notify",
+ "postcard",
+ "pulldown-cmark",
+ "ratatui",
+ "rayon",
+ "regex",
+ "ruff_python_ast",
+ "ruff_python_parser",
+ "ruff_text_size",
+ "serde",
+ "serde_json",
+ "tera",
+ "tiny_http",
+ "toml",
+ "tui-input",
+ "walkdir",
+ "xxhash-rust",
 ]
 
 [[package]]

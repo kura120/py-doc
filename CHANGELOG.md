@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `--pages <DIR>` publishes Markdown guides next to the API reference, with front-matter titles and ordering, links between pages, macros and search. A top-level `index.md` replaces the landing page's intro (#27).
+- `docs/templates.md` documents every template variable, and templates get `context_version` (#11).
+
 ## v0.6.0
 
 A large release. swiftdoc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML.
