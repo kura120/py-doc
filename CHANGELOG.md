@@ -7,6 +7,7 @@
 - HTML builds write `objects.inv`, so Sphinx projects can link to the API with intersphinx (#25).
 - `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, with an offline cache (#25).
 - `--version-dir ROOT` builds each release into `ROOT/<version>/` with a version switcher, `versions.json` and a redirect to the latest (#24).
+- README: a "Why swiftdoc" comparison, and guides for GitHub Pages, CI and migrating from Sphinx or pdoc in `docs/` (#28).
 
 ## v0.6.0
 

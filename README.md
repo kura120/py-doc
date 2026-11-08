@@ -8,8 +8,31 @@ swiftdoc reads your `.py` files, never imports or runs them, and writes a static
 
 swiftdoc documents all 253,000 lines of SQLAlchemy in about a quarter of a second: 50x faster than `pydoc` and `pdoc3`, 130x faster than `pdoc`, and 200x faster than Sphinx with autodoc. See [Benchmarks](#benchmarks) for how this was measured.
 
+## Why swiftdoc
+
+* **It never imports or runs your code.** It is safe on untrusted or security-sensitive code, and it works where importing fails: missing native or GPU dependencies, heavy import side effects, machines without network access.
+* **It is fast enough to run on every commit.** Checking for broken links and missing docstrings in CI costs less than a second; see [Using swiftdoc in CI](docs/ci.md).
+* **It fits into existing docs.** It reads Google, NumPy and reST docstrings, links to and from Sphinx sites through `objects.inv`, and writes JSON and Markdown as well as HTML.
+
+| | swiftdoc | pydoc | pdoc | pdoc3 | Sphinx + autodoc |
+| --- | --- | --- | --- | --- | --- |
+| Reads code by | parsing | importing | importing | importing | importing |
+| SQLAlchemy, HTML ([benchmarks](#benchmarks)) | 0.24 s | 12.2 s | 31.3 s | 12.0 s | 48.2 s |
+| Docstrings | Markdown, plus Google, NumPy and reST sections | plain text | Markdown, Google, NumPy, reST | Markdown, Google, NumPy | reST; Google and NumPy with Napoleon |
+| Output | HTML, JSON, Markdown | HTML, text | HTML | HTML, Markdown | HTML, PDF, ePub and more |
+| Theming | CSS variables, template blocks | none | templates, CSS | templates | themes, extensions |
+| Search | yes | no | yes | optional | yes |
+| Guides next to the API | Markdown pages | no | no | no | yes |
+| Intersphinx | reads and writes | no | no | no | reads and writes |
+| Several versions | `--version-dir` | no | no | no | with Read the Docs or extensions |
+
+**Limits of parsing.** swiftdoc documents what is written in the source. It does not see attributes created at runtime, members inherited from classes in other packages, docstrings built by code, or signatures changed by decorators. If your API is mostly generated at runtime, an import-based tool shows more of it.
+
+**Guides:** [Deploying to GitHub Pages](docs/github-pages.md) · [Using swiftdoc in CI](docs/ci.md) · [Migrating from Sphinx or pdoc](docs/migrating.md) · [Template context](docs/templates.md)
+
 ## Table of Contents
 
+* [Why swiftdoc](#why-swiftdoc)
 * [Installation](#installation)
 * [Usage](#usage)
 * [Writing docs](#writing-docs)
