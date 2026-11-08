@@ -50,7 +50,7 @@ const MANIFEST_NAME: &str = ".swiftdoc-manifest";
 static TAG_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"<[^>]*>").expect("valid regex"));
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct NavGroup {
     /// Display path of the folder ("core/sub"); None for root-level modules.
     pub name: Option<String>,
@@ -402,6 +402,11 @@ fn module_order(a: &PythonModule, b: &PythonModule) -> std::cmp::Ordering {
         .then_with(|| a.name.cmp(&b.name))
         .then_with(|| a.source_path.cmp(&b.source_path))
 }
+
+/// Version of the template context documented in `docs/templates.md`,
+/// available to templates as `context_version`. Bump it when a documented
+/// variable is renamed, removed or changes type.
+pub const CONTEXT_VERSION: u32 = 1;
 
 impl SiteGenerator {
     pub fn new(
@@ -1307,6 +1312,7 @@ impl SiteGenerator {
     /// re-serializing the whole package (all rendered docstrings) per page.
     fn base_context(&self, package: &Value, nav_groups: &Value, root_path: &str) -> TeraContext {
         let mut context = TeraContext::new();
+        context.insert("context_version", &CONTEXT_VERSION);
         context.insert_value("package", package.clone());
         context.insert_value("nav_groups", nav_groups.clone());
         context.insert("version", &self.version);
@@ -2163,6 +2169,95 @@ fn nav_data_json(nav_groups: &[NavGroup]) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `docs/templates.md` as (heading, documented names) for each table.
+    fn documented_context() -> Vec<(String, std::collections::BTreeSet<String>)> {
+        let mut sections: Vec<(String, std::collections::BTreeSet<String>)> = Vec::new();
+        for line in include_str!("../docs/templates.md").lines() {
+            if let Some(heading) = line.strip_prefix("### ").or(line.strip_prefix("## ")) {
+                sections.push((heading.to_string(), Default::default()));
+            } else if let Some(rest) = line.strip_prefix("| `")
+                && let Some((name, _)) = rest.split_once('`')
+                && let Some((_, names)) = sections.last_mut()
+            {
+                names.insert(name.to_string());
+            }
+        }
+        sections
+    }
+
+    fn fields_of<T: serde::Serialize + Default>() -> std::collections::BTreeSet<String> {
+        match serde_json::to_value(T::default()).unwrap() {
+            serde_json::Value::Object(map) => map.keys().cloned().collect(),
+            other => panic!("not an object: {other}"),
+        }
+    }
+
+    #[test]
+    fn template_context_matches_the_docs() {
+        use crate::docstring::{DocBlock, DocItem};
+        let docs = documented_context();
+        let documented = |heading: &str| {
+            docs.iter()
+                .find(|(h, _)| h == heading)
+                .unwrap_or_else(|| panic!("docs/templates.md has no `{heading}` section"))
+                .1
+                .clone()
+        };
+
+        // Objects: the docs list exactly the serialized fields, so renaming,
+        // removing or adding one means updating the docs (and, for the first
+        // two, CONTEXT_VERSION).
+        let objects = [
+            ("Package", fields_of::<PythonPackage>()),
+            ("NavGroup", fields_of::<NavGroup>()),
+            ("Module", fields_of::<PythonModule>()),
+            ("Class", fields_of::<PythonClass>()),
+            ("Function", fields_of::<PythonFunction>()),
+            ("Variable", fields_of::<PythonVariable>()),
+            ("LinkedTypes", fields_of::<LinkedTypes>()),
+            ("DocSections", fields_of::<DocSections>()),
+            ("DocItem", fields_of::<DocItem>()),
+            ("DocBlock", fields_of::<DocBlock>()),
+        ];
+        for (heading, fields) in objects {
+            assert_eq!(
+                documented(heading),
+                fields,
+                "fields of `{heading}` differ from docs/templates.md"
+            );
+        }
+
+        // Every documented variable shared by all pages is in the context.
+        let dir = std::env::temp_dir().join(format!("swiftdoc-context-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let generator = SiteGenerator::new(
+            &dir,
+            dir.join("out").to_str().unwrap(),
+            "1.0.0",
+            None,
+            "classic",
+            Some("dark"),
+            Some("https://example.com/src"),
+        )
+        .unwrap();
+        let context = generator.base_context(
+            &Value::from_serializable(&PythonPackage::default()),
+            &Value::from_serializable(&Vec::<NavGroup>::new()),
+            "./",
+        );
+        for name in documented("Context") {
+            assert!(
+                context.contains_key(&name),
+                "`{name}` is not in the context"
+            );
+        }
+        assert_eq!(
+            context.get("context_version"),
+            Some(&Value::from(CONTEXT_VERSION))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn root_init_does_not_claim_the_landing_page() {
