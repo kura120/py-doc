@@ -1,6 +1,6 @@
 //! `swiftdoc serve`: builds the site, serves `--out` on 127.0.0.1 and
 //! rebuilds (incrementally, through the build cache) whenever the sources,
-//! the `--templates` folder or a `--css` file change, then reloads every
+//! the `--templates` or `--pages` folder or a `--css` file change, then reloads every
 //! open page.
 //!
 //! Live reload is a small script added to HTML responses as they are
@@ -289,9 +289,9 @@ fn watch_list(config: &Config) -> Result<Vec<Watch>> {
     } else {
         list.push(single_file(src));
     }
-    if let Some(templates) = &config.templates {
+    for dir in config.templates.iter().chain(&config.pages) {
         list.push(Watch {
-            dir: canonical(templates)?,
+            dir: canonical(dir)?,
             recursive: true,
             files: Vec::new(),
         });

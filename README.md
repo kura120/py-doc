@@ -101,6 +101,7 @@ Run `swiftdoc` with no arguments in a terminal, in a project without a `[tool.sw
 | `-e`, `--exclude <NAME>` | Skip a file or directory, by name or by path relative to `--src`. Repeatable. |
 | `--source-url <URL>` | Base URL of a browsable copy of the sources. Turns each symbol's `file:line` reference into a link. |
 | `--css <FILE>` | Extra stylesheet, linked after the bundled one on every page. Repeatable. See [Restyling with CSS](#restyling-with-css). |
+| `--pages <DIR>` | Folder of Markdown pages (guides, tutorials) published next to the API reference. See [Markdown pages](#markdown-pages). |
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
@@ -576,6 +577,28 @@ Welcome to the project.
 #pd-doc-link: core.engine.Engine
 """
 ```
+
+### Markdown pages
+
+`--pages docs` (or `pages = "docs"` in `[tool.swiftdoc]`) publishes every `.md` file in `docs/`, including subfolders, as a page in a "Guides" group above the API reference. `docs/guide.md` becomes `docs/guide.html`.
+
+```markdown
+---
+title: Getting started
+order: 1
+---
+# Getting started
+
+Read [the configuration guide](advanced/config.md#options) next.
+
+#pd-doc-link: core.engine.Engine
+```
+
+* The title comes from `title` in the front matter, else the first `# ` heading, else the file name.
+* Pages are sorted by `order`, or by a number prefix like `01_install.md`, then by title.
+* Relative links to other `.md` files point to their pages. Macros and doc-links work as in docstrings, and pages are in search.
+* A top-level `index.md` is not a page: it replaces the root `__init__.py` docstring on the landing page.
+* Images in pages are looked up relative to `--src`, like images in docstrings.
 
 ### Ordering folders
 

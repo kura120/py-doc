@@ -43,6 +43,8 @@ pub struct Config {
     pub templates: Option<String>,
     /// Extra stylesheets, in the order given.
     pub css: Vec<String>,
+    /// Folder of Markdown pages.
+    pub pages: Option<String>,
     pub layout: LayoutKind,
     pub theme: ThemeKind,
     pub exclude: Vec<String>,
@@ -198,10 +200,15 @@ fn known_keys() -> Vec<String> {
 
 /// Makes the path options of a config-file layer relative to `base`.
 fn rebase_paths(args: &mut Args, base: &Path) {
-    for path in [&mut args.src, &mut args.out, &mut args.templates]
-        .into_iter()
-        .flatten()
-        .chain(args.css.iter_mut())
+    for path in [
+        &mut args.src,
+        &mut args.out,
+        &mut args.templates,
+        &mut args.pages,
+    ]
+    .into_iter()
+    .flatten()
+    .chain(args.css.iter_mut())
     {
         *path = base.join(&*path).to_string_lossy().into_owned();
     }
@@ -342,6 +349,7 @@ impl Config {
             name,
             doc_version,
             templates: cli.templates.or(tool.templates),
+            pages: cli.pages.or(tool.pages),
             css: if cli.css.is_empty() {
                 tool.css
             } else {
@@ -470,6 +478,7 @@ docstring-style = "numpy"
                 doc_version: "4.0.0".into(),
                 templates: Some("cli-templates".into()),
                 css: vec!["cli.css".into()],
+                pages: None,
                 layout: LayoutKind::Minimal,
                 theme: ThemeKind::Dark,
                 exclude: vec!["cli-ex".into()],
@@ -501,6 +510,7 @@ docstring-style = "numpy"
                 doc_version: "3.0.0".into(),
                 templates: Some(in_proj("tool-templates")),
                 css: vec![in_proj("tool-a.css"), in_proj("tool-b.css")],
+                pages: None,
                 layout: LayoutKind::Modern,
                 theme: ThemeKind::Slate,
                 exclude: vec!["tool-ex".into()],
@@ -539,6 +549,7 @@ docstring-style = "numpy"
                 doc_version: "1.0.0".into(),
                 templates: None,
                 css: vec![],
+                pages: None,
                 layout: LayoutKind::Classic,
                 theme: ThemeKind::Auto,
                 exclude: vec![],
@@ -607,6 +618,7 @@ docstring-style = "numpy"
             "doc-version",
             "templates",
             "css",
+            "pages",
             "layout",
             "theme",
             "exclude",
