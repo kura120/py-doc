@@ -17,6 +17,7 @@ mod coverage;
 mod docstring;
 mod generator;
 mod highlight;
+mod inventory;
 mod models;
 mod output;
 mod pages;
@@ -386,6 +387,18 @@ fn collect_python_files(src_path: &Path, user_excludes: &[String]) -> (PathBuf, 
 ///
 /// With `args.out` None (a check-only coverage run) it stops after the
 /// coverage report and writes nothing.
+/// The import name of the source root: its folder name when it is a
+/// package (has an `__init__.py`), else "" (its modules are top-level).
+fn import_prefix(root: &Path) -> String {
+    if !root.join("__init__.py").is_file() {
+        return String::new();
+    }
+    root.canonicalize()
+        .ok()
+        .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_default()
+}
+
 fn run_generation(args: &Config) -> Result<()> {
     build(args, false)
 }
@@ -588,6 +601,14 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
                 match format {
                     OutputFormat::Html => {
                         let pages = generator.write_html(&prepared)?;
+                        generator.write_if_changed(
+                            inventory::FILE_NAME,
+                            &inventory::build(
+                                &prepared.package,
+                                &args.doc_version,
+                                &import_prefix(&root),
+                            ),
+                        )?;
                         generator.save_cache(&prepared, &pages);
                         written.push(format!("{out_shown}/index.html"));
                     }
