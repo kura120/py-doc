@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- HTML builds write `objects.inv`, so Sphinx projects can link to the API with intersphinx (#25).
+
 ## v0.6.0
 
 A large release. swiftdoc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML.

@@ -1369,7 +1369,7 @@ impl SiteGenerator {
     }
 
     /// Writes a non-page file unless it already has exactly this content.
-    fn write_if_changed(&self, site_path: &str, body: &[u8]) -> Result<()> {
+    pub(crate) fn write_if_changed(&self, site_path: &str, body: &[u8]) -> Result<()> {
         let path = Path::new(&self.output_dir).join(site_path);
         if fs::read(&path).ok().as_deref() != Some(body) {
             fs::write(&path, body).with_context(|| format!("Failed to write {}", site_path))?;

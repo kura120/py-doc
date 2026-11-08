@@ -377,6 +377,18 @@ swiftdoc --src . --out docs --name myproject \
   --source-url https://github.com/me/myproject/blob/main
 ```
 
+### Linking from Sphinx
+
+Every HTML build writes `objects.inv`, a Sphinx inventory of every module, class, function, method and variable. A Sphinx project links to your API with intersphinx:
+
+```python
+# conf.py
+extensions = ["sphinx.ext.intersphinx"]
+intersphinx_mapping = {"myproject": ("https://example.com/docs/", None)}
+```
+
+Names are import paths: when `--src` is a package folder (it has an `__init__.py`), they start with its name, as in `myproject.engine.Engine`. `python -m sphinx.ext.intersphinx docs/objects.inv` lists them.
+
 ### GitHub Actions
 
 The repository is also a GitHub Action. It downloads the release binary for the runner (Linux x86_64 or arm64, macOS Intel or Apple silicon, Windows), checks its SHA-256 checksum, and runs swiftdoc. A missing or wrong checksum fails the step. A full build takes well under a second, so it can run on every push.
