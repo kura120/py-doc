@@ -226,7 +226,10 @@ pub fn link(
             Piece::Name(name) => match target {
                 Some(target) => {
                     html.push_str("<a class=\"type-link\" href=\"");
-                    escape(prefix, &mut html);
+                    // External (`--intersphinx`) links are absolute.
+                    if !target.contains("://") {
+                        escape(prefix, &mut html);
+                    }
                     escape(&target, &mut html);
                     html.push_str("\">");
                     escape(name, &mut html);

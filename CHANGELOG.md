@@ -5,6 +5,7 @@
 - `--pages <DIR>` publishes Markdown guides next to the API reference, with front-matter titles and ordering, links between pages, macros and search. A top-level `index.md` replaces the landing page's intro (#27).
 - `docs/templates.md` documents every template variable, and templates get `context_version` (#11).
 - HTML builds write `objects.inv`, so Sphinx projects can link to the API with intersphinx (#25).
+- `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, with an offline cache (#25).
 
 ## v0.6.0
 

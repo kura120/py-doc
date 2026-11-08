@@ -132,6 +132,11 @@ pub struct PythonModule {
     /// while rendering.
     #[serde(skip)]
     pub imports: Vec<(String, String)>,
+    /// Names bound by imports of other packages, as (local name, dotted
+    /// path): ("Path", "pathlib.Path"). For `--intersphinx` links; only
+    /// needed while rendering.
+    #[serde(skip)]
+    pub external_imports: Vec<(String, String)>,
 }
 
 impl PythonModule {
@@ -155,6 +160,7 @@ impl PythonModule {
             all: None,
             is_private: self.is_private,
             imports: Vec::new(),
+            external_imports: Vec::new(),
         }
     }
 }

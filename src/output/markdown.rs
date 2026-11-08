@@ -67,6 +67,10 @@ impl Page<'_> {
     /// A link from the site root (`core/engine.html#class.Engine`) as the
     /// matching Markdown page and anchor, relative to this page.
     fn relative(&self, resolved: &str) -> String {
+        // External (`--intersphinx`) links are absolute already.
+        if resolved.contains("://") {
+            return resolved.to_string();
+        }
         let (path, anchor) = match resolved.split_once('#') {
             Some((path, anchor)) => (path, Some(anchor)),
             None => (resolved, None),
