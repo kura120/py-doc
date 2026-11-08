@@ -68,7 +68,7 @@ pub struct NavGroup {
     pub pages: bool,
 }
 
-fn escape_html(text: &str) -> String {
+pub(crate) fn escape_html(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -370,6 +370,8 @@ pub struct SiteGenerator {
     intro: Option<(String, String)>,
     /// `--intersphinx` inventories, for names outside the package.
     inventories: crate::intersphinx::Inventories,
+    /// `--version-dir`: the sidebar shows a version switcher.
+    version_switcher: bool,
     /// How docstring sections are read (`--docstring-style`).
     docstring_style: DocstringStyle,
 }
@@ -508,6 +510,7 @@ impl SiteGenerator {
             extra_css: Vec::new(),
             intro: None,
             inventories: Default::default(),
+            version_switcher: false,
             docstring_style: DocstringStyle::Auto,
         })
     }
@@ -517,6 +520,11 @@ impl SiteGenerator {
     /// of the root `__init__.py` docstring.
     pub fn with_intro(mut self, intro: Option<(String, String)>) -> Self {
         self.intro = intro;
+        self
+    }
+
+    pub fn with_version_switcher(mut self, on: bool) -> Self {
+        self.version_switcher = on;
         self
     }
 
@@ -1401,6 +1409,7 @@ impl SiteGenerator {
         context.insert_value("package", package.clone());
         context.insert_value("nav_groups", nav_groups.clone());
         context.insert("version", &self.version);
+        context.insert("version_switcher", &self.version_switcher);
         context.insert("root_path", root_path);
         context.insert("layout", &self.layout);
         let extra_css: Vec<&str> = self

@@ -22,6 +22,7 @@ Tests check that each object below lists exactly the fields the code has, and th
 | `package` | [Package](#package) | The documented package: every page sees every module. |
 | `nav_groups` | list of [NavGroup](#navgroup) | Modules grouped by folder, in sidebar order. |
 | `version` | string | The project version (`--doc-version`). |
+| `version_switcher` | boolean | Built with `--version-dir`: show a version `<select>` (`app.js` fills it from `{{ root_path }}../versions.json`). |
 | `root_path` | string | Relative path from this page to the site root: `"./"` or `"../../"`. Prefix every site link with it. |
 | `layout` | string | The layout the site opens with: `"classic"`, `"minimal"` or `"modern"`. |
 | `theme` | string, optional | The color theme the site opens with: `"dark"`, `"light"` or `"slate"`. `none` for `auto`. |

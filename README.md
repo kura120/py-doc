@@ -103,6 +103,7 @@ Run `swiftdoc` with no arguments in a terminal, in a project without a `[tool.sw
 | `--css <FILE>` | Extra stylesheet, linked after the bundled one on every page. Repeatable. See [Restyling with CSS](#restyling-with-css). |
 | `--pages <DIR>` | Folder of Markdown pages (guides, tutorials) published next to the API reference. See [Markdown pages](#markdown-pages). |
 | `--intersphinx <NAME=URL>` | Link names from another project's Sphinx docs, such as `python=https://docs.python.org/3`. Repeatable. See [Linking to other projects](#linking-to-other-projects). |
+| `--version-dir <ROOT>` | Docs for several releases side by side: builds into `ROOT/<doc-version>/` with a version switcher. See [Several versions](#several-versions). |
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
@@ -371,6 +372,21 @@ swiftdoc serve --src ./my_project --out ./docs
 * If a file fails to parse, the error is printed and nothing is rebuilt: the last good site stays up. Fixing the file and saving rebuilds it. Other errors, such as a broken template, are printed the same way, and the server keeps running.
 * Hidden files and folders (`.git`, editor swap files), `__pycache__` and the output folder itself are not watched. Changes to `pyproject.toml` need a restart.
 * Ctrl+C stops the server once the build in progress finishes; a second Ctrl+C stops it at once.
+
+### Several versions
+
+`--version-dir` keeps the docs of every release in one folder, with a version switcher in the sidebar:
+
+```bash
+swiftdoc --src src/myproject --version-dir site --doc-version 1.0.0
+swiftdoc --src src/myproject --version-dir site --doc-version 2.0.0
+```
+
+* Each build goes to `site/<version>/` instead of `--out`.
+* `site/versions.json` lists the versions, newest first. The newest that is not a pre-release (`rc`, `beta`, ...) is marked latest, and `site/index.html` redirects to it.
+* The switcher reads `versions.json` when the page loads, so old builds list newer versions without being rebuilt. It opens the same page in the chosen version, or that version's front page when the page does not exist there.
+* All links are relative, so the folder works on GitHub Pages or any static host. The switcher needs the site served over HTTP; opened from disk, it shows only the current version.
+* Without `--version-dir`, the output is unchanged.
 
 ### Linking to source
 

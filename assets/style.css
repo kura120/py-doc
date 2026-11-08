@@ -410,6 +410,13 @@ a { color: inherit; }
     margin-top: 5px;
 }
 
+select.version-switcher {
+    font: inherit;
+    font-size: 0.8rem;
+    min-height: 24px;
+    cursor: pointer;
+}
+
 .sidebar::-webkit-scrollbar { width: 6px; height: 6px; }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
 .sidebar::-webkit-scrollbar-thumb {
