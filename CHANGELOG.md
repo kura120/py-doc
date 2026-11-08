@@ -1,17 +1,8 @@
 # Changelog
 
-## Unreleased
-
-- `--pages <DIR>` publishes Markdown guides next to the API reference, with front-matter titles and ordering, links between pages, macros and search. A top-level `index.md` replaces the landing page's intro (#27).
-- `docs/templates.md` documents every template variable, and templates get `context_version` (#11).
-- HTML builds write `objects.inv`, so Sphinx projects can link to the API with intersphinx (#25).
-- `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, with an offline cache (#25).
-- `--version-dir ROOT` builds each release into `ROOT/<version>/` with a version switcher, `versions.json` and a redirect to the latest (#24).
-- README: a "Why swiftdoc" comparison, and guides for GitHub Pages, CI and migrating from Sphinx or pdoc in `docs/` (#28).
-
 ## v0.6.0
 
-A large release. swiftdoc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML.
+A large release. swiftdoc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML. It also publishes Markdown guides, links to and from Sphinx sites, and keeps docs for several releases side by side.
 
 ### Speed
 
@@ -40,11 +31,19 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 - `swiftdoc serve` builds the site, serves it on 127.0.0.1 and reloads the page when files change (#48).
 - The generated site meets WCAG 2.2 AA. CI checks it with axe and a keyboard test (#47).
 
+### Guides, cross-project links and versions
+
+- **Markdown pages.** `--pages <DIR>` publishes `.md` files as guides above the API reference, with front-matter titles and ordering, links between pages, macros and search. A top-level `index.md` replaces the landing page's intro (#27).
+- **Sphinx inventories.** Every HTML build writes `objects.inv`, so Sphinx projects can link to your API with intersphinx (#25).
+- **Links to other projects.** `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, such as `pathlib.Path` to the Python docs. Inventories are cached, so builds work offline (#25).
+- **Several versions.** `--version-dir ROOT` builds each release into `ROOT/<version>/`, with a version switcher, `versions.json` and a redirect to the latest (#24).
+
 ### Themes and templates
 
 - **Block inheritance.** A custom template can extend `swiftdoc/<name>.html` and override only the blocks it changes (#32).
 - `--css` adds a stylesheet. The theme's colors and spacing are CSS custom properties you can override (#38).
 - `swiftdoc theme eject` copies the bundled theme into your project as a starting point (#41).
+- `docs/templates.md` documents every template variable. Templates get `context_version`, bumped on breaking changes (#11).
 
 ### CI and distribution
 
@@ -52,6 +51,10 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 - A GitHub Action and a pre-commit hook (#36).
 - Published to PyPI: `pip install swiftdoc` (#37).
 - Release binaries now include Linux arm64.
+
+### Documentation
+
+- The README compares swiftdoc with pydoc, pdoc, pdoc3 and Sphinx. New guides in `docs/`: deploying to GitHub Pages, using swiftdoc in CI, and migrating from Sphinx or pdoc (#28).
 
 ### Upgrading from v0.5.1
 
