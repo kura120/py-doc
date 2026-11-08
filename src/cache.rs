@@ -389,6 +389,7 @@ mod tests {
             all: Some(vec!["C".into()]),
             is_private: false,
             imports: vec![],
+            external_imports: vec![],
         };
         let deps = ModuleDeps {
             links: vec![("t".into(), Some("x.html".into()), false)],

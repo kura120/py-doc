@@ -17,6 +17,7 @@ mod coverage;
 mod docstring;
 mod generator;
 mod highlight;
+mod intersphinx;
 mod inventory;
 mod models;
 mod output;
@@ -195,6 +196,13 @@ pub struct Args {
     /// API reference. A top-level index.md replaces the landing page's intro.
     #[arg(long, value_name = "DIR")]
     pub pages: Option<String>,
+
+    /// Link names from another project's Sphinx docs, as NAME=URL (the URL
+    /// that has objects.inv), such as python=https://docs.python.org/3.
+    /// Repeatable. Inventories are cached, so later builds work offline.
+    #[arg(long, value_name = "NAME=URL")]
+    #[serde(default)]
+    pub intersphinx: Vec<String>,
 
     /// Starting UI layout for the generated site [default: classic]
     #[arg(long, value_enum)]
@@ -443,6 +451,15 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
     );
 
     let (root, py_files) = collect_python_files(src_path, &args.exclude);
+    let (inventories, inventory_warnings) = match &args.out {
+        Some(_) if !args.intersphinx.is_empty() => {
+            intersphinx::Inventories::load(&args.intersphinx)
+        }
+        _ => Default::default(),
+    };
+    for warning in &inventory_warnings {
+        eprintln!("  \x1b[33m⚠\x1b[0m {warning}");
+    }
     let (page_sources, intro) = match (&args.pages, &args.out) {
         (Some(dir), Some(_)) => pages::collect(Path::new(dir), &root)?,
         _ => (Vec::new(), None),
@@ -468,7 +485,8 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
             )?
             .with_extra_css(&args.css)?
             .with_docstring_style(args.docstring_style)
-            .with_intro(intro),
+            .with_intro(intro)
+            .with_inventories(inventories),
         ),
         None => None,
     };
@@ -578,7 +596,7 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
         coverage::Report::of(&package, args.include_private)
     });
 
-    let mut problems = parse_errors.len();
+    let mut problems = parse_errors.len() + inventory_warnings.len();
     match (&args.out, generator, cache_key) {
         (Some(out), Some(generator), Some(key)) => {
             status!("\x1b[36;1m[2/3]\x1b[0m Rendering documentation...");

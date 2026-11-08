@@ -245,6 +245,8 @@ struct TypeContext {
     module_path: String,
     locals: std::collections::HashSet<String>,
     imports: Vec<(String, String)>,
+    /// Imports of other packages, for `--intersphinx` links.
+    external_imports: Vec<(String, String)>,
     /// Each candidate path resolved so far, so each is looked up (and
     /// recorded in the cache's dependencies) once.
     resolved: RefCell<std::collections::HashMap<String, Option<String>>>,
@@ -272,6 +274,7 @@ impl TypeContext {
             module_path,
             locals,
             imports: module.imports.clone(),
+            external_imports: module.external_imports.clone(),
             resolved: RefCell::new(std::collections::HashMap::new()),
         }
     }
@@ -365,6 +368,8 @@ pub struct SiteGenerator {
     extra_css: Vec<(String, String)>,
     /// `index.md` of `--pages`: (pages folder name, Markdown).
     intro: Option<(String, String)>,
+    /// `--intersphinx` inventories, for names outside the package.
+    inventories: crate::intersphinx::Inventories,
     /// How docstring sections are read (`--docstring-style`).
     docstring_style: DocstringStyle,
 }
@@ -502,6 +507,7 @@ impl SiteGenerator {
             templates_note,
             extra_css: Vec::new(),
             intro: None,
+            inventories: Default::default(),
             docstring_style: DocstringStyle::Auto,
         })
     }
@@ -511,6 +517,11 @@ impl SiteGenerator {
     /// of the root `__init__.py` docstring.
     pub fn with_intro(mut self, intro: Option<(String, String)>) -> Self {
         self.intro = intro;
+        self
+    }
+
+    pub fn with_inventories(mut self, inventories: crate::intersphinx::Inventories) -> Self {
+        self.inventories = inventories;
         self
     }
 
@@ -819,7 +830,16 @@ impl SiteGenerator {
                     .borrow_mut()
                     .links
                     .push((target.to_string(), resolved.clone(), hidden));
+                let external = resolved
+                    .is_none()
+                    .then(|| self.inventories.get(target.trim()))
+                    .flatten();
                 let link_html = match resolved {
+                    None if let Some(url) = external => format!(
+                        "<a href=\"{}\" class=\"doc-external-link\">{}</a>",
+                        escape_html(url),
+                        label
+                    ),
                     Some(link) => format!(
                         "<a href=\"{}{}\" class=\"doc-internal-link\">{}</a>",
                         ctx.root_prefix,
@@ -1157,7 +1177,9 @@ impl SiteGenerator {
                 format!("{}.{}", types.module_path, name)
             }
         } else {
-            let (_, target) = types.imports.iter().find(|(local, _)| local == head)?;
+            let Some((_, target)) = types.imports.iter().find(|(local, _)| local == head) else {
+                return self.resolve_external(name, types);
+            };
             // `import pkg.x` binds the root package itself, whose path is "".
             match (target.is_empty(), rest.is_empty()) {
                 (_, true) => target.clone(),
@@ -1175,6 +1197,27 @@ impl SiteGenerator {
             .insert(candidate.clone(), link.clone());
         ctx.deps.borrow_mut().types.push((candidate, link.clone()));
         link
+    }
+
+    /// A name outside the documented package, through `--intersphinx`:
+    /// `Path` after `from pathlib import Path`, or `pathlib.Path` as written.
+    /// Not recorded in the cache's dependencies: the inventories are part
+    /// of the cache key.
+    fn resolve_external(&self, name: &str, types: &TypeContext) -> Option<String> {
+        if self.inventories.is_empty() {
+            return None;
+        }
+        let (head, rest) = name.split_once('.').unwrap_or((name, ""));
+        let dotted = match types
+            .external_imports
+            .iter()
+            .find(|(local, _)| local == head)
+        {
+            Some((_, target)) if rest.is_empty() => target.clone(),
+            Some((_, target)) => format!("{target}.{rest}"),
+            None => name.to_string(),
+        };
+        self.inventories.get(&dotted).map(str::to_string)
     }
 
     /// An annotation as HTML with its documented names linked, or None.

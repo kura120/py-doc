@@ -45,6 +45,8 @@ pub struct Config {
     pub css: Vec<String>,
     /// Folder of Markdown pages.
     pub pages: Option<String>,
+    /// `NAME=URL` inventories to link to.
+    pub intersphinx: Vec<String>,
     pub layout: LayoutKind,
     pub theme: ThemeKind,
     pub exclude: Vec<String>,
@@ -350,6 +352,11 @@ impl Config {
             doc_version,
             templates: cli.templates.or(tool.templates),
             pages: cli.pages.or(tool.pages),
+            intersphinx: if cli.intersphinx.is_empty() {
+                tool.intersphinx
+            } else {
+                cli.intersphinx
+            },
             css: if cli.css.is_empty() {
                 tool.css
             } else {
@@ -479,6 +486,7 @@ docstring-style = "numpy"
                 templates: Some("cli-templates".into()),
                 css: vec!["cli.css".into()],
                 pages: None,
+                intersphinx: vec![],
                 layout: LayoutKind::Minimal,
                 theme: ThemeKind::Dark,
                 exclude: vec!["cli-ex".into()],
@@ -511,6 +519,7 @@ docstring-style = "numpy"
                 templates: Some(in_proj("tool-templates")),
                 css: vec![in_proj("tool-a.css"), in_proj("tool-b.css")],
                 pages: None,
+                intersphinx: vec![],
                 layout: LayoutKind::Modern,
                 theme: ThemeKind::Slate,
                 exclude: vec!["tool-ex".into()],
@@ -550,6 +559,7 @@ docstring-style = "numpy"
                 templates: None,
                 css: vec![],
                 pages: None,
+                intersphinx: vec![],
                 layout: LayoutKind::Classic,
                 theme: ThemeKind::Auto,
                 exclude: vec![],
@@ -619,6 +629,7 @@ docstring-style = "numpy"
             "templates",
             "css",
             "pages",
+            "intersphinx",
             "layout",
             "theme",
             "exclude",

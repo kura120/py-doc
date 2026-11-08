@@ -258,6 +258,73 @@ fn read_imports(body: &[Stmt], context: &ImportContext) -> Vec<(String, String)>
     out
 }
 
+/// Names bound by absolute imports of other packages, as (local name,
+/// dotted path): `from pathlib import Path` gives ("Path", "pathlib.Path"),
+/// `import numpy as np` gives ("np", "numpy"). Read from the same places as
+/// [`read_imports`]; used to link annotations through `--intersphinx`.
+fn read_external_imports(body: &[Stmt], context: &ImportContext) -> Vec<(String, String)> {
+    fn walk(body: &[Stmt], context: &ImportContext, out: &mut Vec<(String, String)>) {
+        let add = |local: &str, target: String, out: &mut Vec<(String, String)>| {
+            if !out.iter().any(|(name, _)| name == local) {
+                out.push((local.to_string(), target));
+            }
+        };
+        for stmt in body {
+            match stmt {
+                Stmt::Import(import) => {
+                    for alias in &import.names {
+                        let name = alias.name.as_str();
+                        if context.internal(name).is_some() {
+                            continue;
+                        }
+                        match &alias.asname {
+                            Some(asname) => add(asname.as_str(), name.to_string(), out),
+                            None => {
+                                let first = name.split('.').next().unwrap_or(name);
+                                add(first, first.to_string(), out);
+                            }
+                        }
+                    }
+                }
+                Stmt::ImportFrom(import) if import.level == 0 => {
+                    let Some(module) = import.module.as_ref().map(|m| m.as_str()) else {
+                        continue;
+                    };
+                    if context.internal(module).is_some() {
+                        continue;
+                    }
+                    for alias in &import.names {
+                        let name = alias.name.as_str();
+                        if name != "*" {
+                            let local = alias.asname.as_ref().map_or(name, |a| a.as_str());
+                            add(local, join_dotted(module, name), out);
+                        }
+                    }
+                }
+                Stmt::If(if_stmt) => {
+                    walk(&if_stmt.body, context, out);
+                    for clause in &if_stmt.elif_else_clauses {
+                        walk(&clause.body, context, out);
+                    }
+                }
+                Stmt::Try(try_stmt) => {
+                    walk(&try_stmt.body, context, out);
+                    for ast::ExceptHandler::ExceptHandler(handler) in &try_stmt.handlers {
+                        walk(&handler.body, context, out);
+                    }
+                    walk(&try_stmt.orelse, context, out);
+                    walk(&try_stmt.finalbody, context, out);
+                }
+                Stmt::With(with_stmt) => walk(&with_stmt.body, context, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(body, context, &mut out);
+    out
+}
+
 /// Source text plus a line index, for slicing expressions and reporting line numbers.
 struct Source<'a> {
     text: &'a str,
@@ -827,17 +894,18 @@ pub fn parse_file(filepath: &Path, root_dir: &Path) -> Result<PythonModule> {
         all: None,
         is_private,
         imports: Vec::new(),
+        external_imports: Vec::new(),
     };
 
     let syntax_body = parsed.into_syntax().body;
-    module.imports = read_imports(
-        &syntax_body,
-        &ImportContext {
-            package: dir_components,
-            root: root_dir,
-            root_package: root_package_name(root_dir).as_deref(),
-        },
-    );
+    let root_package = root_package_name(root_dir);
+    let context = ImportContext {
+        package: dir_components,
+        root: root_dir,
+        root_package: root_package.as_deref(),
+    };
+    module.imports = read_imports(&syntax_body, &context);
+    module.external_imports = read_external_imports(&syntax_body, &context);
     module.docstring = leading_docstring(&syntax_body);
     module.all = read_dunder_all(&syntax_body);
     let all = module.all.clone();

@@ -102,6 +102,7 @@ Run `swiftdoc` with no arguments in a terminal, in a project without a `[tool.sw
 | `--source-url <URL>` | Base URL of a browsable copy of the sources. Turns each symbol's `file:line` reference into a link. |
 | `--css <FILE>` | Extra stylesheet, linked after the bundled one on every page. Repeatable. See [Restyling with CSS](#restyling-with-css). |
 | `--pages <DIR>` | Folder of Markdown pages (guides, tutorials) published next to the API reference. See [Markdown pages](#markdown-pages). |
+| `--intersphinx <NAME=URL>` | Link names from another project's Sphinx docs, such as `python=https://docs.python.org/3`. Repeatable. See [Linking to other projects](#linking-to-other-projects). |
 | `-t`, `--templates <DIR>` | Directory with replacement theme files. See [Custom templates](#custom-templates). |
 | `--strict` | Exit with an error if a file fails to parse, or a macro, image or doc-link cannot be resolved. Useful in CI. |
 | `--clean` | Remove files that an earlier run wrote to `--out` and this run no longer produces, such as pages for deleted modules. |
@@ -389,6 +390,21 @@ intersphinx_mapping = {"myproject": ("https://example.com/docs/", None)}
 ```
 
 Names are import paths: when `--src` is a package folder (it has an `__init__.py`), they start with its name, as in `myproject.engine.Engine`. `python -m sphinx.ext.intersphinx docs/objects.inv` lists them.
+
+### Linking to other projects
+
+`--intersphinx NAME=URL` links names from another project's documentation through its Sphinx inventory (`URL/objects.inv`). Python's docs, NumPy, Requests and most of the ecosystem publish one.
+
+```bash
+swiftdoc --src src/myproject --out docs --intersphinx python=https://docs.python.org/3
+```
+
+In `pyproject.toml`: `intersphinx = ["python=https://docs.python.org/3", "numpy=https://numpy.org/doc/stable"]`.
+
+* Annotations link when the name is written in full (`pathlib.Path`) or imported (`from pathlib import Path`, then `-> Path`).
+* `#pd-doc-link: os.getcwd` links to the other project's page when no symbol of your own matches.
+* Inventories are downloaded once and cached in your user cache folder (`SWIFTDOC_CACHE_DIR` overrides it), so later builds work offline. A cached copy is refreshed after a week, and kept when the refresh fails.
+* An inventory that cannot be loaded prints a warning and the build continues. With `--strict` the build fails.
 
 ### GitHub Actions
 

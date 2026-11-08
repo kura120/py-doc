@@ -348,6 +348,7 @@ mod tests {
             all: None,
             is_private: false,
             imports: vec![],
+            external_imports: vec![],
         }
     }
 
