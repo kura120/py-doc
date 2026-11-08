@@ -26,6 +26,7 @@ mod parser;
 mod resolver;
 mod serve;
 mod tui;
+mod versions;
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -203,6 +204,12 @@ pub struct Args {
     #[arg(long, value_name = "NAME=URL")]
     #[serde(default)]
     pub intersphinx: Vec<String>,
+
+    /// Build docs for several releases side by side: the site goes to
+    /// ROOT/<doc-version>/ (instead of --out), with a version switcher
+    /// listing every version in ROOT/versions.json
+    #[arg(long, value_name = "ROOT")]
+    pub version_dir: Option<String>,
 
     /// Starting UI layout for the generated site [default: classic]
     #[arg(long, value_enum)]
@@ -486,7 +493,8 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
             .with_extra_css(&args.css)?
             .with_docstring_style(args.docstring_style)
             .with_intro(intro)
-            .with_inventories(inventories),
+            .with_inventories(inventories)
+            .with_version_switcher(args.version_dir.is_some()),
         ),
         None => None,
     };
@@ -648,6 +656,16 @@ pub(crate) fn build(args: &Config, serving: bool) -> Result<()> {
                 }
             }
             generator.finish(args.clean)?;
+            if let Some(root) = &args.version_dir
+                && args.formats.contains(&OutputFormat::Html)
+            {
+                let versions = versions::record(Path::new(root), &args.doc_version)?;
+                status!(
+                    "  Listed {} version(s) in {}",
+                    versions.len(),
+                    Path::new(root).join(versions::FILE_NAME).display()
+                );
+            }
 
             status!(
                 "\n\x1b[32;1m✔ Documentation generated at {}\x1b[0m",

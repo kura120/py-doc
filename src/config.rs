@@ -47,6 +47,8 @@ pub struct Config {
     pub pages: Option<String>,
     /// `NAME=URL` inventories to link to.
     pub intersphinx: Vec<String>,
+    /// `--version-dir`: `out` is then `<version_dir>/<doc_version>`.
+    pub version_dir: Option<String>,
     pub layout: LayoutKind,
     pub theme: ThemeKind,
     pub exclude: Vec<String>,
@@ -207,6 +209,7 @@ fn rebase_paths(args: &mut Args, base: &Path) {
         &mut args.out,
         &mut args.templates,
         &mut args.pages,
+        &mut args.version_dir,
     ]
     .into_iter()
     .flatten()
@@ -321,8 +324,12 @@ impl Config {
         };
 
         let src = cli.src.or(tool.src).ok_or_else(|| missing("src"))?;
+        let version_dir = cli.version_dir.or(tool.version_dir);
         let out = if check_only {
             None
+        } else if let Some(root) = &version_dir {
+            let folder = crate::versions::folder_for(&doc_version)?;
+            Some(Path::new(root).join(folder).to_string_lossy().into_owned())
         } else {
             Some(cli.out.or(tool.out).ok_or_else(|| missing("out"))?)
         };
@@ -352,6 +359,7 @@ impl Config {
             doc_version,
             templates: cli.templates.or(tool.templates),
             pages: cli.pages.or(tool.pages),
+            version_dir,
             intersphinx: if cli.intersphinx.is_empty() {
                 tool.intersphinx
             } else {
@@ -487,6 +495,7 @@ docstring-style = "numpy"
                 css: vec!["cli.css".into()],
                 pages: None,
                 intersphinx: vec![],
+                version_dir: None,
                 layout: LayoutKind::Minimal,
                 theme: ThemeKind::Dark,
                 exclude: vec!["cli-ex".into()],
@@ -520,6 +529,7 @@ docstring-style = "numpy"
                 css: vec![in_proj("tool-a.css"), in_proj("tool-b.css")],
                 pages: None,
                 intersphinx: vec![],
+                version_dir: None,
                 layout: LayoutKind::Modern,
                 theme: ThemeKind::Slate,
                 exclude: vec!["tool-ex".into()],
@@ -560,6 +570,7 @@ docstring-style = "numpy"
                 css: vec![],
                 pages: None,
                 intersphinx: vec![],
+                version_dir: None,
                 layout: LayoutKind::Classic,
                 theme: ThemeKind::Auto,
                 exclude: vec![],
@@ -630,6 +641,7 @@ docstring-style = "numpy"
             "css",
             "pages",
             "intersphinx",
+            "version-dir",
             "layout",
             "theme",
             "exclude",

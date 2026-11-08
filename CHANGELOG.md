@@ -6,6 +6,7 @@
 - `docs/templates.md` documents every template variable, and templates get `context_version` (#11).
 - HTML builds write `objects.inv`, so Sphinx projects can link to the API with intersphinx (#25).
 - `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, with an offline cache (#25).
+- `--version-dir ROOT` builds each release into `ROOT/<version>/` with a version switcher, `versions.json` and a redirect to the latest (#24).
 
 ## v0.6.0
 

@@ -214,6 +214,7 @@ function findMatches(entries, query) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    setupVersionSwitcher();
     const root = document.documentElement;
 
     // --- Layout (Classic / Minimal / Modern) + color theme ---
@@ -629,3 +630,41 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+// --version-dir builds: fill the version <select> from ../versions.json and
+// open the same page in the chosen version, or that version's index when
+// the page does not exist there. Read at runtime, so older builds list
+// versions published after them.
+function setupVersionSwitcher() {
+    const select = document.getElementById("version-switcher");
+    const nav = document.getElementById("nav-tree");
+    if (!select) return;
+    const rootUrl = new URL((nav && nav.dataset.rootPath) || "./", location.href);
+    fetch(new URL("../versions.json", rootUrl))
+        .then(response => (response.ok ? response.json() : []))
+        .then(versions => {
+            if (!Array.isArray(versions) || versions.length === 0) return;
+            select.replaceChildren(...versions.map(v => {
+                const option = document.createElement("option");
+                option.value = v.path;
+                option.textContent = "v" + v.version + (v.latest ? " (latest)" : "");
+                option.selected = v.version === select.dataset.current;
+                return option;
+            }));
+        })
+        .catch(() => {});
+    select.addEventListener("change", async () => {
+        if (!select.value) return;
+        const base = new URL("../" + encodeURIComponent(select.value) + "/", rootUrl);
+        const here = location.href.split("#")[0];
+        const page = here.startsWith(rootUrl.href) ? here.slice(rootUrl.href.length) : "";
+        let target = new URL(page || "index.html", base);
+        try {
+            const response = await fetch(target, { method: "HEAD" });
+            if (!response.ok) target = new URL("index.html", base);
+        } catch (e) {
+            target = new URL("index.html", base);
+        }
+        location.href = target.href;
+    });
+}
