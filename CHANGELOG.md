@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Releases also publish to crates.io: `cargo install swiftdoc`, or `cargo binstall swiftdoc` for the pre-compiled binary.
+
 ## v0.6.1
 
 The first release on PyPI: `pip install swiftdoc`. The v0.6.0 release run published the binaries but stopped before the PyPI upload, because the Linux arm64 wheel failed to build.
