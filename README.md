@@ -75,15 +75,18 @@ curl -fsSL https://raw.githubusercontent.com/kura120/swiftdoc/master/scripts/ins
 irm https://raw.githubusercontent.com/kura120/swiftdoc/master/scripts/install.ps1 | iex
 ```
 
-### Option C: Fast Binary Installer (cargo-binstall)
+### Option C: Cargo
 
-If you have Cargo but want to avoid compile times, install the pre-compiled binary with `cargo-binstall`. swiftdoc is not published on crates.io, so point it at the repository:
+swiftdoc is on [crates.io](https://crates.io/crates/swiftdoc). `cargo-binstall` downloads the pre-compiled release binary, so nothing is compiled:
 
 ```bash
-# Install cargo-binstall if you don't have it
-cargo install cargo-binstall
+cargo binstall swiftdoc
+```
 
-cargo binstall --git https://github.com/kura120/swiftdoc swiftdoc
+Or build it from crates.io with a Rust toolchain:
+
+```bash
+cargo install swiftdoc
 ```
 
 ### Option D: Build from Source
