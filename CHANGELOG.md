@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.1
+
+The first release on PyPI: `pip install swiftdoc`. The v0.6.0 release run published the binaries but stopped before the PyPI upload, because the Linux arm64 wheel failed to build.
+
+- **Macros start with `#sd-`**: `#sd-write`, `#sd-doc-link`, `#sd-note`, `#sd-warning`, `#sd-code`, `#sd-image` and `#sd-z-index`. Update existing docstrings, for example with `sed -i 's/#pd-/#sd-/g'` (#61).
+- `--intersphinx` downloads inventories with `curl` (included in Linux, macOS and Windows 10 and later) instead of a bundled HTTP client. Every target builds again, and the binary is about 1.6 MB smaller (#61).
+
 ## v0.6.0
 
 A large release. swiftdoc is much faster on big projects, reads its settings from `pyproject.toml`, documents more of your code, and can now write JSON and Markdown as well as HTML. It also publishes Markdown guides, links to and from Sphinx sites, and keeps docs for several releases side by side.
@@ -35,7 +42,7 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 
 - **Markdown pages.** `--pages <DIR>` publishes `.md` files as guides above the API reference, with front-matter titles and ordering, links between pages, macros and search. A top-level `index.md` replaces the landing page's intro (#27).
 - **Sphinx inventories.** Every HTML build writes `objects.inv`, so Sphinx projects can link to your API with intersphinx (#25).
-- **Links to other projects.** `--intersphinx NAME=URL` links annotations and `#sd-doc-link` to other projects' Sphinx docs, such as `pathlib.Path` to the Python docs. Inventories are cached, so builds work offline (#25).
+- **Links to other projects.** `--intersphinx NAME=URL` links annotations and `#pd-doc-link` to other projects' Sphinx docs, such as `pathlib.Path` to the Python docs. Inventories are cached, so builds work offline (#25).
 - **Several versions.** `--version-dir ROOT` builds each release into `ROOT/<version>/`, with a version switcher, `versions.json` and a redirect to the latest (#24).
 
 ### Themes and templates
@@ -49,7 +56,7 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 
 - `--coverage` prints a documentation coverage report. `--fail-under N` fails the run below N percent. `--coverage-format json` is for scripts (#40). Dunder methods (`__init__`, `__repr__`, ...) are not counted.
 - A GitHub Action and a pre-commit hook (#36).
-- Published to PyPI: `pip install swiftdoc` (#37).
+- Packaged for PyPI as `swiftdoc` (#37). The v0.6.0 upload did not run; v0.6.1 is the first release on PyPI.
 - Release binaries now include Linux arm64.
 
 ### Documentation
@@ -58,7 +65,6 @@ A large release. swiftdoc is much faster on big projects, reads its settings fro
 
 ### Upgrading from v0.5.1
 
-- Docstring macros start with `#sd-`: `#sd-write`, `#sd-doc-link`, `#sd-note`, `#sd-warning`, `#sd-code`, `#sd-image` and `#sd-z-index`. Replace the old prefix in your docstrings, for example with `sed -i 's/#pd-/#sd-/g'`.
 - Private names are no longer documented by default. Add `--include-private` to keep them.
 - Docstrings with Google, NumPy or reST sections render differently. Use `--docstring-style markdown` for the old output.
 - The command is `swiftdoc`, and settings live in `[tool.swiftdoc]`. Custom templates extend `swiftdoc/<name>.html`.

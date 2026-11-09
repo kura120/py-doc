@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "swiftdoc"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "clap",

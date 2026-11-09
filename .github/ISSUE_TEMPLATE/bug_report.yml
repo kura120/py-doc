@@ -53,7 +53,7 @@ body:
     attributes:
       label: swiftdoc version
       description: Output of `swiftdoc --version`.
-      placeholder: swiftdoc 0.6.0
+      placeholder: swiftdoc 0.6.1
     validations:
       required: true
 

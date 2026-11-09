@@ -33,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # "release" joins once v0.6.0, the first swiftdoc release, is published.
+        # "release" joins once v0.6.1, the first complete swiftdoc release, is published.
         install: [source]
         include:
           - os: ubuntu-24.04-arm
@@ -70,7 +70,7 @@ jobs:
           grep -q "1.2.3 beta" _site-test/index.html
 
   pinned:
-    # Runs once v0.6.0, the first swiftdoc release, is published.
+    # Runs once v0.6.1, the first complete swiftdoc release, is published.
     if: false
     name: Action (ubuntu-latest, pinned version)
     runs-on: ubuntu-latest
@@ -81,7 +81,7 @@ jobs:
         id: swiftdoc
         uses: ./
         with:
-          version: "0.6.0"
+          version: "0.6.1"
           src: tests/fixtures/sample
           out: _site-test
           name: sample
@@ -92,7 +92,7 @@ jobs:
           VERSION: ${{ steps.swiftdoc.outputs.version }}
         run: |
           set -x
-          test "$VERSION" = "0.6.0"
+          test "$VERSION" = "0.6.1"
           test -f _site-test/index.html
 
   pre-commit:
@@ -101,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Builds from source until v0.6.0, the first swiftdoc release, is published.
+      # Builds from source until v0.6.1, the first complete swiftdoc release, is published.
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install swiftdoc
