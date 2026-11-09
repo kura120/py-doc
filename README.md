@@ -51,7 +51,7 @@ Choose the installation method that fits your environment.
 
 ### Option A: pip, pipx or uv (Recommended)
 
-From v0.6.0, swiftdoc is on PyPI. The wheels hold the compiled binary, so no Rust toolchain is needed.
+From v0.6.1, swiftdoc is on PyPI. The wheels hold the compiled binary, so no Rust toolchain is needed.
 
 ```bash
 pipx install swiftdoc      # or
@@ -293,7 +293,7 @@ Shortened (`"...": "..."` marks left-out fields):
 ```json
 {
   "schema_version": 1,
-  "swiftdoc_version": "0.6.0",
+  "swiftdoc_version": "0.6.1",
   "package": { "name": "myproject", "version": "2.1.0" },
   "include_private": false,
   "modules": [
@@ -489,7 +489,7 @@ jobs:
 
 | Input | Meaning |
 | --- | --- |
-| `version` | Release to install, such as `0.6.0`. Default `latest`. |
+| `version` | Release to install, such as `0.6.1`. Default `latest`. |
 | `install` | `release` (default) downloads a binary. `source` builds the action's own checkout with cargo and needs a Rust toolchain on the runner. |
 | `src` | `--src`. Default `.`, or `src` from `[tool.swiftdoc]` when `pyproject.toml` configures swiftdoc. |
 | `out` | `--out`. Default `site`. |

@@ -3,7 +3,7 @@
 # by hand. Settings come from the environment:
 #   SWIFTDOC_INSTALL  "release" (download a published binary) or "source"
 #                   (cargo install from the action's own checkout)
-#   SWIFTDOC_VERSION  "latest", "v0.6.0" or "0.6.0" (release installs only)
+#   SWIFTDOC_VERSION  "latest", "v0.6.1" or "0.6.1" (release installs only)
 #   SWIFTDOC_TOKEN    token for the GitHub API, to avoid anonymous rate limits
 # The binary goes to $RUNNER_TEMP/swiftdoc/bin, which is added to $GITHUB_PATH.
 set -eo pipefail

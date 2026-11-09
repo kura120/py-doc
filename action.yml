@@ -8,7 +8,7 @@ branding:
 inputs:
   version:
     description: >-
-      swiftdoc release to install, such as "v0.6.0" or "0.6.0". "latest" (the
+      swiftdoc release to install, such as "v0.6.1" or "0.6.1". "latest" (the
       default) uses the newest published release. Ignored with install: source.
     required: false
     default: latest
